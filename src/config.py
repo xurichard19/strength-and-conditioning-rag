@@ -1,0 +1,8 @@
+RAW_DATA_DIR = "data/raw"
+PROCESSED_DATA_DIR = "data/processed"
+
+SIZE = 500
+OVERLAP = 50
+
+EMBEDDING_MODEL = ""
+LLM_MODEL = ""
