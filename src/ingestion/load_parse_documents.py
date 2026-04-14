@@ -5,7 +5,7 @@ import re
 from tqdm import tqdm
 
 
-def load_documents(dir: str = RAW_DATA_DIR) -> list[dict]: # to be edited to add training logs?
+def load_documents(dir=RAW_DATA_DIR) -> list[dict]: # to be edited to add training logs?
     """load all raw documents"""
     docs = []
 
@@ -28,6 +28,9 @@ def load_documents(dir: str = RAW_DATA_DIR) -> list[dict]: # to be edited to add
 
 def parse_pdf(path: str) -> str:
     """parse full pdf text"""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"{path} does not exist")
+
     text = ""
 
     with pymupdf.open(path) as doc:
@@ -48,12 +51,15 @@ def parse_pdf(path: str) -> str:
 
 def clean_text(text: str) -> str:
     """remove clutter and poor formatting"""
+    if not text:
+        raise ValueError("empty text")
 
     text = re.sub(r'(?<!\n)\n(?!\n)', ' ', text) # remove line breaks
     text = re.sub(r'_+', '', text) # remove separators
     text = re.sub(r'\s+', ' ', text) # normalize whitespace
 
     return text.strip()
+    # future: split and perserve sentence structure
 
 
 def parse_training_log():
