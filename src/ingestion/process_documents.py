@@ -51,7 +51,7 @@ def wrap_metadata(chunks: list[str], doc: dict) -> list[dict]:
 
     for chunk in chunks:
         chunk_list.append({
-            "id": f"{doc["source"]}_chunk_{idx}",
+            "id": f"{doc['source']}_chunk_{idx}",
             "text": chunk,
             "metadata": {
                 "source": doc["source"],
