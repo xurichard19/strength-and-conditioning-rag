@@ -1,9 +1,10 @@
 .env
 
 data/raw
+*.pkl
 
 .DS_Store
 
 __pycache__/
 
-*.pkl
+venv/
