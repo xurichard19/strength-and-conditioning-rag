@@ -1,4 +1,4 @@
-from src.config import RAW_DATA_DIR
+from shingo.config import RAW_DATA_DIR
 import os
 import pymupdf
 import re

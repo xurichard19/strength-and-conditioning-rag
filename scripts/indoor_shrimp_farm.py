@@ -1,6 +1,6 @@
-import src.embed as m
-from src.ingestion.load_parse_documents import load_documents
-from src.ingestion.process_documents import process_documents
+import shingo.embed as m
+from shingo.ingestion.load_parse_documents import load_documents
+from shingo.ingestion.process_documents import process_documents
 import random
 import os
 import pickle

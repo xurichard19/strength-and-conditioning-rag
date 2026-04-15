@@ -1,6 +1,6 @@
 from functools import lru_cache
 from sentence_transformers import SentenceTransformer
-from src.config import EMBEDDING_MODEL
+from shingo.config import EMBEDDING_MODEL
 import numpy as np
 from tqdm import tqdm
 

@@ -1,4 +1,4 @@
-from src.config import SIZE, OVERLAP, THRESHOLD
+from shingo.config import SIZE, OVERLAP, THRESHOLD
 from tqdm import tqdm
 
 
