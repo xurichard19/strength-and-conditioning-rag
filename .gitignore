@@ -1,11 +1,11 @@
 .env
 
 data/raw
+*.pkl
 
 __pycache__/
 
-*.pkl
-
+venv/
 
 # for frontend...
 

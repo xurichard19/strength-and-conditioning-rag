@@ -44,7 +44,7 @@ def chunk_text(text: str, chunk_size=SIZE, overlap=OVERLAP, threshold=THRESHOLD)
 def wrap_metadata(chunks: list[str], doc: dict) -> list[dict]:
     """wrap chunks in metadata"""
     if not chunks or not doc:
-        return ValueError
+        raise ValueError
 
     chunk_list = []
     idx = 0
