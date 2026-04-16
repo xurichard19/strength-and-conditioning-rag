@@ -20,7 +20,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from src.retrieval.llm_client import answer_question # REMOVE AND REPLACE
+from shingo.retrieval.llm_client import answer_question # REMOVE AND REPLACE
 
 app = FastAPI()
 
