@@ -1,5 +1,5 @@
 # Strength & Conditioning RAG-based Assistant
 
-current tech stack: figma -> react + vite + tailwindcss -> fastapi + firebase -> rag agent (transformers + langchain + chromadb + openaiapi)
+current tech stack: figma -> react + vite + tailwindcss -> fastapi + firebase -> rag agent (langchain + chromadb + openaiapi)
 
-to be added: postgres (application management), backgroundjobs, google cloud storage (raw log storage)
+to be added: postgres (application management), backgroundjobs, gcs

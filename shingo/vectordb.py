@@ -30,7 +30,7 @@ class VectorDB:
         return True
     
 
-    def query_system_docs(self, query: str, top_k=3) -> dict:
+    def query_system_docs(self, query: str, top_k=7) -> dict:
         """ return top k similar contexts from chromadb by l2 norm for a single query """
         response = self.system_docs.query(query_texts=[query], n_results=top_k)
 

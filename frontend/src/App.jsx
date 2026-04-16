@@ -23,17 +23,22 @@ function App() {
     return (
         <div>
             <h1 className="text-3xl font-bold underline">
-                query
+                shingo
             </h1>
-            <form onSubmit={handleSubmit}>
-                <input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder='ask a question'/>
-                <button type='submit'>submit</button>
+            <form onSubmit={handleSubmit} className='flex flex-col gap-2'>
+                <input 
+                    value={question} 
+                    onChange={(e) => setQuestion(e.target.value)} 
+                    placeholder='ask a question'
+                    className='border p-2'
+                />
+                <button type='submit' className='bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition'>submit</button>
             </form>
 
             <div className='grid grid-cols-3 gap-4'>
                 {
-                    response.map(item => (
-                        <div key={item} className='p-4'>
+                    response.map((item, idx) => (
+                        <div key={idx} className='p-4 break-words'>
                             {item}
                         </div>
                     ))

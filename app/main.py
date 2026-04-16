@@ -57,5 +57,5 @@ class Question(BaseModel):
 
 @app.post("/query/")
 async def query(question: Question):
-    response = app.state.db.system_docs.query(query_texts=[question.question], n_results=5)
-    return {"response": [res for res in response["documents"][0]]}
+    response = app.state.db.query_system_docs(question.question)
+    return {"response": [res for res in response["documents"]]}
