@@ -3,7 +3,7 @@ import './App.css'
 
 function App() {
     const [question, setQuestion] = useState("")
-    const [response, setResponse] = useState("")
+    const [response, setResponse] = useState([])
 
     const handleSubmit = async (e) => {
         e.preventDefault(); /* stop reload */
@@ -30,7 +30,15 @@ function App() {
                 <button type='submit'>submit</button>
             </form>
 
-            <p>{response}</p>
+            <div className='grid grid-cols-3 gap-4'>
+                {
+                    response.map(item => (
+                        <div key={item} className='p-4'>
+                            {item}
+                        </div>
+                    ))
+                }
+            </div>
         </div>
     )
 }

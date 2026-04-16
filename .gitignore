@@ -1,6 +1,7 @@
 .env
 
 data/raw
+data/vectordb
 *.pkl
 
 __pycache__/

@@ -1,7 +1,7 @@
 from langchain_community.document_loaders import PyMuPDFLoader, UnstructuredPowerPointLoader
 import os
 import pickle
-from shingo.ingestion import VectorDB
+from shingo.vectordb import VectorDB
 import random
 
 cache = os.path.join('data', 'processed', 'db_test.pkl')
