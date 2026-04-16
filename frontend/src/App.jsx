@@ -22,6 +22,9 @@ function App() {
 
     return (
         <div>
+            <h1 className="text-3xl font-bold underline">
+                query
+            </h1>
             <form onSubmit={handleSubmit}>
                 <input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder='ask a question'/>
                 <button type='submit'>submit</button>
