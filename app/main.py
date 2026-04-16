@@ -16,13 +16,25 @@ add own training logs to db (into logsdb and add auth)
 # run with this from main dir >> fastapi dev app/main.py
 # use uvicorn during production >> uvicorn app.main:app --reload
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from shingo.retrieval.llm_client import answer_question # REMOVE AND REPLACE
+from shingo.vectordb import VectorDB
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+
+    print("Application is starting up...")
+
+    app.state.db = VectorDB()
+    # startup logic...
+    yield
+
+    print("Application is shutting down...")
+
+app = FastAPI(lifespan=lifespan)
 
 origins = [
     "http://localhost:5173",
@@ -45,5 +57,5 @@ class Question(BaseModel):
 
 @app.post("/query/")
 async def query(question: Question):
-    response = answer_question(question.question)
-    return {"response": response}
+    response = app.state.db.query_system_docs(question.question)
+    return {"response": [res for res in response["documents"]]}
