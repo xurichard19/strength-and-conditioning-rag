@@ -81,7 +81,7 @@ def read_scanned_pdf(path: str, loader: PyMuPDFLoader) -> list[Document]:
     return docs
     
 
-def split_docs(docs: list[Document], size=1000, overlap=200, min_len=50):
+def split_docs(docs: list[Document], size=1000, overlap=200, min_len=100):
     """ use langchain built in text splitter """
     text_splitter = RecursiveCharacterTextSplitter(
         separators=["\n\n", "\n", " ", ""],
