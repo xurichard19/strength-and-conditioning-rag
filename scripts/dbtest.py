@@ -5,8 +5,10 @@ print(len(db))
 
 print()
 
-db.index_system_docs()
-print(len(db))
-
-res = db.query_system_docs("197 Chapter 5", 1)
-print(res)
+res = db.query_system_docs("272 Chapter 7 Conclusions")
+print(res.keys())
+print()
+l = [doc for doc in res['documents']]
+for i in l:
+    print([i])
+    print()
