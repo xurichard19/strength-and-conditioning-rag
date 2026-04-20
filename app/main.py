@@ -29,7 +29,6 @@ async def lifespan(app: FastAPI):
     print("Application is starting up...")
 
     app.state.db = VectorDB()
-    app.state.db.reset_system_docs()
     app.state.db.index_system_docs()
     # startup logic...
     yield
