@@ -48,6 +48,7 @@ class VectorDB:
             if response[key]: response[key] = response[key][0]
 
         return response
+        # maybe cut chunks that dont meet a threshold similarity score?
     
     
     def reset_system_docs(self) -> Collection:
