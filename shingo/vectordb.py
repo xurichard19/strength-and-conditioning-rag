@@ -37,7 +37,7 @@ class VectorDB:
             )
     
 
-    def query_system_docs(self, query: str, top_k=7) -> dict:
+    def query_system_docs(self, query: str, top_k=25) -> dict:
         """ return top k similar contexts from chromadb by l2 norm for a single query """
         system_db = self.client.get_collection("system-docs") # chromadb will bubble up notfound error
 

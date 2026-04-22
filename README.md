@@ -1,8 +1,6 @@
 # Shingo: Strength & Conditioning RAG-based Assistant
 
-current tech stack: figma -> react + vite + tailwindcss -> fastapi + firebase -> rag agent (langchain + chromadb + openaiapi)
-
-lifecycle: implemented ingestion -> implemented retrieval -> implemented generation -> ui and api setup -> **dockerizing** -> move to gcs -> implement figma design -> deploy
+current tech stack: figma -> react + vite + tailwindcss -> fastapi + firebase -> rag agent (langchain + chromadb + openaiapi + cohere rerank)
 
 ---
 
