@@ -34,8 +34,8 @@ function App() {
                 />
                 <button type='submit' className='bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition'>submit</button>
             </form>
-
-            <div className='grid grid-cols-3 gap-4'>
+            <p>{response}</p>
+            {/*<div className='grid grid-cols-3 gap-4'>
                 {
                     response.map((item, idx) => (
                         <div key={idx} className='p-4 break-words'>
@@ -43,7 +43,7 @@ function App() {
                         </div>
                     ))
                 }
-            </div>
+            </div>*/}
         </div>
     )
 }

@@ -21,7 +21,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+# agent imports
 from shingo.vectordb import VectorDB
+from shingo.rag_pipline import answer_question
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -58,5 +60,5 @@ class Question(BaseModel):
 
 @app.post("/query/")
 async def query(question: Question):
-    response = app.state.db.query_system_docs(question.question)
-    return {"response": [res for res in response["documents"]]}
+    response = answer_question(question.question, app.state.db)
+    return {"response": response}

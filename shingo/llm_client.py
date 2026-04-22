@@ -1,6 +1,9 @@
+from dotenv import load_dotenv
 from openai import OpenAI
+import os
 
-client = OpenAI()
+load_dotenv()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 def generate_response(prompt: str, temperature=0.5) -> str:
