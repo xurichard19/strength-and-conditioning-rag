@@ -2,6 +2,10 @@ from shingo.vectordb import VectorDB
 from shingo.reranker import rerank_chroma_results
 
 db = VectorDB()
-context = db.query_system_docs("what exercises are best to improve rate of force development")
+query = "what exercises are best to improve rate of force development"
+context = db.query_system_docs(query, 2)
 
-print(context.keys())
+print(type(context))
+
+"""reranked = rerank_chroma_results(query, context)
+print(reranked)"""

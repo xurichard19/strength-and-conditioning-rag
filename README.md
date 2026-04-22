@@ -1,6 +1,6 @@
 # Shingo: Strength & Conditioning RAG-based Assistant
 
-current tech stack: figma -> react + vite + tailwindcss -> fastapi + firebase -> rag agent (langchain + chromadb + openaiapi + cohere rerank)
+current tech stack: figma -> react + vite + tailwindcss -> fastapi + firebase -> rag agent (langchain + chromadb + cohere rerank + openaiapi)
 
 ---
 
