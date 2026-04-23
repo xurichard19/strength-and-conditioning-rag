@@ -23,10 +23,10 @@ def rerank_chroma_results(query: str, context: dict, top_n=10) -> dict:
 
     reranked = {key: None for key in context}
     for key in context.keys():
-        if not context[key]: continue
+        if type(context[key]) != list:
+            reranked[key] = context[key]
+            continue
 
-        reranked[key] = []
-        for idx in indices:
-            reranked[key].append(context[key][idx])
+        reranked[key] = [context[key][idx] for idx in indices]
     
     return reranked
