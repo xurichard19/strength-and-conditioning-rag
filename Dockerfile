@@ -2,7 +2,6 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-
 # document processing requires tesseract
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
@@ -10,13 +9,10 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
+COPY pyproject.toml .
+COPY backend ./backend
+RUN pip install --no-cache-dir .
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-
-COPY app ./app
-COPY shingo ./shingo
 COPY data ./data
 
 EXPOSE 8000

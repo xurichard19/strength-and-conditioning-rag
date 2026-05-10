@@ -2,7 +2,7 @@ import chromadb
 from chromadb.api.models.Collection import Collection
 from chromadb.errors import NotFoundError
 import os
-from ingestion.document_handler import load_system_docs, split_docs
+from app.ingestion.document_handler import load_system_docs, split_docs
 from tqdm import tqdm
 
 class VectorDB:

@@ -13,8 +13,7 @@ add own training logs to db (into logsdb and add auth)
 
 """
 
-# run with this from main dir >> fastapi dev app/main.py
-# use uvicorn during production >> uvicorn app.main:app --reload
+# >> uvicorn app.main:app --reload
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -22,8 +21,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # agent imports
-from retrieval.vectordb import VectorDB
-from generation.rag_pipline import answer_question
+from app.retrieval.vectordb import VectorDB
+from app.generation.rag_pipline import answer_question
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
