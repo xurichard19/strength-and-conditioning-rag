@@ -1,8 +1,7 @@
-from shingo.llm_client import generate_response
-from shingo.prompt_builder import build_prompt
-from shingo.reranker import rerank_chroma_results
-from shingo.vectordb import VectorDB
-
+from llm_client import generate_response
+from prompt_builder import build_prompt
+from retrieval.reranker import rerank_chroma_results
+from retrieval.vectordb import VectorDB
 
 def answer_question(query: str, db: VectorDB) -> str:
     if not query: return

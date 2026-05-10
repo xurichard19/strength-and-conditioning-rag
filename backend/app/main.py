@@ -22,8 +22,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # agent imports
-from shingo.vectordb import VectorDB
-from shingo.rag_pipline import answer_question
+from retrieval.vectordb import VectorDB
+from generation.rag_pipline import answer_question
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
