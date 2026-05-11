@@ -1,7 +1,7 @@
-from llm_client import generate_response
-from prompt_builder import build_prompt
-from retrieval.reranker import rerank_chroma_results
-from retrieval.vectordb import VectorDB
+from app.generation.llm_client import generate_response
+from app.generation.prompt_builder import build_prompt
+from app.retrieval.reranker import rerank_chroma_results
+from app.retrieval.vectordb import VectorDB
 
 def answer_question(query: str, db: VectorDB) -> str:
     if not query: return
