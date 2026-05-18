@@ -1,42 +1,30 @@
-"""
-app interface...
-1) turn rag agent into api (maybe use fastapi)
-2) convert figma design to frontend with react
-3) connect backend to front
-
-stack...
-react -> fastapi server -> chromadb on server
-
-key features...
-shared stored pdf database
-add own training logs to db (into logsdb and add auth)
-
-"""
-
 # >> uvicorn app.main:app --reload
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 # agent imports
 from app.retrieval.vectordb import VectorDB
-from app.generation.rag_pipline import answer_question
+
+from app.api.routers import query
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    print("Application is starting up...")
+    # ideally, we move vectordb to cloud and destroy startup function in favor of keeping a permanent cloud db
+    print("app startup...")
 
     app.state.db = VectorDB()
     app.state.db.index_system_docs()
     # startup logic...
     yield
 
-    print("Application is shutting down...")
+    print("app shutdown...")
 
 app = FastAPI(lifespan=lifespan)
+
+app.include_router(query.router)
 
 origins = [
     "http://localhost:5173",
@@ -52,12 +40,4 @@ app.add_middleware(
 
 @app.get("/")
 async def root():
-    return {"message": "hello"}
-
-class Question(BaseModel):
-    question: str
-
-@app.post("/query/")
-async def query(question: Question):
-    response = answer_question(question.question, app.state.db)
-    return {"response": response}
+    return {"message": "shingo api"}

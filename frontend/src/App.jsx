@@ -56,9 +56,40 @@ function MarkdownResponse({ content }) {
     )
 }
 
+function SourceList({ sources }) {
+    if (!sources.length) return null
+
+    return (
+        <div className="mt-8 border-t border-[var(--border)] pt-5">
+            <h3 className="m-0 text-base font-semibold text-[var(--text-h)]">Sources</h3>
+            <div className="mt-4 space-y-4">
+                {sources.map((source, index) => (
+                    <article
+                        key={source.id || index}
+                        className="rounded-md border border-[var(--border)] bg-[var(--social-bg)] p-4"
+                    >
+                        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm font-medium text-[var(--text-h)]">
+                            <span>Chunk {index + 1}</span>
+                            {source.source && <span>• {source.source}</span>}
+                            {source.page !== null && source.page !== undefined && (
+                                <span>• page {source.page}</span>
+                            )}
+                            {source.id && <span>• id {source.id}</span>}
+                        </div>
+                        <p className="m-0 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]">
+                            {source.text}
+                        </p>
+                    </article>
+                ))}
+            </div>
+        </div>
+    )
+}
+
 function App() {
     const [question, setQuestion] = useState("")
     const [response, setResponse] = useState("")
+    const [sources, setSources] = useState([])
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState("")
 
@@ -70,6 +101,7 @@ function App() {
 
         setIsLoading(true)
         setError("")
+        setSources([])
 
         try {
             const res = await fetch("http://localhost:8000/query/", {
@@ -77,7 +109,7 @@ function App() {
                 headers: {
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify({ question: trimmedQuestion }),
+                body: JSON.stringify({ text: trimmedQuestion }),
             });
 
             if (!res.ok) {
@@ -85,7 +117,8 @@ function App() {
             }
 
             const data = await res.json();
-            setResponse(data.response);
+            setResponse(data.text);
+            setSources(data.sources ?? []);
         } catch {
             setError("Something went wrong. Please try again.")
         } finally {
@@ -146,7 +179,10 @@ function App() {
                     {error ? (
                         <p className="leading-7 text-red-700">{error}</p>
                     ) : response ? (
-                        <MarkdownResponse content={response} />
+                        <>
+                            <MarkdownResponse content={response} />
+                            <SourceList sources={sources} />
+                        </>
                     ) : (
                         <p className="leading-7 text-[var(--text)]">
                             Your response will appear here after you ask a question.
