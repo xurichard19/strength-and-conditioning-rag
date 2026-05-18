@@ -59,3 +59,10 @@ class VectorDB:
             pass
 
         return self.client.create_collection("system-docs")
+    
+
+    def get_system(self, id: str) -> dict:
+        """ return context from id """
+        system_db = self.client.get_collection("system-docs")
+
+        return system_db.get(id)
