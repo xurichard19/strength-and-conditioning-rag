@@ -5,6 +5,10 @@ data/vectordb
 *.pkl
 
 __pycache__/
+*.egg-info/
+*.egg
+dist/
+build/
 
 venv/
 .venv/

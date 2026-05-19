@@ -4,6 +4,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+# works on start from repo root
+from dotenv import load_dotenv
+load_dotenv()
+
 # agent imports
 from app.retrieval.vectordb import VectorDB
 
