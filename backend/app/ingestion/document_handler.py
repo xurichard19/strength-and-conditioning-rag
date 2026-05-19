@@ -12,10 +12,27 @@ import pytesseract
 import re
 from tqdm import tqdm
 
+import tempfile
+from pathlib import Path
+from google.cloud import storage
+
+ALLOWED_EXTENSIONS = {".pdf", ".txt"}
+
+def _normalize_prefix(prefix: str) -> str:
+    return prefix.strip("/")
+
+def _gcs_uri(bucket: str, blob_name: str) -> str:
+    return f"gs://{bucket}/{blob_name}"
 
 # change from local dir to gcs on deployment
-def load_system_docs(data_dir=None) -> list[Document]:
-    """ load all system docs as langchain documents """
+def load_system_docs(data_dir: str | None = None) -> list[Document]:
+    source = os.getenv('DOC_SOURCE', 'local').lower()
+    if source == 'gcs':
+        bucket = os.environ['GCS_BUCKET']
+        prefix = os.getenv('GCS_PREFIX_RAW', 'raw/system')
+        return load_system_docs_from_gcs(bucket, prefix)
+
+    # (original local load) load all system docs as langchain documents
     if not data_dir: data_dir = os.path.join('data', 'raw')
     if not os.path.isdir(data_dir): raise Exception("invalid data directory")
 
@@ -29,6 +46,60 @@ def load_system_docs(data_dir=None) -> list[Document]:
 
     return docs
 
+
+
+def load_system_docs_from_gcs(bucket: str, prefix: str = 'raw/system') -> list[Document]:
+    """ load system docs from gcs by downloading each blob to a temp file and parsing"""
+    prefix = _normalize_prefix(prefix)
+
+
+    docs: list[Document] = []
+
+    try:
+        client = storage.Client()
+        blobs = list(client.list_blobs(bucket, prefix=f'{prefix}/' if prefix else None))
+    except Exception as exc:
+        raise RuntimeError( 
+            f'Failed to list gs://{bucket}/{prefix}/. '
+            f'Check ADC, IAM (storage.objectViewer), bucket name, and prefix.'
+        ) from exc
+
+    for blob in tqdm(blobs, desc='loading documents from gcs'):
+        if blob.name.endswith("/"):
+            continue # for folders
+        
+        suffix = Path(blob.name).suffix.lower()
+        if suffix not in ALLOWED_EXTENSIONS:
+            continue
+
+        gcs_source = _gcs_uri(bucket, blob.name)
+
+        tmp_path = None
+        try: 
+            with tempfile.NamedTemporaryFile(suffix = suffix, delete=False) as tmp:
+                tmp_path = tmp.name
+            
+            blob.download_to_filename(tmp_path)
+            file_docs = load_single_doc(tmp_path)
+            for doc in file_docs:
+                doc.metadata['source'] = gcs_source
+                doc.metadata.setdefault('page', 1)
+            
+            docs.extend(file_docs)
+        except Exception as exc:
+            print(f"[GCS] failed to load {gcs_source}: {exc}")
+            continue
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+    
+    if not docs:
+        raise Exception(
+            f'no documents loaded from gs://{bucket}/{prefix}/ '
+            f'(check prefix, IAM, and that objects exist)'
+        )
+    
+    return docs
 
 def load_single_doc(path: str) -> list[Document]:
     """ load single file as langchain document, raise exception if not valid file type """
