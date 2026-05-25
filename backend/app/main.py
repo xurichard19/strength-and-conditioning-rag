@@ -19,10 +19,11 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    # ideally, we move vectordb to cloud and destroy startup function in favor of keeping a permanent cloud db
     print("app startup...")
 
     app.state.db = VectorDB()
+    print("vector store successfully connected")
+
     # startup logic...
     yield
 
