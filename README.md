@@ -11,7 +11,11 @@ current tech stack: figma -> react + vite + tailwindcss -> fastapi + firebase + 
 run backend docker build
 >> docker build -t shingo-backend .
 
->> docker run --name shingo-api -p 8000:8000 --env-file .env shingo-backend
+>> docker compose up api
+
+run in a separate terminal when reindexing
+
+>> docker compose run --rm index
 
 ---
 

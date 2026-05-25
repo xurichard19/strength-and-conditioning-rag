@@ -8,7 +8,11 @@ from tqdm import tqdm
 class VectorDB:
 
     def __init__(self, path=os.path.join('data', 'vectordb')):
-        self.client = chromadb.PersistentClient(path) # use cloudclient during production
+        self.client = chromadb.CloudClient(
+            tenant=os.environ["CHROMA_TENANT"],
+            database=os.environ["CHROMA_DATABASE"],
+            api_key=os.environ["CHROMA_API_KEY"]
+        )
 
 
     def __len__(self) -> int:
@@ -21,7 +25,7 @@ class VectorDB:
         pass
     
 
-    def index_system_docs(self, batch_size=1000) -> None:
+    def index_system_docs(self, batch_size=300) -> None:
         """ initialize system db """
         system_db = self.reset_system_docs()
 

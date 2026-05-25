@@ -13,8 +13,6 @@ COPY pyproject.toml .
 COPY backend ./backend
 RUN pip install --no-cache-dir .
 
-COPY data ./data
-
 EXPOSE 8000
 
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

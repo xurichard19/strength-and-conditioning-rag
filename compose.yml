@@ -1,0 +1,26 @@
+services:
+  api:
+    image: shingo-backend
+    build:
+      context: .
+    container_name: shingo-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcp-sa.json
+    volumes:
+      - ./secrets/strength-conditioning-rag-c6734465e64e.json:/run/secrets/gcp-sa.json:ro
+
+  index:
+    image: shingo-backend
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcp-sa.json
+    volumes:
+      - ./secrets/strength-conditioning-rag-c6734465e64e.json:/run/secrets/gcp-sa.json:ro
+    command: python backend/scripts/index_system_docs.py

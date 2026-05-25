@@ -18,21 +18,26 @@ from google.cloud import storage
 
 ALLOWED_EXTENSIONS = {".pdf", ".txt"}
 
+
 def _normalize_prefix(prefix: str) -> str:
     return prefix.strip("/")
+
 
 def _gcs_uri(bucket: str, blob_name: str) -> str:
     return f"gs://{bucket}/{blob_name}"
 
-# change from local dir to gcs on deployment
+
 def load_system_docs(data_dir: str | None = None) -> list[Document]:
     source = os.getenv('DOC_SOURCE', 'local').lower()
     if source == 'gcs':
-        bucket = os.environ['GCS_BUCKET']
-        prefix = os.getenv('GCS_PREFIX_RAW', 'raw/system')
-        return load_system_docs_from_gcs(bucket, prefix)
+        return load_system_docs_from_gcs(os.environ['GCS_BUCKET'], os.getenv('GCS_PREFIX_RAW'))
+    else:
+        return load_system_docs_from_local()
+    
 
-    # (original local load) load all system docs as langchain documents
+# original local implementation, depreciated
+def load_system_docs_from_local(data_dir: str | None = None) -> list[Document]:
+    # load all system docs as langchain documents
     if not data_dir: data_dir = os.path.join('data', 'raw')
     if not os.path.isdir(data_dir): raise Exception("invalid data directory")
 
@@ -47,11 +52,9 @@ def load_system_docs(data_dir: str | None = None) -> list[Document]:
     return docs
 
 
-
-def load_system_docs_from_gcs(bucket: str, prefix: str = 'raw/system') -> list[Document]:
+def load_system_docs_from_gcs(bucket: str, prefix: str) -> list[Document]:
     """ load system docs from gcs by downloading each blob to a temp file and parsing"""
     prefix = _normalize_prefix(prefix)
-
 
     docs: list[Document] = []
 
@@ -82,7 +85,7 @@ def load_system_docs_from_gcs(bucket: str, prefix: str = 'raw/system') -> list[D
             blob.download_to_filename(tmp_path)
             file_docs = load_single_doc(tmp_path)
             for doc in file_docs:
-                doc.metadata['source'] = gcs_source
+                doc.metadata['source'] = Path(blob.name).name
                 doc.metadata.setdefault('page', 1)
             
             docs.extend(file_docs)
