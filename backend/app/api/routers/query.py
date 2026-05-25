@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request
 
 from app.api.schemas import QueryRequest, QueryResponse, Source
-from app.generation.rag_pipline import answer_question
+from app.generation.rag_pipeline import answer_question
 
 
 router = APIRouter(prefix='/query')

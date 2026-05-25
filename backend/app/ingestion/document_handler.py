@@ -15,6 +15,7 @@ from tqdm import tqdm
 import tempfile
 from pathlib import Path
 from google.cloud import storage
+from app.core.config import get_settings
 
 ALLOWED_EXTENSIONS = {".pdf", ".txt"}
 
@@ -28,11 +29,13 @@ def _gcs_uri(bucket: str, blob_name: str) -> str:
 
 
 def load_system_docs(data_dir: str | None = None) -> list[Document]:
-    source = os.getenv('DOC_SOURCE', 'local').lower()
-    if source == 'gcs':
-        return load_system_docs_from_gcs(os.environ['GCS_BUCKET'], os.getenv('GCS_PREFIX_RAW'))
+    settings = get_settings()
+    if settings.doc_source.lower() == 'gcs':
+        if not settings.gcs_bucket:
+            raise RuntimeError("GCS_BUCKET is required when DOC_SOURCE=gcs")
+        return load_system_docs_from_gcs(settings.gcs_bucket, settings.gcs_prefix_raw)
     else:
-        return load_system_docs_from_local()
+        return load_system_docs_from_local(data_dir)
     
 
 # original local implementation, depreciated

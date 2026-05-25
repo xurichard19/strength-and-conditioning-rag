@@ -1,9 +1,8 @@
 import cohere
-from dotenv import load_dotenv
-import os
+from app.core.config import get_settings
 
-load_dotenv()
-client = cohere.ClientV2(api_key=os.getenv('COHERE_API_KEY'))
+settings = get_settings()
+client = cohere.ClientV2(api_key=settings.cohere_api_key)
 
 
 def rerank_chroma_results(query: str, context: dict, top_n=10) -> dict:
