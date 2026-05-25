@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     cohere_api_key: str
 
     system_collection_name: str = "system-docs"
-    retrieval_top_k: int = 25
+    retrieval_top_k: int = 15
     index_batch_size: int = 300
 
 

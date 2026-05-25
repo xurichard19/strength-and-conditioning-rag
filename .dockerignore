@@ -7,7 +7,9 @@ venv/
 .venv/
 
 node_modules/
-frontend/node_modules/
+client/node_modules/
+client/dist/
+**/.vite/
 
 .git/
 .gitignore
