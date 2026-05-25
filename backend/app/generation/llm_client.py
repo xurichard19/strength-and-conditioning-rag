@@ -1,9 +1,8 @@
-from dotenv import load_dotenv
 from openai import OpenAI
-import os
+from app.core.config import get_settings
 
-load_dotenv()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+settings = get_settings()
+client = OpenAI(api_key=settings.openai_api_key)
 
 
 def generate_response(prompt: str, temperature=0.5) -> str:
@@ -21,12 +20,3 @@ def generate_response(prompt: str, temperature=0.5) -> str:
 # implement after creating chat history ui
 def generate_from_messages(messages: list[dict]) -> str:
     pass
-
-"""
->> pip install python-dotenv
-
-then add this to entry point..
-from dotenv import load_dotenv
-load_dotenv()
-
-"""

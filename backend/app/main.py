@@ -9,9 +9,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # agent imports
+from app.core.config import get_settings
 from app.retrieval.vectordb import VectorDB
 
 from app.api.routers import query
+
+settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,17 +28,13 @@ async def lifespan(app: FastAPI):
 
     print("app shutdown...")
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.include_router(query.router)
 
-origins = [
-    "http://localhost:5173",
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -43,4 +42,4 @@ app.add_middleware(
 
 @app.get("/")
 async def root():
-    return {"message": "shingo api"}
+    return {"message": settings.app_name}

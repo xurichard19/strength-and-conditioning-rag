@@ -1,22 +1,23 @@
 import chromadb
 from chromadb.api.models.Collection import Collection
 from chromadb.errors import NotFoundError
-import os
+from app.core.config import get_settings
 from app.ingestion.document_handler import load_system_docs, split_docs
 from tqdm import tqdm
 
 class VectorDB:
 
-    def __init__(self, path=os.path.join('data', 'vectordb')):
+    def __init__(self):
+        self.settings = get_settings()
         self.client = chromadb.CloudClient(
-            tenant=os.environ["CHROMA_TENANT"],
-            database=os.environ["CHROMA_DATABASE"],
-            api_key=os.environ["CHROMA_API_KEY"]
+            tenant=self.settings.chroma_tenant,
+            database=self.settings.chroma_database,
+            api_key=self.settings.chroma_api_key,
         )
 
 
     def __len__(self) -> int:
-        try: return self.client.get_collection("system-docs").count()
+        try: return self.client.get_collection(self.settings.system_collection_name).count()
         except (ValueError, NotFoundError): return 0
 
     
@@ -25,8 +26,11 @@ class VectorDB:
         pass
     
 
-    def index_system_docs(self, batch_size=300) -> None:
+    def index_system_docs(self, batch_size: int | None = None) -> None:
         """ initialize system db """
+        if batch_size is None:
+            batch_size = self.settings.index_batch_size
+
         system_db = self.reset_system_docs()
 
         docs = load_system_docs()
@@ -41,9 +45,12 @@ class VectorDB:
             )
     
 
-    def query_system_docs(self, query: str, top_k=25) -> dict:
+    def query_system_docs(self, query: str, top_k: int | None = None) -> dict:
         """ return top k similar contexts from chromadb by l2 norm for a single query """
-        system_db = self.client.get_collection("system-docs") # chromadb will bubble up notfound error
+        if top_k is None:
+            top_k = self.settings.retrieval_top_k
+
+        system_db = self.client.get_collection(self.settings.system_collection_name) # chromadb will bubble up notfound error
 
         response = system_db.query(query_texts=[query], n_results=top_k)
 
@@ -58,15 +65,15 @@ class VectorDB:
     def reset_system_docs(self) -> Collection:
         """ reboot system db """
         try:
-            self.client.delete_collection("system-docs")
+            self.client.delete_collection(self.settings.system_collection_name)
         except (ValueError, NotFoundError):
             pass
 
-        return self.client.create_collection("system-docs")
+        return self.client.create_collection(self.settings.system_collection_name)
     
 
     def get_system(self, id: str) -> dict:
         """ return context from id """
-        system_db = self.client.get_collection("system-docs")
+        system_db = self.client.get_collection(self.settings.system_collection_name)
 
         return system_db.get(id)
