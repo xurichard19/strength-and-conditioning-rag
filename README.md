@@ -8,7 +8,7 @@ current tech stack: figma -> react + vite + tailwindcss -> fastapi + gcs -> rag 
 
 ---
 
-run backend docker build
+run server docker build
 >> docker build -t shingo-backend .
 
 >> docker compose up api
@@ -19,5 +19,5 @@ run in a separate terminal when reindexing
 
 ---
 
-run frontend from /frontend
+run client from /client
 >> npm run dev

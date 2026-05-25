@@ -28,6 +28,6 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["backend"]
+where = ["server"]
 include = ["app*"]
 namespaces = true
