@@ -56,7 +56,7 @@ def load_system_docs_from_local(data_dir: str | None = None) -> list[Document]:
 
 
 def load_system_docs_from_gcs(bucket: str, prefix: str) -> list[Document]:
-    """ load system docs from gcs by downloading each blob to a temp file and parsing"""
+    """ load system docs from gcs by downloading each blob to a temp file and parsing """
     prefix = _normalize_prefix(prefix)
 
     docs: list[Document] = []

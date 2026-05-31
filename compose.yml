@@ -1,26 +1,38 @@
 services:
+  proxy:
+    image: nginx:alpine
+    container_name: shingo-proxy
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+
   api:
     image: shingo-backend
     build:
       context: .
+      dockerfile: server/Dockerfile
     container_name: shingo-api
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     env_file:
       - .env
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcp-sa.json
     volumes:
-      - ./secrets/strength-conditioning-rag-c6734465e64e.json:/run/secrets/gcp-sa.json:ro
+      - ./secrets/gcp-sa.json:/run/secrets/gcp-sa.json:ro
 
   index:
     image: shingo-backend
     build:
       context: .
+      dockerfile: server/Dockerfile
     env_file:
       - .env
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcp-sa.json
     volumes:
-      - ./secrets/strength-conditioning-rag-c6734465e64e.json:/run/secrets/gcp-sa.json:ro
+      - ./secrets/gcp-sa.json:/run/secrets/gcp-sa.json:ro
     command: python server/scripts/index_system_docs.py

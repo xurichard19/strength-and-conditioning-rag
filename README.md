@@ -4,17 +4,17 @@ Full-stack RAG assistant for athletes delivering research-backed training insigh
 
 ---
 
-current tech stack: figma -> react + vite + tailwindcss -> fastapi + gcs -> rag agent (langchain + chroma cloud + cohere rerank + openaiapi)
+current tech stack: figma -> react + vite + tailwindcss -> docker compose + nginx -> fastapi + gcs -> rag agent (langchain + chroma cloud + cohere rerank + openaiapi)
 
 ---
 
-run server docker build
->> docker build -t shingo-backend .
+run server build from /
+>> docker build -f server/Dockerfile -t shingo-backend .
 
->> docker compose up api
+run nginx reverse proxy -> api from /
+>> docker compose up --build proxy
 
-run in a separate terminal when reindexing
-
+reindex with compose service
 >> docker compose run --rm index
 
 ---

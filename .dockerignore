@@ -14,4 +14,9 @@ client/dist/
 .git/
 .gitignore
 
+.env
+.env.*
+secrets/
+data/
+
 .DS_Store
