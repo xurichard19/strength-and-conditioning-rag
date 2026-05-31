@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# document processing requires tesseract
+# Document processing requires Tesseract and image/PDF support libraries.
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     libgl1 \

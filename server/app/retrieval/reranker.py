@@ -5,7 +5,7 @@ settings = get_settings()
 client = cohere.ClientV2(api_key=settings.cohere_api_key)
 
 
-def rerank_chroma_results(query: str, context: dict, top_n=7) -> dict:
+def rerank_chroma_results(query: str, context: dict, top_n=10) -> dict:
     """ reranking for two stage retrieval """
     documents = context['documents']
 

@@ -53,10 +53,10 @@ In the Google Cloud Console:
 2. Create a new bucket.
 3. Choose a globally unique bucket name.
 
-Example used during setup:
+Example:
 
 ```text
-rag_data_bucket1
+your-gcs-bucket
 ```
 
 Recommended settings:
