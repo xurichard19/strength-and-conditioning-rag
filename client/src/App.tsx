@@ -1,7 +1,31 @@
-import { useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import './App.css'
 
-function InlineMarkdown({ text }) {
+type InlineMarkdownProps = {
+    text: string
+}
+
+type Source = {
+    id?: string | number | null
+    source?: string | null
+    page?: string | number | null
+    text: string
+}
+
+type QueryResponse = {
+    text?: string
+    sources?: Source[]
+}
+
+type MarkdownResponseProps = {
+    content: string
+}
+
+type SourceListProps = {
+    sources: Source[]
+}
+
+function InlineMarkdown({ text }: InlineMarkdownProps) {
     const parts = text.split(/(\*\*[^*]+\*\*)/g)
 
     return parts.map((part, index) => {
@@ -13,7 +37,7 @@ function InlineMarkdown({ text }) {
     })
 }
 
-function MarkdownResponse({ content }) {
+function MarkdownResponse({ content }: MarkdownResponseProps) {
     const lines = content.split("\n").filter((line) => line.trim())
 
     return (
@@ -56,7 +80,7 @@ function MarkdownResponse({ content }) {
     )
 }
 
-function SourceList({ sources }) {
+function SourceList({ sources }: SourceListProps) {
     if (!sources.length) return null
 
     return (
@@ -65,7 +89,7 @@ function SourceList({ sources }) {
             <div className="mt-4 space-y-4">
                 {sources.map((source, index) => (
                     <article
-                        key={source.id || index}
+                        key={source.id ?? index}
                         className="rounded-md border border-[var(--border)] bg-[var(--social-bg)] p-4"
                     >
                         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm font-medium text-[var(--text-h)]">
@@ -89,11 +113,11 @@ function SourceList({ sources }) {
 function App() {
     const [question, setQuestion] = useState("")
     const [response, setResponse] = useState("")
-    const [sources, setSources] = useState([])
+    const [sources, setSources] = useState<Source[]>([])
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState("")
 
-    const handleSubmit = async (e) => {
+    const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault(); /* stop reload */
 
         const trimmedQuestion = question.trim()
@@ -116,8 +140,8 @@ function App() {
                 throw new Error("Request failed")
             }
 
-            const data = await res.json();
-            setResponse(data.text);
+            const data = (await res.json()) as QueryResponse;
+            setResponse(data.text ?? "");
             setSources(data.sources ?? []);
         } catch {
             setError("Something went wrong. Please try again.")
