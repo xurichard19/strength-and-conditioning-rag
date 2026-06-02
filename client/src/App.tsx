@@ -1,6 +1,14 @@
 import { type FormEvent, useState } from 'react'
 import './App.css'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ""
+
+function apiPath(path: string) {
+    const baseUrl = API_BASE_URL.replace(/\/$/, "")
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`
+    return `${baseUrl}${normalizedPath}`
+}
+
 type InlineMarkdownProps = {
     text: string
 }
@@ -128,7 +136,7 @@ function App() {
         setSources([])
 
         try {
-            const res = await fetch("http://localhost:8000/query/", {
+            const res = await fetch(apiPath("/query/"), {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
