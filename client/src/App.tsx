@@ -1,158 +1,33 @@
 import { type FormEvent, useState } from 'react'
 import './App.css'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ""
-
-function apiPath(path: string) {
-    const baseUrl = API_BASE_URL.replace(/\/$/, "")
-    const normalizedPath = path.startsWith("/") ? path : `/${path}`
-    return `${baseUrl}${normalizedPath}`
-}
-
-type InlineMarkdownProps = {
-    text: string
-}
-
-type Source = {
-    id?: string | number | null
-    source?: string | null
-    page?: string | number | null
-    text: string
-}
-
-type QueryResponse = {
-    text?: string
-    sources?: Source[]
-}
-
-type MarkdownResponseProps = {
-    content: string
-}
-
-type SourceListProps = {
-    sources: Source[]
-}
-
-function InlineMarkdown({ text }: InlineMarkdownProps) {
-    const parts = text.split(/(\*\*[^*]+\*\*)/g)
-
-    return parts.map((part, index) => {
-        if (part.startsWith("**") && part.endsWith("**")) {
-            return <strong key={index}>{part.slice(2, -2)}</strong>
-        }
-
-        return <span key={index}>{part}</span>
-    })
-}
-
-function MarkdownResponse({ content }: MarkdownResponseProps) {
-    const lines = content.split("\n").filter((line) => line.trim())
-
-    return (
-        <div className="space-y-4 leading-7 text-[var(--text-h)]">
-            {lines.map((line, index) => {
-                const numberedMatch = line.match(/^(\d+)\.\s+(.*)$/)
-                const bulletMatch = line.match(/^[-*]\s+(.*)$/)
-
-                if (numberedMatch) {
-                    return (
-                        <div key={index} className="flex gap-3">
-                            <span className="min-w-6 font-semibold text-[var(--accent)]">
-                                {numberedMatch[1]}.
-                            </span>
-                            <p className="m-0">
-                                <InlineMarkdown text={numberedMatch[2]} />
-                            </p>
-                        </div>
-                    )
-                }
-
-                if (bulletMatch) {
-                    return (
-                        <div key={index} className="flex gap-3 pl-9">
-                            <span className="text-[var(--accent)]">•</span>
-                            <p className="m-0">
-                                <InlineMarkdown text={bulletMatch[1]} />
-                            </p>
-                        </div>
-                    )
-                }
-
-                return (
-                    <p key={index} className="m-0">
-                        <InlineMarkdown text={line} />
-                    </p>
-                )
-            })}
-        </div>
-    )
-}
-
-function SourceList({ sources }: SourceListProps) {
-    if (!sources.length) return null
-
-    return (
-        <div className="mt-8 border-t border-[var(--border)] pt-5">
-            <h3 className="m-0 text-base font-semibold text-[var(--text-h)]">Sources</h3>
-            <div className="mt-4 space-y-4">
-                {sources.map((source, index) => (
-                    <article
-                        key={source.id ?? index}
-                        className="rounded-md border border-[var(--border)] bg-[var(--social-bg)] p-4"
-                    >
-                        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm font-medium text-[var(--text-h)]">
-                            <span>Chunk {index + 1}</span>
-                            {source.source && <span>• {source.source}</span>}
-                            {source.page !== null && source.page !== undefined && (
-                                <span>• page {source.page}</span>
-                            )}
-                            {source.id && <span>• id {source.id}</span>}
-                        </div>
-                        <p className="m-0 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]">
-                            {source.text}
-                        </p>
-                    </article>
-                ))}
-            </div>
-        </div>
-    )
-}
+import { submitQuery } from './api/query'
+import { MarkdownResponse } from './components/MarkdownResponse'
+import { SourceList } from './components/SourceList'
+import type { Source } from './types/query'
 
 function App() {
-    const [question, setQuestion] = useState("")
-    const [response, setResponse] = useState("")
+    const [question, setQuestion] = useState('')
+    const [response, setResponse] = useState('')
     const [sources, setSources] = useState<Source[]>([])
     const [isLoading, setIsLoading] = useState(false)
-    const [error, setError] = useState("")
+    const [error, setError] = useState('')
 
     const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-        e.preventDefault(); /* stop reload */
+        e.preventDefault()
 
         const trimmedQuestion = question.trim()
         if (!trimmedQuestion || isLoading) return
 
         setIsLoading(true)
-        setError("")
+        setError('')
         setSources([])
 
         try {
-            const res = await fetch(apiPath("/query/"), {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ text: trimmedQuestion }),
-            });
-
-            if (!res.ok) {
-                throw new Error("Request failed")
-            }
-
-            const data = (await res.json()) as QueryResponse;
-            setResponse(data.text ?? "");
-            setSources(data.sources ?? []);
+            const data = await submitQuery(trimmedQuestion)
+            setResponse(data.text ?? '')
+            setSources(data.sources ?? [])
         } catch {
-            setError("Something went wrong. Please try again.")
+            setError('Something went wrong. Please try again.')
         } finally {
             setIsLoading(false)
         }
@@ -194,7 +69,7 @@ function App() {
                                 disabled={!question.trim() || isLoading}
                                 className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:border disabled:border-[var(--border)] disabled:bg-[var(--social-bg)] disabled:text-[var(--text)]"
                             >
-                                {isLoading ? "Thinking..." : "Ask"}
+                                {isLoading ? 'Thinking...' : 'Ask'}
                             </button>
                         </div>
                     </form>
