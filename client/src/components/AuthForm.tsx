@@ -4,6 +4,7 @@ type AuthFormProps = {
   error: string
   isLoading: boolean
   message: string
+  onClearFeedback: () => void
   onGoogleSignIn: () => Promise<void>
   onPasswordReset: (email: string) => Promise<void>
   onSignIn: (email: string, password: string) => Promise<void>
@@ -16,6 +17,7 @@ export function AuthForm({
   error,
   isLoading,
   message,
+  onClearFeedback,
   onGoogleSignIn,
   onPasswordReset,
   onSignIn,
@@ -27,6 +29,14 @@ export function AuthForm({
 
   const isSignIn = mode === 'sign-in'
   const isPasswordReset = mode === 'reset-password'
+
+  const selectMode = (nextMode: AuthMode) => {
+    if (mode === nextMode || isLoading) return
+
+    setMode(nextMode)
+    setPassword('')
+    onClearFeedback()
+  }
 
   const handleSubmit = async (event: BaseSyntheticEvent<SubmitEvent, HTMLFormElement>) => {
     event.preventDefault()
@@ -53,22 +63,26 @@ export function AuthForm({
       <div className="mb-5 flex rounded-md border border-[var(--border)] p-1">
         <button
           type="button"
-          onClick={() => setMode('sign-in')}
+          onClick={() => selectMode('sign-in')}
+          disabled={isLoading}
+          aria-pressed={isSignIn}
           className={`flex-1 rounded px-3 py-2 text-sm font-semibold transition ${
             isSignIn
               ? 'bg-[var(--accent)] text-white'
-              : 'text-[var(--text-h)] hover:bg-[var(--social-bg)]'
+              : 'text-[var(--text-h)] hover:bg-[var(--social-bg)] disabled:text-[var(--text)]'
           }`}
         >
           Sign in
         </button>
         <button
           type="button"
-          onClick={() => setMode('sign-up')}
+          onClick={() => selectMode('sign-up')}
+          disabled={isLoading}
+          aria-pressed={!isSignIn && !isPasswordReset}
           className={`flex-1 rounded px-3 py-2 text-sm font-semibold transition ${
-            !isSignIn
+            !isSignIn && !isPasswordReset
               ? 'bg-[var(--accent)] text-white'
-              : 'text-[var(--text-h)] hover:bg-[var(--social-bg)]'
+              : 'text-[var(--text-h)] hover:bg-[var(--social-bg)] disabled:text-[var(--text)]'
           }`}
         >
           Create account
@@ -135,7 +149,8 @@ export function AuthForm({
       {isSignIn && (
         <button
           type="button"
-          onClick={() => setMode('reset-password')}
+          onClick={() => selectMode('reset-password')}
+          disabled={isLoading}
           className="mt-4 text-sm font-semibold text-[var(--accent)]"
         >
           Forgot password?
@@ -145,7 +160,8 @@ export function AuthForm({
       {isPasswordReset ? (
         <button
           type="button"
-          onClick={() => setMode('sign-in')}
+          onClick={() => selectMode('sign-in')}
+          disabled={isLoading}
           className="mt-4 text-sm font-semibold text-[var(--accent)]"
         >
           Return to sign in

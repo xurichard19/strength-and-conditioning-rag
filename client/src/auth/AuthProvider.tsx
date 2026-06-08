@@ -202,6 +202,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   return (
     <AuthContext.Provider
       value={{
+        clearFeedback: resetFeedback,
         error,
         handleUnauthorized,
         isPasswordRecovery,

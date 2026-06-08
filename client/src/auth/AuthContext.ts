@@ -8,6 +8,7 @@ export type AuthContextValue = {
   isSubmitting: boolean
   message: string
   session: Session | null
+  clearFeedback: () => void
   handleUnauthorized: () => void
   requestPasswordReset: (email: string) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>

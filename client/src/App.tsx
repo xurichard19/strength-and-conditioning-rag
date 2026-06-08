@@ -51,6 +51,7 @@ function AppContent() {
           error={auth.error}
           isLoading={auth.isSubmitting}
           message={auth.message}
+          onClearFeedback={auth.clearFeedback}
           onGoogleSignIn={auth.signInWithGoogle}
           onPasswordReset={auth.requestPasswordReset}
           onSignIn={auth.signIn}
