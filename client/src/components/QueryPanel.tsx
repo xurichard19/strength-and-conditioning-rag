@@ -1,15 +1,16 @@
 import { type BaseSyntheticEvent, useState } from 'react'
 
-import { submitQuery } from '../api/query'
+import { QueryRequestError, submitQuery } from '../api/query'
 import type { Source } from '../types/query'
 import { MarkdownResponse } from './MarkdownResponse'
 import { SourceList } from './SourceList'
 
 type QueryPanelProps = {
   accessToken: string
+  onUnauthorized: () => void
 }
 
-export function QueryPanel({ accessToken }: QueryPanelProps) {
+export function QueryPanel({ accessToken, onUnauthorized }: QueryPanelProps) {
   const [question, setQuestion] = useState('')
   const [response, setResponse] = useState('')
   const [sources, setSources] = useState<Source[]>([])
@@ -30,7 +31,12 @@ export function QueryPanel({ accessToken }: QueryPanelProps) {
       const data = await submitQuery(trimmedQuestion, accessToken)
       setResponse(data.text ?? '')
       setSources(data.sources ?? [])
-    } catch {
+    } catch (error) {
+      if (error instanceof QueryRequestError && error.status === 401) {
+        onUnauthorized()
+        return
+      }
+
       setError('Something went wrong. Please try again.')
     } finally {
       setIsLoading(false)

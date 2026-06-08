@@ -2,6 +2,16 @@ import type { QueryResponse } from '../types/query'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
 
+export class QueryRequestError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'QueryRequestError'
+    this.status = status
+  }
+}
+
 function apiPath(path: string) {
   const baseUrl = API_BASE_URL.replace(/\/$/, '')
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
@@ -20,7 +30,7 @@ export async function submitQuery(question: string, accessToken?: string): Promi
   })
 
   if (!response.ok) {
-    throw new Error('Query request failed')
+    throw new QueryRequestError('Query request failed', response.status)
   }
 
   return response.json() as Promise<QueryResponse>

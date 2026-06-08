@@ -157,6 +157,12 @@ function App() {
     setSession(null)
   }
 
+  const handleUnauthorized = () => {
+    void supabase.auth.signOut()
+    setSession(null)
+    setAuthError('Your session expired. Please sign in again.')
+  }
+
   if (isAuthLoading) {
     return (
       <AppShell>
@@ -181,7 +187,7 @@ function App() {
               Sign out
             </button>
           </div>
-          <QueryPanel accessToken={session.access_token} />
+          <QueryPanel accessToken={session.access_token} onUnauthorized={handleUnauthorized} />
         </>
       ) : (
         <AuthForm
