@@ -5,6 +5,7 @@ import { useAuth } from './auth/useAuth'
 import { AppShell } from './components/AppShell'
 import { AuthForm } from './components/AuthForm'
 import { QueryPanel } from './components/QueryPanel'
+import { UpdatePasswordForm } from './components/UpdatePasswordForm'
 
 function AppContent() {
   const auth = useAuth()
@@ -21,7 +22,14 @@ function AppContent() {
 
   return (
     <AppShell>
-      {auth.session ? (
+      {auth.isPasswordRecovery ? (
+        <UpdatePasswordForm
+          error={auth.error}
+          isLoading={auth.isSubmitting}
+          message={auth.message}
+          onSubmit={auth.updatePassword}
+        />
+      ) : auth.session ? (
         <>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-sm text-[var(--text)]">
             <span>{auth.session.user.email}</span>
@@ -44,6 +52,7 @@ function AppContent() {
           isLoading={auth.isSubmitting}
           message={auth.message}
           onGoogleSignIn={auth.signInWithGoogle}
+          onPasswordReset={auth.requestPasswordReset}
           onSignIn={auth.signIn}
           onSignUp={auth.signUp}
         />

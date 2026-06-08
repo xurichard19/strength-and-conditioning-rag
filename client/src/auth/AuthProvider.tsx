@@ -11,6 +11,7 @@ type AuthProviderProps = {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
@@ -52,9 +53,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     void loadSession()
 
+    if (window.sessionStorage.getItem('shingo-password-recovery') === 'true') {
+      setIsPasswordRecovery(true)
+    }
+
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+    } = supabase.auth.onAuthStateChange((event, currentSession) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        window.sessionStorage.setItem('shingo-password-recovery', 'true')
+        setIsPasswordRecovery(true)
+        resetFeedback()
+      }
+
       setSession(currentSession)
     })
 
@@ -133,13 +144,57 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }
 
+  const requestPasswordReset = async (email: string) => {
+    setIsSubmitting(true)
+    resetFeedback()
+
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      })
+
+      if (resetError) throw resetError
+
+      setMessage('If this email has an account, a password reset link will arrive shortly.')
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : 'Could not send reset instructions.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const updatePassword = async (password: string) => {
+    setIsSubmitting(true)
+    resetFeedback()
+
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password })
+
+      if (updateError) throw updateError
+
+      window.sessionStorage.removeItem('shingo-password-recovery')
+      setIsPasswordRecovery(false)
+      setMessage('Password updated. Please sign in with your new password.')
+      await supabase.auth.signOut()
+      setSession(null)
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : 'Could not update your password.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const signOut = async () => {
     await supabase.auth.signOut()
+    window.sessionStorage.removeItem('shingo-password-recovery')
+    setIsPasswordRecovery(false)
     setSession(null)
   }
 
   const handleUnauthorized = () => {
     void supabase.auth.signOut()
+    window.sessionStorage.removeItem('shingo-password-recovery')
+    setIsPasswordRecovery(false)
     setSession(null)
     setError('Your session expired. Please sign in again.')
   }
@@ -149,14 +204,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
       value={{
         error,
         handleUnauthorized,
+        isPasswordRecovery,
         isLoading,
         isSubmitting,
         message,
+        requestPasswordReset,
         session,
         signIn,
         signInWithGoogle,
         signOut,
         signUp,
+        updatePassword,
       }}
     >
       {children}
