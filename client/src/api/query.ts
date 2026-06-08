@@ -9,11 +9,12 @@ function apiPath(path: string) {
   return `${baseUrl}${normalizedPath}`
 }
 
-export async function submitQuery(question: string): Promise<QueryResponse> {
+export async function submitQuery(question: string, accessToken?: string): Promise<QueryResponse> {
   const response = await fetch(apiPath('/query/'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
     body: JSON.stringify({ text: question }),
   })
