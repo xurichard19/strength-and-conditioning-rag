@@ -10,7 +10,7 @@ load_dotenv()
 from app.core.config import get_settings
 from app.retrieval.vectordb import VectorDB
 
-from app.api.routers import query
+from app.api.routers import query, plan
 
 settings = get_settings()
 
@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.include_router(query.router)
+app.include_router(plan.router)
 
 app.add_middleware(
     CORSMiddleware,

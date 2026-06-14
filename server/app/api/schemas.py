@@ -1,10 +1,6 @@
 from pydantic import BaseModel, Field
 
 
-class QueryRequest(BaseModel):
-    text: str
-
-
 class Source(BaseModel):
     id: str
     text: str
@@ -12,6 +8,26 @@ class Source(BaseModel):
     page: int | None = None
 
 
-class QueryResponse(BaseModel):
+class ChatRequest(BaseModel):
+    text: str
+
+
+class ChatResponse(BaseModel):
     text: str
     sources: list[Source] = Field(default_factory=list)
+
+
+class PlanRequest(BaseModel):
+    experience_level: str
+    goal: str
+    constraints: str
+
+
+class PlanResponse(BaseModel):
+    Mon: str
+    Tue: str
+    Wed: str
+    Thu: str
+    Fri: str
+    Sat: str
+    Sun: str

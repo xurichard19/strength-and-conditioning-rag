@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Request
 
-from app.api.schemas import QueryRequest, QueryResponse, Source
+from app.api.schemas import ChatRequest, ChatResponse, Source
 from app.generation.rag_pipeline import answer_question
 
 
 router = APIRouter(prefix='/query')
 
-@router.post('/', response_model=QueryResponse)
-def query_llm(query: QueryRequest, request: Request):
+@router.post('/', response_model=ChatResponse)
+def query_llm(query: ChatRequest, request: Request) -> ChatResponse:
     db = request.app.state.db
     response, context = answer_question(query.text, db)
     sources = []
@@ -22,4 +22,4 @@ def query_llm(query: QueryRequest, request: Request):
             )
         )
 
-    return QueryResponse(text=response, sources=sources)
+    return ChatResponse(text=response, sources=sources)
