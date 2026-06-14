@@ -24,6 +24,21 @@ services:
     volumes:
       - ./secrets/gcp-sa.json:/run/secrets/gcp-sa.json:ro
 
+  api-local:
+    image: shingo-backend
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: shingo-api-local
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcp-sa.json
+    volumes:
+      - ./secrets/gcp-sa.json:/run/secrets/gcp-sa.json:ro
+
   index:
     image: shingo-backend
     build:
