@@ -4,11 +4,9 @@ import { ApiRequestError } from './errors'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
 
-type PlanRequest = {
-  experienceLevel: string
+export type PlanRequest = {
   goal: string
-  constraints: string
-}
+} & Record<string, unknown>
 
 function apiPath(path: string) {
   const baseUrl = API_BASE_URL.replace(/\/$/, '')
@@ -27,11 +25,7 @@ export async function submitPlan(
       'Content-Type': 'application/json',
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
-    body: JSON.stringify({
-      experience_level: request.experienceLevel,
-      goal: request.goal,
-      constraints: request.constraints,
-    }),
+    body: JSON.stringify(request),
   })
 
   if (!response.ok) {

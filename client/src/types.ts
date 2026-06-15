@@ -12,12 +12,23 @@ export type ChatResponse = {
     sources?: Source[]
 }
 
+export type Exercise = {
+    name: string
+    reps?: number | string | null
+    sets?: number | null
+    notes?: string | null
+}
+
+export type Workout = {
+    exercises: Exercise[]
+}
+
 export type PlanResponse = {
-    Mon: string
-    Tue: string
-    Wed: string
-    Thu: string
-    Fri: string
-    Sat: string
-    Sun: string
+    Mon: Workout
+    Tue: Workout
+    Wed: Workout
+    Thu: Workout
+    Fri: Workout
+    Sat: Workout
+    Sun: Workout
 }
