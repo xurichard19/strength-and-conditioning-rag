@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Any
 
 
 class Source(BaseModel):
@@ -8,7 +9,7 @@ class Source(BaseModel):
     page: int | None = None
 
 
-class QueryRequest(BaseModel):
+class ChatRequest(BaseModel):
     text: str
 
     @field_validator("text")
@@ -20,30 +21,46 @@ class QueryRequest(BaseModel):
         return stripped
 
 
-class QueryResponse(BaseModel):
+class ChatResponse(BaseModel):
     text: str
     sources: list[Source] = Field(default_factory=list)
 
 
-class PlanRequest(BaseModel):
-    experience_level: str
-    goal: str
-    constraints: str
+class Exercise(BaseModel):
+    name: str
+    reps: int | str | None = None
+    sets: int | None = None
+    notes: str | None = None
 
-    @field_validator("experience_level", "goal", "constraints")
+
+class Workout(BaseModel):
+    exercises: list[Exercise]
+
+
+class PlanRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    goal: str = Field(min_length=1)
+
+    @field_validator("goal")
     @classmethod
-    def fields_must_not_be_blank(cls, value: str) -> str:
+    def goal_must_not_be_blank(cls, value: str) -> str:
         stripped = value.strip()
         if not stripped:
-            raise ValueError("field is required")
+            raise ValueError("goal is required")
         return stripped
+    
+    def user_factors(self) -> dict[str, Any]:
+        return self.model_extra or {}
 
 
 class PlanResponse(BaseModel):
-    Mon: str
-    Tue: str
-    Wed: str
-    Thu: str
-    Fri: str
-    Sat: str
-    Sun: str
+    model_config = ConfigDict(extra="forbid")
+
+    Mon: Workout
+    Tue: Workout
+    Wed: Workout
+    Thu: Workout
+    Fri: Workout
+    Sat: Workout
+    Sun: Workout

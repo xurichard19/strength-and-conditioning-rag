@@ -1,12 +1,7 @@
-import type { PlanResponse } from '../types'
-
+import type { ChatResponse } from '../types/chat'
 import { ApiRequestError } from './errors'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
-
-export type PlanRequest = {
-  goal: string
-} & Record<string, unknown>
 
 function apiPath(path: string) {
   const baseUrl = API_BASE_URL.replace(/\/$/, '')
@@ -15,22 +10,19 @@ function apiPath(path: string) {
   return `${baseUrl}${normalizedPath}`
 }
 
-export async function submitPlan(
-  request: PlanRequest,
-  accessToken?: string,
-): Promise<PlanResponse> {
-  const response = await fetch(apiPath('/plan/create'), {
+export async function submitChat(question: string, accessToken?: string): Promise<ChatResponse> {
+  const response = await fetch(apiPath('/chat/'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
-    body: JSON.stringify(request),
+    body: JSON.stringify({ text: question }),
   })
 
   if (!response.ok) {
-    throw new ApiRequestError('Plan request failed', response.status)
+    throw new ApiRequestError('Chat request failed', response.status)
   }
 
-  return response.json() as Promise<PlanResponse>
+  return response.json() as Promise<ChatResponse>
 }

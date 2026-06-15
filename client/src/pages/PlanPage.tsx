@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from "react"
+import { ApiRequestError } from "../api/errors"
 import { submitPlan } from "../api/plan"
-import { QueryRequestError } from "../api/query"
 import type { PlanResponse } from "../types"
 
 const dayLabels: Array<{ key: keyof PlanResponse; label: string }> = [
@@ -31,7 +31,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
 
         const trimmedGoal = goal.trim()
         const trimmedConstraints = constraints.trim()
-        if (!trimmedGoal || !trimmedConstraints || isLoading) return
+        if (!trimmedGoal || isLoading) return
 
         setIsLoading(true)
         setError("")
@@ -39,13 +39,13 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
 
         try {
             const data = await submitPlan({
-                experienceLevel,
                 goal: trimmedGoal,
-                constraints: trimmedConstraints,
+                experience_level: experienceLevel,
+                ...(trimmedConstraints ? { constraints: trimmedConstraints } : {}),
             }, accessToken)
             setPlan(data)
         } catch (error) {
-            if (error instanceof QueryRequestError && error.status === 401) {
+            if (error instanceof ApiRequestError && error.status === 401) {
                 onUnauthorized()
                 return
             }
@@ -110,7 +110,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
 
                         <button
                             type="submit"
-                            disabled={!goal.trim() || !constraints.trim() || isLoading}
+                            disabled={!goal.trim() || isLoading}
                             className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:border disabled:border-[var(--border)] disabled:bg-[var(--social-bg)] disabled:text-[var(--text)]"
                         >
                             {isLoading ? "Creating..." : "Create plan"}
@@ -136,9 +136,18 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                                     className="rounded-md border border-[var(--border)] bg-[var(--social-bg)] p-4"
                                 >
                                     <h3 className="m-0 text-base font-semibold text-[var(--text-h)]">{day.label}</h3>
-                                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]">
-                                        {plan[day.key]}
-                                    </p>
+                                    <ul className="mt-3 grid gap-3 p-0">
+                                        {plan[day.key].exercises.map((exercise, index) => (
+                                            <li key={`${exercise.name}-${index}`} className="list-none text-sm leading-6 text-[var(--text)]">
+                                                <div className="font-semibold text-[var(--text-h)]">{exercise.name}</div>
+                                                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                                                    {exercise.sets != null && <span>{exercise.sets} sets</span>}
+                                                    {exercise.reps != null && <span>{exercise.reps} reps</span>}
+                                                </div>
+                                                {exercise.notes && <p className="m-0 mt-1">{exercise.notes}</p>}
+                                            </li>
+                                        ))}
+                                    </ul>
                                 </article>
                             ))}
                         </div>

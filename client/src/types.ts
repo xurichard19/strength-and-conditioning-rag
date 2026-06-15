@@ -1,4 +1,13 @@
-export type Page = "home" | "chat" | "plan"
+export type Page =
+    | "home"
+    | "chat"
+    | "plan"
+    | "settings"
+    | "about"
+    | "terms"
+    | "privacy"
+    | "disclaimer"
+    | "accessibility"
 
 export type Source = {
     id?: string | number | null
@@ -7,17 +16,28 @@ export type Source = {
     text: string
 }
 
-export type QueryResponse = {
+export type ChatResponse = {
     text?: string
     sources?: Source[]
 }
 
+export type Exercise = {
+    name: string
+    reps?: number | string | null
+    sets?: number | null
+    notes?: string | null
+}
+
+export type Workout = {
+    exercises: Exercise[]
+}
+
 export type PlanResponse = {
-    Mon: string
-    Tue: string
-    Wed: string
-    Thu: string
-    Fri: string
-    Sat: string
-    Sun: string
+    Mon: Workout
+    Tue: Workout
+    Wed: Workout
+    Thu: Workout
+    Fri: Workout
+    Sat: Workout
+    Sun: Workout
 }
