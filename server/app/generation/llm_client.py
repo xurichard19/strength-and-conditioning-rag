@@ -18,11 +18,11 @@ class LLMGenerationError(RuntimeError):
     """ raised when the llm provider fails or returns invalid structured output """
 
 
-def generate_response(prompt: list[dict], temperature: float = 0.4) -> str:
+def generate_response(messages: list[dict], temperature: float = 0.4) -> str:
     try:
         response = client.responses.create(
             model="gpt-4o-mini",
-            input=prompt,
+            input=messages,
             temperature=temperature,
         )
         return response.output_text
@@ -32,14 +32,14 @@ def generate_response(prompt: list[dict], temperature: float = 0.4) -> str:
 
 
 def generate_structured_response(
-    prompt: list[dict],
+    messages: list[dict],
     response_model: type[StructuredResponse],
     temperature: float = 0.4,
 ) -> StructuredResponse:
     try:
         response = client.responses.parse(
             model="gpt-4o-mini",
-            input=prompt,
+            input=messages,
             temperature=temperature,
             text_format=response_model,
         )

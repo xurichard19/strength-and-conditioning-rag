@@ -22,7 +22,7 @@ def create_workout(
 
     db = request.app.state.db
     try:
-        plan = generate_plan(query.experience_level, query.goal, query.constraints, db)
+        plan = generate_plan(query.goal, query.user_factors(), db)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
