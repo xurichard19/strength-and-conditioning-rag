@@ -10,12 +10,13 @@ from app.generation.rag_pipeline import answer_question
 router = APIRouter(prefix='/query')
 logger = logging.getLogger(__name__)
 
+
 @router.post('/', response_model=QueryResponse)
 def query_llm(
     query: QueryRequest,
     request: Request,
     user: AuthUser = Depends(require_user),
-):
+) -> QueryResponse:
     logger.info("authenticated query requested user_id=%s email=%s", user.id, user.email)
 
     db = request.app.state.db

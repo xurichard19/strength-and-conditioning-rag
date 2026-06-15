@@ -14,7 +14,12 @@ class Settings(BaseSettings):
     app_name: str = "shingo api"
     environment: str = "development"
 
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    cors_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:5173",
+            "https://shingoassist.vercel.app",
+        ]
+    )
 
     doc_source: str = "local"
     gcs_bucket: str | None = None

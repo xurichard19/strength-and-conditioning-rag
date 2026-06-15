@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,26 +11,28 @@ load_dotenv()
 from app.core.config import get_settings
 from app.retrieval.vectordb import VectorDB
 
-from app.api.routers import query
+from app.api.routers import query, plan
 
 settings = get_settings()
+logger = logging.getLogger("uvicorn.error")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    print("app startup...")
+    logger.info("app startup...")
 
     app.state.db = VectorDB()
-    print("vector store successfully connected")
+    logger.info("vector store successfully connected")
 
     # startup logic...
     yield
 
-    print("app shutdown...")
+    logger.info("app shutdown...")
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.include_router(query.router)
+app.include_router(plan.router)
 
 app.add_middleware(
     CORSMiddleware,

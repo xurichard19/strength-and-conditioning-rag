@@ -3,11 +3,15 @@
 !.env.example
 secrets/
 
-data/raw
-data/vectordb
+data/
 *.pkl
 
 __pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 *.egg-info/
 *.egg
 dist/

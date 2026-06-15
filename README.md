@@ -8,11 +8,18 @@ current tech stack: figma -> react + vite + tailwindcss -> docker compose + ngin
 
 ---
 
-run server build from /
+build api image from /
 >> docker build -f server/Dockerfile -t shingo-backend .
 
 run api behind nginx proxy from /
 >> docker compose up --build proxy
+
+---
+
+run api server w/o proxy from /
+>> docker compose up --build api-local
+
+---
 
 reindex with compose service
 >> docker compose run --rm index
