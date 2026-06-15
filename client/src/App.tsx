@@ -1,229 +1,73 @@
-import { type FormEvent, useState } from 'react'
 import './App.css'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ""
+import { AuthProvider } from './auth/AuthProvider'
+import { useAuth } from './auth/useAuth'
+import { AppShell } from './components/AppShell'
+import { AuthForm } from './components/AuthForm'
+import { QueryPanel } from './components/QueryPanel'
+import { UpdatePasswordForm } from './components/UpdatePasswordForm'
 
-function apiPath(path: string) {
-    const baseUrl = API_BASE_URL.replace(/\/$/, "")
-    const normalizedPath = path.startsWith("/") ? path : `/${path}`
-    return `${baseUrl}${normalizedPath}`
-}
+function AppContent() {
+  const auth = useAuth()
 
-type InlineMarkdownProps = {
-    text: string
-}
-
-type Source = {
-    id?: string | number | null
-    source?: string | null
-    page?: string | number | null
-    text: string
-}
-
-type QueryResponse = {
-    text?: string
-    sources?: Source[]
-}
-
-type MarkdownResponseProps = {
-    content: string
-}
-
-type SourceListProps = {
-    sources: Source[]
-}
-
-function InlineMarkdown({ text }: InlineMarkdownProps) {
-    const parts = text.split(/(\*\*[^*]+\*\*)/g)
-
-    return parts.map((part, index) => {
-        if (part.startsWith("**") && part.endsWith("**")) {
-            return <strong key={index}>{part.slice(2, -2)}</strong>
-        }
-
-        return <span key={index}>{part}</span>
-    })
-}
-
-function MarkdownResponse({ content }: MarkdownResponseProps) {
-    const lines = content.split("\n").filter((line) => line.trim())
-
+  if (auth.isLoading) {
     return (
-        <div className="space-y-4 leading-7 text-[var(--text-h)]">
-            {lines.map((line, index) => {
-                const numberedMatch = line.match(/^(\d+)\.\s+(.*)$/)
-                const bulletMatch = line.match(/^[-*]\s+(.*)$/)
-
-                if (numberedMatch) {
-                    return (
-                        <div key={index} className="flex gap-3">
-                            <span className="min-w-6 font-semibold text-[var(--accent)]">
-                                {numberedMatch[1]}.
-                            </span>
-                            <p className="m-0">
-                                <InlineMarkdown text={numberedMatch[2]} />
-                            </p>
-                        </div>
-                    )
-                }
-
-                if (bulletMatch) {
-                    return (
-                        <div key={index} className="flex gap-3 pl-9">
-                            <span className="text-[var(--accent)]">•</span>
-                            <p className="m-0">
-                                <InlineMarkdown text={bulletMatch[1]} />
-                            </p>
-                        </div>
-                    )
-                }
-
-                return (
-                    <p key={index} className="m-0">
-                        <InlineMarkdown text={line} />
-                    </p>
-                )
-            })}
-        </div>
+      <AppShell>
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)]">
+          <p className="leading-7 text-[var(--text-h)]">Checking authentication...</p>
+        </section>
+      </AppShell>
     )
-}
+  }
 
-function SourceList({ sources }: SourceListProps) {
-    if (!sources.length) return null
-
-    return (
-        <div className="mt-8 border-t border-[var(--border)] pt-5">
-            <h3 className="m-0 text-base font-semibold text-[var(--text-h)]">Sources</h3>
-            <div className="mt-4 space-y-4">
-                {sources.map((source, index) => (
-                    <article
-                        key={source.id ?? index}
-                        className="rounded-md border border-[var(--border)] bg-[var(--social-bg)] p-4"
-                    >
-                        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm font-medium text-[var(--text-h)]">
-                            <span>Chunk {index + 1}</span>
-                            {source.source && <span>• {source.source}</span>}
-                            {source.page !== null && source.page !== undefined && (
-                                <span>• page {source.page}</span>
-                            )}
-                            {source.id && <span>• id {source.id}</span>}
-                        </div>
-                        <p className="m-0 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]">
-                            {source.text}
-                        </p>
-                    </article>
-                ))}
-            </div>
-        </div>
-    )
+  return (
+    <AppShell>
+      {auth.isPasswordRecovery ? (
+        <UpdatePasswordForm
+          error={auth.error}
+          isLoading={auth.isSubmitting}
+          message={auth.message}
+          onSubmit={auth.updatePassword}
+        />
+      ) : auth.session ? (
+        <>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-sm text-[var(--text)]">
+            <span>{auth.session.user.email}</span>
+            <button
+              type="button"
+              onClick={auth.signOut}
+              className="rounded-md border border-[var(--border)] px-4 py-2 font-semibold text-[var(--text-h)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            >
+              Sign out
+            </button>
+          </div>
+          <QueryPanel
+            accessToken={auth.session.access_token}
+            onUnauthorized={auth.handleUnauthorized}
+          />
+        </>
+      ) : (
+        <AuthForm
+          error={auth.error}
+          isLoading={auth.isSubmitting}
+          message={auth.message}
+          onClearFeedback={auth.clearFeedback}
+          onGoogleSignIn={auth.signInWithGoogle}
+          onPasswordReset={auth.requestPasswordReset}
+          onSignIn={auth.signIn}
+          onSignUp={auth.signUp}
+        />
+      )}
+    </AppShell>
+  )
 }
 
 function App() {
-    const [question, setQuestion] = useState("")
-    const [response, setResponse] = useState("")
-    const [sources, setSources] = useState<Source[]>([])
-    const [isLoading, setIsLoading] = useState(false)
-    const [error, setError] = useState("")
-
-    const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-        e.preventDefault(); /* stop reload */
-
-        const trimmedQuestion = question.trim()
-        if (!trimmedQuestion || isLoading) return
-
-        setIsLoading(true)
-        setError("")
-        setSources([])
-
-        try {
-            const res = await fetch(apiPath("/query/"), {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ text: trimmedQuestion }),
-            });
-
-            if (!res.ok) {
-                throw new Error("Request failed")
-            }
-
-            const data = (await res.json()) as QueryResponse;
-            setResponse(data.text ?? "");
-            setSources(data.sources ?? []);
-        } catch {
-            setError("Something went wrong. Please try again.")
-        } finally {
-            setIsLoading(false)
-        }
-    }
-
-    return (
-        <div className="min-h-screen bg-[var(--bg)] px-4 py-8 text-left text-[var(--text)] sm:px-6 lg:px-8">
-            <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-3xl flex-col justify-center">
-                <header className="mb-8">
-                    <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--text-h)]">
-                        Strength & conditioning research assistant
-                    </p>
-                    <h1 className="m-0 text-5xl font-semibold tracking-normal text-[var(--text-h)] sm:text-6xl">
-                        Shingo
-                    </h1>
-                    <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--text-h)]">
-                        Ask a training question and get an evidence-backed answer from the document library.
-                    </p>
-                </header>
-
-                <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-4 shadow-[var(--shadow)] sm:p-5">
-                    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-                        <label htmlFor="question" className="text-sm font-medium text-[var(--text-h)]">
-                            Question
-                        </label>
-                        <textarea
-                            id="question"
-                            value={question}
-                            onChange={(e) => setQuestion(e.target.value)}
-                            placeholder="How should I progress plyometric volume during the season?"
-                            className="min-h-28 resize-y rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 text-base leading-6 text-[var(--text-h)] outline-none transition placeholder:text-[var(--text)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)]"
-                        />
-                        <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm text-[var(--text)]">
-                                Uses retrieval plus reranking before generating an answer.
-                            </p>
-                            <button
-                                type="submit"
-                                disabled={!question.trim() || isLoading}
-                                className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:border disabled:border-[var(--border)] disabled:bg-[var(--social-bg)] disabled:text-[var(--text)]"
-                            >
-                                {isLoading ? "Thinking..." : "Ask"}
-                            </button>
-                        </div>
-                    </form>
-                </section>
-
-                <section className="mt-5 min-h-40 rounded-lg border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)]">
-                    <div className="mb-3 flex items-center justify-between gap-4">
-                        <h2 className="m-0 text-lg font-semibold text-[var(--text-h)]">Answer</h2>
-                        {isLoading && (
-                            <span className="text-sm font-medium text-[var(--accent)]">Searching documents</span>
-                        )}
-                    </div>
-
-                    {error ? (
-                        <p className="leading-7 text-red-700">{error}</p>
-                    ) : response ? (
-                        <>
-                            <MarkdownResponse content={response} />
-                            <SourceList sources={sources} />
-                        </>
-                    ) : (
-                        <p className="leading-7 text-[var(--text)]">
-                            Your response will appear here after you ask a question.
-                        </p>
-                    )}
-                </section>
-            </main>
-        </div>
-    )
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  )
 }
 
 export default App
