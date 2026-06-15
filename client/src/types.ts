@@ -1,4 +1,13 @@
-export type Page = "home" | "chat" | "plan"
+export type Page =
+    | "home"
+    | "chat"
+    | "plan"
+    | "settings"
+    | "about"
+    | "terms"
+    | "privacy"
+    | "disclaimer"
+    | "accessibility"
 
 export type Source = {
     id?: string | number | null
