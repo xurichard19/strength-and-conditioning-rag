@@ -46,7 +46,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
                         >
                             <h2 className="m-0 text-lg font-semibold text-[var(--text-h)]">Research chat</h2>
                             <p className="mt-2 text-sm leading-6 text-[var(--text)]">
-                                Query the document library and review source chunks alongside the answer.
+                                Search the document library and review source chunks alongside the answer.
                             </p>
                         </button>
 

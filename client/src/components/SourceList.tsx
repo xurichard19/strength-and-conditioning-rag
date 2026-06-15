@@ -1,4 +1,4 @@
-import type { Source } from '../types/query'
+import type { Source } from '../types/chat'
 
 type SourceListProps = {
   sources: Source[]

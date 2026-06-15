@@ -2,25 +2,25 @@ import logging
 
 from fastapi import APIRouter, Depends, Request
 
-from app.api.schemas import QueryRequest, QueryResponse, Source
+from app.api.schemas import ChatRequest, ChatResponse, Source
 from app.auth.supabase import AuthUser, require_user
 from app.generation.rag_pipeline import answer_question
 
 
-router = APIRouter(prefix='/query')
+router = APIRouter(prefix='/chat')
 logger = logging.getLogger(__name__)
 
 
-@router.post('/', response_model=QueryResponse)
-def query_llm(
-    query: QueryRequest,
+@router.post('/', response_model=ChatResponse)
+def chat_llm(
+    chat: ChatRequest,
     request: Request,
     user: AuthUser = Depends(require_user),
-) -> QueryResponse:
-    logger.info("authenticated query requested user_id=%s email=%s", user.id, user.email)
+) -> ChatResponse:
+    logger.info("authenticated chat requested user_id=%s email=%s", user.id, user.email)
 
     db = request.app.state.db
-    response, context = answer_question(query.text, db)
+    response, context = answer_question(chat.text, db)
     sources = []
 
     for id, document, metadata in zip(context["ids"], context["documents"], context["metadatas"]):
@@ -34,9 +34,9 @@ def query_llm(
         )
 
     logger.info(
-        "authenticated query completed user_id=%s source_count=%s",
+        "authenticated chat completed user_id=%s source_count=%s",
         user.id,
         len(sources),
     )
 
-    return QueryResponse(text=response, sources=sources)
+    return ChatResponse(text=response, sources=sources)

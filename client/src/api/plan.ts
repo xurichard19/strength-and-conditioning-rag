@@ -1,6 +1,6 @@
 import type { PlanResponse } from '../types'
 
-import { QueryRequestError } from './query'
+import { ApiRequestError } from './errors'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
 
@@ -35,7 +35,7 @@ export async function submitPlan(
   })
 
   if (!response.ok) {
-    throw new QueryRequestError('Plan request failed', response.status)
+    throw new ApiRequestError('Plan request failed', response.status)
   }
 
   return response.json() as Promise<PlanResponse>

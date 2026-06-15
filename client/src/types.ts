@@ -7,7 +7,7 @@ export type Source = {
     text: string
 }
 
-export type QueryResponse = {
+export type ChatResponse = {
     text?: string
     sources?: Source[]
 }

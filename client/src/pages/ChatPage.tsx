@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react"
-import { QueryRequestError, submitQuery } from "../api/query"
+import { submitChat } from "../api/chat"
+import { ApiRequestError } from "../api/errors"
 import { MarkdownResponse } from "../components/MarkdownResponse"
 import { SourceList } from "../components/SourceList"
 import type { Source } from "../types"
@@ -27,11 +28,11 @@ export function ChatPage({ accessToken, onUnauthorized }: ChatPageProps) {
         setSources([])
 
         try {
-            const data = await submitQuery(trimmedQuestion, accessToken)
+            const data = await submitChat(trimmedQuestion, accessToken)
             setResponse(data.text ?? "")
             setSources(data.sources ?? [])
         } catch (error) {
-            if (error instanceof QueryRequestError && error.status === 401) {
+            if (error instanceof ApiRequestError && error.status === 401) {
                 onUnauthorized()
                 return
             }

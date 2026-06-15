@@ -1,16 +1,17 @@
 import { type BaseSyntheticEvent, useState } from 'react'
 
-import { QueryRequestError, submitQuery } from '../api/query'
-import type { Source } from '../types/query'
+import { submitChat } from '../api/chat'
+import { ApiRequestError } from '../api/errors'
+import type { Source } from '../types/chat'
 import { MarkdownResponse } from './MarkdownResponse'
 import { SourceList } from './SourceList'
 
-type QueryPanelProps = {
+type ChatPanelProps = {
   accessToken: string
   onUnauthorized: () => void
 }
 
-export function QueryPanel({ accessToken, onUnauthorized }: QueryPanelProps) {
+export function ChatPanel({ accessToken, onUnauthorized }: ChatPanelProps) {
   const [question, setQuestion] = useState('')
   const [response, setResponse] = useState('')
   const [sources, setSources] = useState<Source[]>([])
@@ -28,11 +29,11 @@ export function QueryPanel({ accessToken, onUnauthorized }: QueryPanelProps) {
     setSources([])
 
     try {
-      const data = await submitQuery(trimmedQuestion, accessToken)
+      const data = await submitChat(trimmedQuestion, accessToken)
       setResponse(data.text ?? '')
       setSources(data.sources ?? [])
     } catch (error) {
-      if (error instanceof QueryRequestError && error.status === 401) {
+      if (error instanceof ApiRequestError && error.status === 401) {
         onUnauthorized()
         return
       }

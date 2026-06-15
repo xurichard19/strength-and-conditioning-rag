@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from "react"
+import { ApiRequestError } from "../api/errors"
 import { submitPlan } from "../api/plan"
-import { QueryRequestError } from "../api/query"
 import type { PlanResponse } from "../types"
 
 const dayLabels: Array<{ key: keyof PlanResponse; label: string }> = [
@@ -45,7 +45,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
             }, accessToken)
             setPlan(data)
         } catch (error) {
-            if (error instanceof QueryRequestError && error.status === 401) {
+            if (error instanceof ApiRequestError && error.status === 401) {
                 onUnauthorized()
                 return
             }

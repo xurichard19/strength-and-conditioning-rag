@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Source(BaseModel):
@@ -8,7 +8,7 @@ class Source(BaseModel):
     page: int | None = None
 
 
-class QueryRequest(BaseModel):
+class ChatRequest(BaseModel):
     text: str
 
     @field_validator("text")
@@ -20,7 +20,7 @@ class QueryRequest(BaseModel):
         return stripped
 
 
-class QueryResponse(BaseModel):
+class ChatResponse(BaseModel):
     text: str
     sources: list[Source] = Field(default_factory=list)
 
@@ -40,6 +40,8 @@ class PlanRequest(BaseModel):
 
 
 class PlanResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     Mon: str
     Tue: str
     Wed: str
