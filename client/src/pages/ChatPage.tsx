@@ -1,8 +1,15 @@
 import { type FormEvent, useState } from "react"
-import { MarkdownResponse, SourceList } from "../components/MarkdownResponse"
-import type { QueryResponse, Source } from "../types"
+import { QueryRequestError, submitQuery } from "../api/query"
+import { MarkdownResponse } from "../components/MarkdownResponse"
+import { SourceList } from "../components/SourceList"
+import type { Source } from "../types"
 
-export function ChatPage() {
+type ChatPageProps = {
+    accessToken: string
+    onUnauthorized: () => void
+}
+
+export function ChatPage({ accessToken, onUnauthorized }: ChatPageProps) {
     const [question, setQuestion] = useState("")
     const [response, setResponse] = useState("")
     const [sources, setSources] = useState<Source[]>([])
@@ -20,22 +27,15 @@ export function ChatPage() {
         setSources([])
 
         try {
-            const res = await fetch("http://localhost:8000/query/", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ text: trimmedQuestion }),
-            })
-
-            if (!res.ok) {
-                throw new Error("Request failed")
-            }
-
-            const data = (await res.json()) as QueryResponse
+            const data = await submitQuery(trimmedQuestion, accessToken)
             setResponse(data.text ?? "")
             setSources(data.sources ?? [])
-        } catch {
+        } catch (error) {
+            if (error instanceof QueryRequestError && error.status === 401) {
+                onUnauthorized()
+                return
+            }
+
             setError("Something went wrong. Please try again.")
         } finally {
             setIsLoading(false)

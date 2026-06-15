@@ -1,4 +1,6 @@
 import { type FormEvent, useState } from "react"
+import { submitPlan } from "../api/plan"
+import { QueryRequestError } from "../api/query"
 import type { PlanResponse } from "../types"
 
 const dayLabels: Array<{ key: keyof PlanResponse; label: string }> = [
@@ -11,7 +13,12 @@ const dayLabels: Array<{ key: keyof PlanResponse; label: string }> = [
     { key: "Sun", label: "Sunday" },
 ]
 
-export function PlanPage() {
+type PlanPageProps = {
+    accessToken: string
+    onUnauthorized: () => void
+}
+
+export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
     const [experienceLevel, setExperienceLevel] = useState("intermediate")
     const [goal, setGoal] = useState("")
     const [constraints, setConstraints] = useState("")
@@ -31,25 +38,18 @@ export function PlanPage() {
         setPlan(null)
 
         try {
-            const res = await fetch("http://localhost:8000/plan/create", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    experience_level: experienceLevel,
-                    goal: trimmedGoal,
-                    constraints: trimmedConstraints,
-                }),
-            })
-
-            if (!res.ok) {
-                throw new Error("Request failed")
+            const data = await submitPlan({
+                experienceLevel,
+                goal: trimmedGoal,
+                constraints: trimmedConstraints,
+            }, accessToken)
+            setPlan(data)
+        } catch (error) {
+            if (error instanceof QueryRequestError && error.status === 401) {
+                onUnauthorized()
+                return
             }
 
-            const data = (await res.json()) as PlanResponse
-            setPlan(data)
-        } catch {
             setError("Something went wrong while creating the plan. Please try again.")
         } finally {
             setIsLoading(false)

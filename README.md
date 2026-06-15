@@ -1,6 +1,6 @@
 # Shingo: Strength & Conditioning RAG-based Assistant
 
-Full-stack RAG assistant for athletes delivering research-backed training insights using a two-stage retrieval pipeline (vector search + cross-encoder reranking) for higher accuracy. Document and vector storage using Google Cloud Storage and Chroma Cloud.
+Full-stack RAG assistant for athletes delivering research-backed training insights using a two-stage retrieval pipeline (vector search + cross-encoder reranking) for higher accuracy. Document and vector storage using Google Cloud Storage and Chroma Cloud. Frontend deployed on Vercel and backend endpoints secured through VPS + Nginx.
 
 ---
 
@@ -11,7 +11,7 @@ current tech stack: figma -> react + vite + tailwindcss -> docker compose + ngin
 build api image from /
 >> docker build -f server/Dockerfile -t shingo-backend .
 
-run nginx reverse proxy -> api from /
+run api behind nginx proxy from /
 >> docker compose up --build proxy
 
 ---

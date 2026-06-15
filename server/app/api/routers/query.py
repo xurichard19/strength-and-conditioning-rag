@@ -1,13 +1,24 @@
-from fastapi import APIRouter, Request
+import logging
 
-from app.api.schemas import ChatRequest, ChatResponse, Source
+from fastapi import APIRouter, Depends, Request
+
+from app.api.schemas import QueryRequest, QueryResponse, Source
+from app.auth.supabase import AuthUser, require_user
 from app.generation.rag_pipeline import answer_question
 
 
 router = APIRouter(prefix='/query')
+logger = logging.getLogger(__name__)
 
-@router.post('/', response_model=ChatResponse)
-def query_llm(query: ChatRequest, request: Request) -> ChatResponse:
+
+@router.post('/', response_model=QueryResponse)
+def query_llm(
+    query: QueryRequest,
+    request: Request,
+    user: AuthUser = Depends(require_user),
+) -> QueryResponse:
+    logger.info("authenticated query requested user_id=%s email=%s", user.id, user.email)
+
     db = request.app.state.db
     response, context = answer_question(query.text, db)
     sources = []
@@ -22,4 +33,10 @@ def query_llm(query: ChatRequest, request: Request) -> ChatResponse:
             )
         )
 
-    return ChatResponse(text=response, sources=sources)
+    logger.info(
+        "authenticated query completed user_id=%s source_count=%s",
+        user.id,
+        len(sources),
+    )
+
+    return QueryResponse(text=response, sources=sources)

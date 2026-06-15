@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -32,6 +32,11 @@ class Settings(BaseSettings):
 
     openai_api_key: str
     cohere_api_key: str
+
+    supabase_url: str
+    supabase_publishable_key: str = Field(
+        validation_alias=AliasChoices("SUPABASE_PUBLISHABLE_KEY", "SUPABASE_ANON_KEY")
+    )
 
     system_collection_name: str = "system-docs"
     retrieval_top_k: int = 15
