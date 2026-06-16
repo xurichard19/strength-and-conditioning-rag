@@ -19,7 +19,7 @@ export async function submitPlan(
   request: PlanRequest,
   accessToken?: string,
 ): Promise<PlanResponse> {
-  const response = await fetch(apiPath('/plan/create'), {
+  const response = await fetch(apiPath('/plan/generate'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

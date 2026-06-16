@@ -8,6 +8,7 @@ import { AppFooter } from './components/AppFooter'
 import { AppNav } from './components/AppNav'
 import { AppShell } from './components/AppShell'
 import { AuthForm } from './components/AuthForm'
+import { FloatingChatWidget } from './components/FloatingChatWidget'
 import { UpdatePasswordForm } from './components/UpdatePasswordForm'
 import { ChatPage } from './pages/ChatPage'
 import { HomePage } from './pages/HomePage'
@@ -96,6 +97,10 @@ function AppContent() {
             {isInfoPage(currentPage) && <InfoPage page={currentPage} />}
           </div>
           <AppFooter onNavigate={navigate} />
+          <FloatingChatWidget
+            accessToken={auth.session.access_token}
+            onUnauthorized={auth.handleUnauthorized}
+          />
         </div>
       ) : (
         <div className="flex min-h-screen flex-col bg-[var(--bg)]">
