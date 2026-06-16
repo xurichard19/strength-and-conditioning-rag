@@ -96,6 +96,21 @@ const pageContent: Record<InfoPageProps["page"], {
     },
 }
 
+const teamIntroductions = [
+    {
+        name: "rxu",
+        body: "ML/Cloud/Backend",
+    },
+    {
+        name: "dmahairas",
+        body: "Cloud/DevOps/FullStack",
+    },
+    {
+        name: "codex",
+        body: "goat",
+    },
+]
+
 export function InfoPage({ page }: InfoPageProps) {
     const content = pageContent[page]
 
@@ -121,6 +136,27 @@ export function InfoPage({ page }: InfoPageProps) {
                     </section>
                 ))}
             </div>
+
+            {page === "about" && (
+                <section className="mt-6">
+                    <div className="mb-4 flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--text)]">
+                        <span className="h-px flex-1 bg-[var(--border)]" />
+                        <span>Team</span>
+                        <span className="h-px flex-1 bg-[var(--border)]" />
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                        {teamIntroductions.map((person) => (
+                            <article
+                                key={person.name}
+                                className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)]"
+                            >
+                                <h2 className="m-0 text-lg font-semibold text-[var(--text-h)]">{person.name}</h2>
+                                <p className="m-0 mt-3 leading-7">{person.body}</p>
+                            </article>
+                        ))}
+                    </div>
+                </section>
+            )}
         </main>
     )
 }
