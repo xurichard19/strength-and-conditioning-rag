@@ -1,11 +1,12 @@
 import logging
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api.schemas import PlanRequest, PlanResponse
 from app.auth.supabase import AuthUser, require_user
-from app.generation.llm_client import LLMGenerationError
-from app.generation.rag_pipeline import generate_plan
+from app.rag.llm import LLMGenerationError
+from app.rag.pipeline import generate_plan
 
 
 router = APIRouter(prefix='/plan')
@@ -22,7 +23,8 @@ def generate_workout_plan(
 
     db = request.app.state.db
     try:
-        plan = generate_plan(query.goal, query.user_factors(), db)
+        plan = generate_plan(date.today(), query.goal, query.user_factors(), db)
+        # this gets server date, careful to use helper function in frontend in the future for user date
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -40,17 +42,14 @@ def generate_workout_plan(
 
 @router.post('')
 def save_workout_plan(
+    plan: PlanResponse,
     user: AuthUser = Depends(require_user),
-):
+) -> bool:
     # todo: persist a generated plan for the authenticated user
     # todo: validate that all saved rows use user.id, never a client supplied user id
     # todo: insert workout_plans, workout_plan_days, and workout_plan_exercises in one transaction
     # todo: return a saved plan response with database ids for the plan, days, and exercises
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Workout plan save is not implemented",
-    )
-
+    pass
 
 @router.get('/{id}')
 def get_workout_plan(

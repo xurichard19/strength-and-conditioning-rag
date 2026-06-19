@@ -10,6 +10,7 @@ import { AppShell } from './components/AppShell'
 import { AuthForm } from './components/AuthForm'
 import { FloatingChatWidget } from './components/FloatingChatWidget'
 import { UpdatePasswordForm } from './components/UpdatePasswordForm'
+import { CalendarPage } from './pages/CalendarPage'
 import { ChatPage } from './pages/ChatPage'
 import { HomePage } from './pages/HomePage'
 import { InfoPage } from './pages/InfoPage'
@@ -93,6 +94,7 @@ function AppContent() {
                 onUnauthorized={auth.handleUnauthorized}
               />
             )}
+            {currentPage === 'calendar' && <CalendarPage />}
             {currentPage === 'settings' && <SettingsPage userEmail={auth.session.user.email} />}
             {isInfoPage(currentPage) && <InfoPage page={currentPage} />}
           </div>

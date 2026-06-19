@@ -90,6 +90,16 @@ export function AppNav({ currentPage, userEmail, onNavigate, onLogin, onSignOut 
                             >
                                 Plan
                             </button>
+                            <button
+                                type="button"
+                                onClick={() => navigate("calendar")}
+                                className={`rounded-md px-3 py-2 text-sm font-semibold transition ${currentPage === "calendar"
+                                    ? "bg-[var(--accent-bg)] text-[var(--accent)]"
+                                    : "text-[var(--text)] hover:text-[var(--text-h)]"
+                                    }`}
+                            >
+                                Calendar
+                            </button>
                         </nav>
                     )}
 
@@ -196,6 +206,16 @@ export function AppNav({ currentPage, userEmail, onNavigate, onLogin, onSignOut 
                             }`}
                     >
                         Plan
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => navigate("calendar")}
+                        className={`rounded-md px-3 py-2 text-left text-sm font-semibold ${currentPage === "calendar"
+                            ? "bg-[var(--accent-bg)] text-[var(--accent)]"
+                            : "text-[var(--text-h)]"
+                            }`}
+                    >
+                        Calendar
                     </button>
                     <button
                         type="button"

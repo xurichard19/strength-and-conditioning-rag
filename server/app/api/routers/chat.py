@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Request
 
 from app.api.schemas import ChatRequest, ChatResponse, Source
 from app.auth.supabase import AuthUser, require_user
-from app.generation.rag_pipeline import answer_question
+from app.rag.pipeline import answer_question
 
 
 router = APIRouter(prefix='/chat')

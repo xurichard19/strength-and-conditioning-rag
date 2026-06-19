@@ -8,6 +8,7 @@ const pagePaths: Record<Page, string> = {
     home: "/home",
     chat: "/chat",
     plan: "/plan",
+    calendar: "/calendar",
     settings: "/settings",
     about: "/about",
     terms: "/terms",
