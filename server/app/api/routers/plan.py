@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api.schemas import PlanRequest, PlanResponse
 from app.auth.supabase import AuthUser, require_user
-from app.rag.llm import LLMGenerationError
+from app.db.supabase import get_supabase_admin
 from app.rag.pipeline import generate_plan
 
 
@@ -29,11 +29,6 @@ def generate_workout_plan(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
-        ) from exc
-    except LLMGenerationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Plan generator failed to produce a weekly plan",
         ) from exc
 
     logger.info("authenticated plan completed user_id=%s", user.id)

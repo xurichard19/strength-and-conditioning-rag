@@ -14,10 +14,6 @@ logger = logging.getLogger(__name__)
 StructuredResponse = TypeVar("StructuredResponse", bound=BaseModel)
 
 
-class LLMGenerationError(RuntimeError):
-    """ raised when the llm provider fails or returns invalid structured output """
-
-
 def generate_response(messages: list[dict], temperature: float = 0.4) -> str:
     try:
         response = client.responses.create(
