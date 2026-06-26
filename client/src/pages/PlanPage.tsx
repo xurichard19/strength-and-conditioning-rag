@@ -92,13 +92,13 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
         <main className="mx-auto min-h-[calc(100vh-4.25rem)] max-w-6xl px-4 py-8 text-left text-[var(--text)] sm:px-6 lg:px-8">
             <header className="mb-8">
                 <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--text-h)]">
-                    Weekly workout planner
+                    Hybrid training builder
                 </p>
                 <h1 className="m-0 text-4xl font-semibold tracking-normal text-[var(--text-h)] sm:text-5xl">
-                    Build a training week
+                    Build an evidence-informed week
                 </h1>
                 <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--text-h)]">
-                    Generate a structured Monday through Sunday plan from your experience level, goal, and constraints.
+                    Generate a Monday through Sunday training week that balances strength, conditioning, recovery, and interference risk.
                 </p>
             </header>
 
@@ -119,23 +119,23 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                         </label>
 
                         <label htmlFor="goal" className="flex flex-col gap-2 text-sm font-medium text-[var(--text-h)]">
-                            Goal
+                            Performance goal
                             <textarea
                                 id="goal"
                                 value={goal}
                                 onChange={(e) => setGoal(e.target.value)}
-                                placeholder="Improve acceleration and lower-body power for soccer."
+                                placeholder="Improve 10K pace while maintaining lower-body strength."
                                 className="min-h-24 resize-y rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 text-base leading-6 text-[var(--text-h)] outline-none transition placeholder:text-[var(--text)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)]"
                             />
                         </label>
 
                         <label htmlFor="constraints" className="flex flex-col gap-2 text-sm font-medium text-[var(--text-h)]">
-                            Needs and constraints
+                            Training context
                             <textarea
                                 id="constraints"
                                 value={constraints}
                                 onChange={(e) => setConstraints(e.target.value)}
-                                placeholder="Four training days, 60 minutes, gym access, avoid high-impact work on Friday."
+                                placeholder="Four training days, 60 minutes, gym access, long run Sunday, avoid heavy legs before intervals."
                                 className="min-h-32 resize-y rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 text-base leading-6 text-[var(--text-h)] outline-none transition placeholder:text-[var(--text)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)]"
                             />
                         </label>
@@ -145,7 +145,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                             disabled={!goal.trim() || isLoading}
                             className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:border disabled:border-[var(--border)] disabled:bg-[var(--social-bg)] disabled:text-[var(--text)]"
                         >
-                            {isLoading ? "Creating..." : "Create plan"}
+                            {isLoading ? "Synthesizing..." : "Build week"}
                         </button>
                     </form>
                 </section>
@@ -162,7 +162,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                             {"<"}
                         </button>
                         <div>
-                            <h2 className="m-0 text-lg font-semibold text-[var(--text-h)]">Workout plan</h2>
+                            <h2 className="m-0 text-lg font-semibold text-[var(--text-h)]">Training week</h2>
                             {plan && (
                                 <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text)]">
                                     Days {workoutPage * workoutsPerPage + 1}-{Math.min((workoutPage + 1) * workoutsPerPage, plan.workouts.length)} of {plan.workouts.length}
@@ -170,7 +170,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                             )}
                         </div>
                         {isLoading && (
-                            <span className="mt-2 block text-sm font-medium text-[var(--accent)]">Retrieving context</span>
+                            <span className="mt-2 block text-sm font-medium text-[var(--accent)]">Retrieving evidence</span>
                         )}
                         <button
                             type="button"
@@ -256,7 +256,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                         </div>
                     ) : (
                         <p className="leading-7 text-[var(--text)]">
-                            Your weekly plan will appear here after the backend generates it.
+                            Your evidence-informed training week will appear here after Shingo reviews the research context.
                         </p>
                         )}
                     </div>

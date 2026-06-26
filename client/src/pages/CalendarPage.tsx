@@ -85,7 +85,7 @@ export function CalendarPage() {
             <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                     <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--text-h)]">
-                        Training calendar
+                        Hybrid training calendar
                     </p>
                     <h1 className="m-0 text-4xl font-semibold tracking-normal text-[var(--text-h)] sm:text-5xl">
                         Calendar
@@ -199,7 +199,7 @@ export function CalendarPage() {
                                     className="rounded-md border border-[var(--border)] bg-[var(--social-bg)] p-4"
                                 >
                                     <h3 className="m-0 text-base font-semibold text-[var(--text-h)]">
-                                        Workout {workoutIndex + 1}
+                                        Session {workoutIndex + 1}
                                     </h3>
                                     <ul className="mt-3 grid gap-2 p-0">
                                         {workout.exercises.map((exercise, exerciseIndex) => (
@@ -229,7 +229,7 @@ export function CalendarPage() {
                                 </article>
                             ))
                         ) : (
-                            <p className="leading-7 text-[var(--text)]">No workouts scheduled for this date.</p>
+                            <p className="leading-7 text-[var(--text)]">No training sessions scheduled for this date.</p>
                         )}
                     </div>
                 </aside>

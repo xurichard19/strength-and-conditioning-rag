@@ -10,13 +10,13 @@ export function AppShell({ children }: AppShellProps) {
       <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-3xl flex-col justify-center">
         <header className="mb-8">
           <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--text-h)]">
-            Strength & conditioning research assistant
+            Hybrid athlete research assistant
           </p>
           <h1 className="m-0 text-5xl font-semibold tracking-normal text-[var(--text-h)] sm:text-6xl">
             Shingo
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--text-h)]">
-            Ask a training question and get an evidence-backed answer from the document library.
+            Ask hybrid training questions and get evidence-backed answers from the document library.
           </p>
         </header>
 
