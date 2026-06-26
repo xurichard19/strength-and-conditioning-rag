@@ -18,11 +18,11 @@ const pageContent: Record<InfoPageProps["page"], {
         sections: [
             {
                 heading: "Purpose",
-                body: "Placeholder copy. Shingo is a strength and conditioning research assistant designed to help users explore evidence-informed training ideas.",
+                body: "Shingo helps hybrid athletes explore research-backed training insights across strength, endurance, conditioning, and recovery.",
             },
             {
                 heading: "How it works",
-                body: "Placeholder copy. The app may use retrieved training references and AI-generated responses to provide educational fitness information.",
+                body: "The app retrieves relevant training references, reranks them for fit, and uses them to generate practical educational guidance.",
             },
         ],
     },
@@ -68,7 +68,7 @@ const pageContent: Record<InfoPageProps["page"], {
         sections: [
             {
                 heading: "Educational information",
-                body: "Placeholder copy. Shingo provides educational fitness information and does not provide medical advice, diagnosis, or treatment.",
+                body: "Shingo provides educational training information for hybrid athletes and does not provide medical advice, diagnosis, or treatment.",
             },
             {
                 heading: "Exercise risk",

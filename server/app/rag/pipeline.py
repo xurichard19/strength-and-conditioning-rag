@@ -1,11 +1,12 @@
 import json
+import datetime
 from typing import Any
 
 from app.api.schemas import PlanResponse
-from app.generation.llm_client import generate_response, generate_structured_response
-from app.generation.prompt_builder import build_chat_messages, build_plan_messages
-from app.retrieval.reranker import rerank_chroma_results
-from app.retrieval.vectordb import VectorDB
+from app.rag.llm import generate_response, generate_structured_response
+from app.rag.prompts import build_chat_messages, build_plan_messages
+from app.rag.reranker import rerank_chroma_results
+from app.rag.vector_store import VectorDB
 
 
 def _generate_context(
@@ -33,7 +34,7 @@ def answer_question(query: str, db: VectorDB) -> tuple[str, dict]:
     return response, context
 
 
-def generate_plan(goal: str, constraints: dict[str, Any], db: VectorDB) -> PlanResponse:
+def generate_plan(date: datetime.date, goal: str, constraints: dict[str, Any], db: VectorDB) -> PlanResponse:
     """ build workout plan given parameters """
 
     if not goal.strip():
@@ -42,7 +43,7 @@ def generate_plan(goal: str, constraints: dict[str, Any], db: VectorDB) -> PlanR
     constraints_json = json.dumps(constraints)
 
     context = _generate_context(f"goal: {goal}, constraints: {constraints_json}", db, top_k=30, top_n=20)
-    messages = build_plan_messages(goal, constraints_json, context)
+    messages = build_plan_messages(date, goal, constraints_json, context)
 
     return generate_structured_response(
         messages=messages,

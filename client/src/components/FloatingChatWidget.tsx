@@ -59,7 +59,7 @@ export function FloatingChatWidget({ accessToken, onUnauthorized }: FloatingChat
                     <header className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3 text-left">
                         <div className="min-w-0 flex-1">
                             <h2 className="m-0 text-sm font-semibold text-[var(--text-h)]">Ask Shingo</h2>
-                            <p className="m-0 mt-0.5 text-xs text-[var(--text)]">Quick training questions</p>
+                            <p className="m-0 mt-0.5 text-xs text-[var(--text)]">Quick research checks</p>
                         </div>
                         <button
                             type="button"
@@ -91,12 +91,12 @@ export function FloatingChatWidget({ accessToken, onUnauthorized }: FloatingChat
                             ))
                         ) : (
                             <p className="m-0 text-sm leading-6 text-[var(--text)]">
-                                Ask a quick question without leaving the page.
+                                Ask a quick hybrid training question without leaving the page.
                             </p>
                         )}
 
                         {isLoading && (
-                            <p className="m-0 text-sm font-medium text-[var(--accent)]">Thinking...</p>
+                            <p className="m-0 text-sm font-medium text-[var(--accent)]">Reviewing...</p>
                         )}
                         {error && <p className="m-0 text-sm leading-6 text-red-700">{error}</p>}
                     </div>
@@ -110,7 +110,7 @@ export function FloatingChatWidget({ accessToken, onUnauthorized }: FloatingChat
                                 id="floating-chat-question"
                                 value={question}
                                 onChange={(event) => setQuestion(event.target.value)}
-                                placeholder="Ask a question..."
+                                placeholder="Ask about training..."
                                 className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text-h)] outline-none transition placeholder:text-[var(--text)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)]"
                             />
                             <button

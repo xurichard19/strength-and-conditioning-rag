@@ -2,6 +2,7 @@ export type Page =
     | "home"
     | "chat"
     | "plan"
+    | "calendar"
     | "settings"
     | "about"
     | "terms"
@@ -29,15 +30,10 @@ export type Exercise = {
 }
 
 export type Workout = {
+    date: string
     exercises: Exercise[]
 }
 
 export type PlanResponse = {
-    Mon: Workout
-    Tue: Workout
-    Wed: Workout
-    Thu: Workout
-    Fri: Workout
-    Sat: Workout
-    Sun: Workout
+    workouts: Workout[]
 }

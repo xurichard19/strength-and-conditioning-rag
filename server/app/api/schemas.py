@@ -1,3 +1,4 @@
+import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Any
 
@@ -34,6 +35,7 @@ class Exercise(BaseModel):
 
 
 class Workout(BaseModel):
+    date: datetime.date
     exercises: list[Exercise]
 
 
@@ -57,10 +59,4 @@ class PlanRequest(BaseModel):
 class PlanResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    Mon: Workout
-    Tue: Workout
-    Wed: Workout
-    Thu: Workout
-    Fri: Workout
-    Sat: Workout
-    Sun: Workout
+    workouts: list[Workout]

@@ -1,3 +1,5 @@
+import datetime
+
 def format_context(retrieved_data: dict) -> list[str]:
     """ format retrieved chunks """
 
@@ -67,11 +69,11 @@ Rules for handling information: only use the information in the provided context
 workout, do NOT rely on outside knowledge or prior training, and do NOT consider hallucinated or 
 invented facts in your plan.
 
-Your response should create a JSON Monday through Sunday workout plan with each day containing a 
-list of personalized exercises as well as additional notes when necessary."""
+Your response should create a JSON seven day workout plan starting from the given date with each 
+day containing a list of personalized exercises as well as additional notes when necessary."""
 
 
-def build_plan_messages(goal: str, constraints: str, retrieved_data: dict) -> list[dict]:
+def build_plan_messages(date: datetime.date, goal: str, constraints: str, retrieved_data: dict) -> list[dict]:
 
     context = "\n".join(format_context(retrieved_data))
 
@@ -80,6 +82,7 @@ def build_plan_messages(goal: str, constraints: str, retrieved_data: dict) -> li
         {
             "role": "user",
             "content": (
+                f"from date: {date}\n"
                 f"goal: {goal}\n"
                 f"additional_user_constraints: {constraints}\n"
                 f"context: {context}"

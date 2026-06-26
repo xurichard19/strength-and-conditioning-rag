@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app.core.config import get_settings
-from app.retrieval.vectordb import VectorDB
+from app.rag.vector_store import VectorDB
 
 from app.api.routers import chat, plan
 
