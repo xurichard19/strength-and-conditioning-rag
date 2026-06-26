@@ -43,50 +43,31 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.handle_new_user();
 
-create table public.workout_plans (
+create table public.workouts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
+  scheduled_date date not null,
   title text,
-  goal text not null,
-  status text not null default 'draft' check (status in ('draft', 'active', 'archived')),
-  starts_on date,
-  ends_on date,
+  goal text,
+  status text not null default 'scheduled' check (status in ('scheduled', 'completed', 'skipped', 'archived')),
+  notes text,
   source_request jsonb not null default '{}'::jsonb,
   generation_metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-create index workout_plans_user_id_idx on public.workout_plans(user_id);
-create index workout_plans_user_status_idx on public.workout_plans(user_id, status);
+create index workouts_user_id_idx on public.workouts(user_id);
+create index workouts_user_scheduled_date_idx on public.workouts(user_id, scheduled_date);
+create index workouts_user_status_idx on public.workouts(user_id, status);
 
-create trigger set_workout_plans_updated_at
-before update on public.workout_plans
+create trigger set_workouts_updated_at
+before update on public.workouts
 for each row execute function public.set_updated_at();
 
-create table public.workout_plan_days (
+create table public.exercises (
   id uuid primary key default gen_random_uuid(),
-  plan_id uuid not null references public.workout_plans(id) on delete cascade,
-  day_index int not null check (day_index between 0 and 6),
-  label text not null check (label in ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')),
-  scheduled_date date,
-  notes text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (plan_id, day_index),
-  unique (plan_id, label)
-);
-
-create index workout_plan_days_plan_id_idx on public.workout_plan_days(plan_id);
-create index workout_plan_days_scheduled_date_idx on public.workout_plan_days(scheduled_date);
-
-create trigger set_workout_plan_days_updated_at
-before update on public.workout_plan_days
-for each row execute function public.set_updated_at();
-
-create table public.workout_plan_exercises (
-  id uuid primary key default gen_random_uuid(),
-  plan_day_id uuid not null references public.workout_plan_days(id) on delete cascade,
+  workout_id uuid not null references public.workouts(id) on delete cascade,
   order_index int not null default 0,
   name text not null,
   sets int check (sets is null or sets > 0),
@@ -99,17 +80,16 @@ create table public.workout_plan_exercises (
   updated_at timestamptz not null default now()
 );
 
-create index workout_plan_exercises_plan_day_id_idx on public.workout_plan_exercises(plan_day_id);
-create index workout_plan_exercises_order_idx on public.workout_plan_exercises(plan_day_id, order_index);
+create index exercises_workout_id_idx on public.exercises(workout_id);
+create index exercises_order_idx on public.exercises(workout_id, order_index);
 
-create trigger set_workout_plan_exercises_updated_at
-before update on public.workout_plan_exercises
+create trigger set_exercises_updated_at
+before update on public.exercises
 for each row execute function public.set_updated_at();
 
 alter table public.profiles enable row level security;
-alter table public.workout_plans enable row level security;
-alter table public.workout_plan_days enable row level security;
-alter table public.workout_plan_exercises enable row level security;
+alter table public.workouts enable row level security;
+alter table public.exercises enable row level security;
 
 create policy "Users can read own profile"
 on public.profiles
@@ -130,152 +110,87 @@ to authenticated
 using (id = auth.uid())
 with check (id = auth.uid());
 
-create policy "Users can read own workout plans"
-on public.workout_plans
+create policy "Users can read own workouts"
+on public.workouts
 for select
 to authenticated
 using (user_id = auth.uid());
 
-create policy "Users can insert own workout plans"
-on public.workout_plans
+create policy "Users can insert own workouts"
+on public.workouts
 for insert
 to authenticated
 with check (user_id = auth.uid());
 
-create policy "Users can update own workout plans"
-on public.workout_plans
+create policy "Users can update own workouts"
+on public.workouts
 for update
 to authenticated
 using (user_id = auth.uid())
 with check (user_id = auth.uid());
 
-create policy "Users can delete own workout plans"
-on public.workout_plans
+create policy "Users can delete own workouts"
+on public.workouts
 for delete
 to authenticated
 using (user_id = auth.uid());
 
-create policy "Users can read own workout plan days"
-on public.workout_plan_days
+create policy "Users can read own workout exercises"
+on public.exercises
 for select
 to authenticated
 using (
   exists (
     select 1
-    from public.workout_plans
-    where workout_plans.id = workout_plan_days.plan_id
-      and workout_plans.user_id = auth.uid()
+    from public.workouts
+    where workouts.id = exercises.workout_id
+      and workouts.user_id = auth.uid()
   )
 );
 
-create policy "Users can insert own workout plan days"
-on public.workout_plan_days
+create policy "Users can insert own workout exercises"
+on public.exercises
 for insert
 to authenticated
 with check (
   exists (
     select 1
-    from public.workout_plans
-    where workout_plans.id = workout_plan_days.plan_id
-      and workout_plans.user_id = auth.uid()
+    from public.workouts
+    where workouts.id = exercises.workout_id
+      and workouts.user_id = auth.uid()
   )
 );
 
-create policy "Users can update own workout plan days"
-on public.workout_plan_days
+create policy "Users can update own workout exercises"
+on public.exercises
 for update
 to authenticated
 using (
   exists (
     select 1
-    from public.workout_plans
-    where workout_plans.id = workout_plan_days.plan_id
-      and workout_plans.user_id = auth.uid()
+    from public.workouts
+    where workouts.id = exercises.workout_id
+      and workouts.user_id = auth.uid()
   )
 )
 with check (
   exists (
     select 1
-    from public.workout_plans
-    where workout_plans.id = workout_plan_days.plan_id
-      and workout_plans.user_id = auth.uid()
+    from public.workouts
+    where workouts.id = exercises.workout_id
+      and workouts.user_id = auth.uid()
   )
 );
 
-create policy "Users can delete own workout plan days"
-on public.workout_plan_days
+create policy "Users can delete own workout exercises"
+on public.exercises
 for delete
 to authenticated
 using (
   exists (
     select 1
-    from public.workout_plans
-    where workout_plans.id = workout_plan_days.plan_id
-      and workout_plans.user_id = auth.uid()
-  )
-);
-
-create policy "Users can read own workout plan exercises"
-on public.workout_plan_exercises
-for select
-to authenticated
-using (
-  exists (
-    select 1
-    from public.workout_plan_days
-    join public.workout_plans on workout_plans.id = workout_plan_days.plan_id
-    where workout_plan_days.id = workout_plan_exercises.plan_day_id
-      and workout_plans.user_id = auth.uid()
-  )
-);
-
-create policy "Users can insert own workout plan exercises"
-on public.workout_plan_exercises
-for insert
-to authenticated
-with check (
-  exists (
-    select 1
-    from public.workout_plan_days
-    join public.workout_plans on workout_plans.id = workout_plan_days.plan_id
-    where workout_plan_days.id = workout_plan_exercises.plan_day_id
-      and workout_plans.user_id = auth.uid()
-  )
-);
-
-create policy "Users can update own workout plan exercises"
-on public.workout_plan_exercises
-for update
-to authenticated
-using (
-  exists (
-    select 1
-    from public.workout_plan_days
-    join public.workout_plans on workout_plans.id = workout_plan_days.plan_id
-    where workout_plan_days.id = workout_plan_exercises.plan_day_id
-      and workout_plans.user_id = auth.uid()
-  )
-)
-with check (
-  exists (
-    select 1
-    from public.workout_plan_days
-    join public.workout_plans on workout_plans.id = workout_plan_days.plan_id
-    where workout_plan_days.id = workout_plan_exercises.plan_day_id
-      and workout_plans.user_id = auth.uid()
-  )
-);
-
-create policy "Users can delete own workout plan exercises"
-on public.workout_plan_exercises
-for delete
-to authenticated
-using (
-  exists (
-    select 1
-    from public.workout_plan_days
-    join public.workout_plans on workout_plans.id = workout_plan_days.plan_id
-    where workout_plan_days.id = workout_plan_exercises.plan_day_id
-      and workout_plans.user_id = auth.uid()
+    from public.workouts
+    where workouts.id = exercises.workout_id
+      and workouts.user_id = auth.uid()
   )
 );

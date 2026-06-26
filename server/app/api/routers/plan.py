@@ -40,35 +40,35 @@ def save_workout_plan(
     plan: PlanResponse,
     user: AuthUser = Depends(require_user),
 ) -> bool:
-    # todo: persist a generated plan for the authenticated user
-    # todo: validate that all saved rows use user.id, never a client supplied user id
-    # todo: insert workout_plans, workout_plan_days, and workout_plan_exercises in one transaction
-    # todo: return a saved plan response with database ids for the plan, days, and exercises
-    pass
+    supabase = get_supabase_admin()
 
-@router.get('/{id}')
-def get_workout_plan(
-    id: str,
-    user: AuthUser = Depends(require_user),
-):
-    # todo: fetch one saved plan that belongs to user.id
-    # todo: include nested days and exercises in calendar/display order
-    # todo: return 404 when the plan does not exist or does not belong to the user
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail=f"Workout plan lookup is not implemented for id {id}",
-    )
+    for workout in plan.workouts:
+        w_id = None # FIX, DETERMINE BEST HASH/COUNT METHOD
 
+        supabase.table("workouts").insert(
+            {
+                "id": w_id,
+                "user_id": user.id,
+                "scheduled_date": workout.date,
+                "status": "scheduled",
+                # ... handle rest of mandatory fields
+            }
+        ).execute()
 
-@router.delete('/{id}')
-def delete_workout_plan(
-    id: str,
-    user: AuthUser = Depends(require_user),
-):
-    # todo: delete or archive a saved plan that belongs to user.id
-    # todo: decide between hard delete and status='archived' before production
-    # todo: ensure child days and exercises are handled by cascade or explicit transaction logic
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail=f"Workout plan delete is not implemented for id {id}",
-    )
+        for idx, exercise in enumerate(workout.exercises):
+            e_id = None
+
+            supabase.table("exercises").insert(
+                {
+                    "id": e_id,
+                    "workout_id": w_id,
+                    "order_index": idx,
+                    "name": exercise.name,
+                    "sets": exercise.sets,
+                    "reps": exercise.reps,
+                    "notes": exercise.notes, 
+                    #... fill rest of fields
+                }
+            ).execute()
+
+    return True
