@@ -43,7 +43,7 @@ def save_workout_plan(
     supabase = get_supabase_admin()
 
     for workout in plan.workouts:
-        w_id = None # FIX, DETERMINE BEST HASH/COUNT METHOD
+        w_id = None # FIX, DETERMINE BEST HASH/COUNT METHOD, uuid
 
         supabase.table("workouts").insert(
             {

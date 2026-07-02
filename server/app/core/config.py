@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     openai_api_key: str
     cohere_api_key: str
 
+    sentry_dsn: str | None = None
+    sentry_traces_sample_rate: float = 1.0 # change to 0.1 during prod
+
     supabase_url: str
     supabase_publishable_key: str = Field(
         validation_alias=AliasChoices("SUPABASE_PUBLISHABLE_KEY", "SUPABASE_ANON_KEY")
