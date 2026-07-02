@@ -4,7 +4,7 @@ Full-stack RAG assistant for athletes delivering research-backed training insigh
 
 ---
 
-current tech stack: figma -> react + vite + tailwind -> docker compose + nginx -> fastapi + gcp + supabase -> rag agent (langchain + chroma cloud + cohere rerank + openaiapi)
+current tech stack: figma -> react + vite + tailwind -> docker -> nginx -> fastapi + gcp + supabase + sentry -> rag agent (langchain + chroma cloud + cohere rerank + openaiapi)
 
 ---
 
