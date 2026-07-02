@@ -1,6 +1,6 @@
 # Shingo: Strength & Conditioning RAG-based Assistant
 
-Full-stack RAG assistant for athletes delivering research-backed training insights and planning using a two-stage retrieval pipeline (vector search + cross-encoder reranking) for higher accuracy. Document and vector storage using Google Cloud Storage and Chroma Cloud. Auth and database using Google Auth Platform and Supabase. Frontend deployed on Vercel and backend endpoints secured through VPS + Nginx.
+Full-stack RAG assistant for athletes delivering research-backed training insights and planning using a two-stage retrieval pipeline (vector search + cross-encoder reranking) for higher accuracy. Document and vector storage using Google Cloud Storage and Chroma Cloud. Auth, database, and logging using Google Auth Platform, Supabase, and Sentry. Frontend deployed on Vercel and backend endpoints secured through VPS + Nginx.
 
 ---
 
