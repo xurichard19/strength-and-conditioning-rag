@@ -1,5 +1,6 @@
 import json
 import datetime
+import sentry_sdk
 from typing import Any
 
 from app.api.schemas import PlanResponse
@@ -20,16 +21,26 @@ def _generate_context(
     if not query.strip():
         raise ValueError("query text is required")
 
-    context = db.query_system_docs(query, top_k)
-    return rerank_chroma_results(query, context, top_n) if top_n else rerank_chroma_results(query, context)
+    with sentry_sdk.start_span(op="rag.retrieve", name="chroma query"):
+        context = db.query_system_docs(query, top_k)
+
+    with sentry_sdk.start_span(op="rag.rerank", name="cohere rerank"):
+        context = rerank_chroma_results(query, context, top_n) if top_n else rerank_chroma_results(query, context)
+
+    return context
 
 
 def answer_question(query: str, db: VectorDB) -> tuple[str, dict]:
     """ answer single question """
 
-    context = _generate_context(query, db)
-    messages = build_chat_messages(query, context)
-    response = generate_response(messages)
+    with sentry_sdk.start_span(op="rag.context", name="generate context"):
+        context = _generate_context(query, db)
+
+    with sentry_sdk.start_span(op="rag.prompt", name="build prompt"):
+        messages = build_chat_messages(query, context)
+
+    with sentry_sdk.start_span(op="ai.openai", name="openai response"):
+        response = generate_response(messages)
 
     return response, context
 
@@ -42,10 +53,14 @@ def generate_plan(date: datetime.date, goal: str, constraints: dict[str, Any], d
 
     constraints_json = json.dumps(constraints)
 
-    context = _generate_context(f"goal: {goal}, constraints: {constraints_json}", db, top_k=30, top_n=20)
-    messages = build_plan_messages(date, goal, constraints_json, context)
+    with sentry_sdk.start_span(op="rag.context", name="generate context"):
+        context = _generate_context(f"goal: {goal}, constraints: {constraints_json}", db, top_k=30, top_n=20)
 
-    return generate_structured_response(
-        messages=messages,
-        response_model=PlanResponse,
-    )
+    with sentry_sdk.start_span(op="rag.prompt", name="build prompt"):
+        messages = build_plan_messages(date, goal, constraints_json, context)
+
+    with sentry_sdk.start_span(op="ai.openai", name="openai structured plan"):
+        return generate_structured_response(
+            messages=messages,
+            response_model=PlanResponse,
+        )
