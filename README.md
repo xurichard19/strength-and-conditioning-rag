@@ -5,13 +5,11 @@ Full-stack RAG assistant for athletes delivering research-backed training insigh
 ---
 
 ```mermaid
-flowchart TD
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '13px'}, 'flowchart': {'nodeSpacing': 25, 'rankSpacing': 40, 'curve': 'basis', 'subGraphTitleMargin': {'top': 8, 'bottom': 8}}}}%%
+flowchart LR
     User(["User"]) --> FE["React frontend<br/>(Vite, Vercel)"]
     FE --> Nginx["Nginx<br/>reverse proxy"]
     Nginx --> API["FastAPI backend<br/>RAG orchestration"]
-
-    API --> Auth[("Supabase<br/>auth & data")]
-    API --> Log[("Sentry<br/>error/perf logging")]
 
     API --> Retrieve["Vector search<br/>(Chroma Cloud)"]
     Retrieve --> Rerank["Rerank<br/>(Cohere cross-encoder)"]
@@ -19,10 +17,13 @@ flowchart TD
     Gen --> API
     API --> FE
 
+    API -.-> Auth[("Supabase<br/>auth & data")]
+    API -.-> Log[("Sentry<br/>error/perf logging")]
+
     subgraph Ingestion["Offline indexing"]
         Docs[("GCS bucket<br/>source docs")] --> Index["index_system_docs.py"]
-        Index --> Retrieve
     end
+    Index --> Retrieve
 
     style Ingestion fill:none,stroke-dasharray: 5 5
 ```
