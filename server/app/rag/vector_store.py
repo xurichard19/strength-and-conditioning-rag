@@ -17,10 +17,25 @@ class VectorDB:
 
 
     def __len__(self) -> int:
-        try: return self.client.get_collection(self.settings.system_collection_name).count()
+        try: return self.system_doc_count()
         except (ValueError, NotFoundError): return 0
 
     
+    def system_doc_count(self) -> int:
+        """ return indexed system document chunk count """
+        return self.client.get_collection(self.settings.system_collection_name).count()
+
+
+    def system_docs_ready(self) -> tuple[bool, int]:
+        """ return whether the system collection exists and contains chunks """
+        try:
+            count = self.system_doc_count()
+        except (ValueError, NotFoundError):
+            return False, 0
+
+        return count > 0, count
+
+
     def upsert_document(self):
         #...
         pass

@@ -82,5 +82,5 @@ def verify_supabase_token(access_token: str) -> AuthUser:
 
     email = payload.get("email")
     user = AuthUser(id=user_id, email=email if isinstance(email, str) else None)
-    logger.info("authentication accepted user_id=%s email=%s", user.id, user.email)
+    logger.info("authentication accepted user_id=%s", user.id)
     return user

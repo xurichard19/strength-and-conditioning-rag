@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api.schemas import ChatRequest, ChatResponse, Source
 from app.auth.supabase import AuthUser, require_user
@@ -17,10 +17,23 @@ def chat_llm(
     request: Request,
     user: AuthUser = Depends(require_user),
 ) -> ChatResponse:
-    logger.info("authenticated chat requested user_id=%s email=%s", user.id, user.email)
+    logger.info("authenticated chat requested user_id=%s", user.id)
 
     db = request.app.state.db
-    response, context = answer_question(chat.text, db)
+    try:
+        response, context = answer_question(chat.text, db)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.exception("chat generation failed user_id=%s", user.id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Chat service is temporarily unavailable",
+        ) from exc
+
     sources = []
 
     for id, document, metadata in zip(context["ids"], context["documents"], context["metadatas"]):
