@@ -5,7 +5,7 @@ Full-stack RAG assistant for athletes delivering research-backed training insigh
 ---
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '13px'}, 'flowchart': {'nodeSpacing': 25, 'rankSpacing': 40, 'curve': 'basis', 'subGraphTitleMargin': {'top': 8, 'bottom': 8}}}}%%
+%%{init: {'flowchart': {'nodeSpacing': 25, 'rankSpacing': 40, 'curve': 'basis', 'subGraphTitleMargin': {'top': 8, 'bottom': 8}}}}%%
 flowchart LR
     User(["User"]) --> FE["React frontend<br/>(Vite, Vercel)"]
     FE --> Nginx["Nginx<br/>reverse proxy"]
