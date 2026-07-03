@@ -62,7 +62,7 @@ def generate_streamed_response(model, query: str):
 
 model = get_model()
 agent = get_agent(model, [get_weather, get_location])
-response = generate_chat_response(agent, "hey hows the weather in london and paris")
+response = generate_chat_response(agent, "create a picture of a cat")
 for i in response["messages"]:
     print("\n\n")
     print([i])
