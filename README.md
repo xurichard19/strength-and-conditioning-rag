@@ -4,7 +4,28 @@ Full-stack RAG assistant for athletes delivering research-backed training insigh
 
 ---
 
-current tech stack: figma -> react + vite + tailwind -> docker -> nginx -> fastapi + gcp + supabase + sentry -> rag agent (langchain + chroma cloud + cohere rerank + openaiapi)
+```mermaid
+flowchart TD
+    User(["User"]) --> FE["React frontend<br/>(Vite, Vercel)"]
+    FE --> Nginx["Nginx<br/>reverse proxy"]
+    Nginx --> API["FastAPI backend<br/>RAG orchestration"]
+
+    API --> Auth[("Supabase<br/>auth & data")]
+    API --> Log[("Sentry<br/>error/perf logging")]
+
+    API --> Retrieve["Vector search<br/>(Chroma Cloud)"]
+    Retrieve --> Rerank["Rerank<br/>(Cohere cross-encoder)"]
+    Rerank --> Gen["LLM generation<br/>grounded answer"]
+    Gen --> API
+    API --> FE
+
+    subgraph Ingestion["Offline indexing"]
+        Docs[("GCS bucket<br/>source docs")] --> Index["index_system_docs.py"]
+        Index --> Retrieve
+    end
+
+    style Ingestion fill:none,stroke-dasharray: 5 5
+```
 
 ---
 
