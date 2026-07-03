@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 class AuthUser:
     id: str
     email: str | None
+    access_token: str
 
 
 def require_user(
@@ -81,6 +82,6 @@ def verify_supabase_token(access_token: str) -> AuthUser:
         )
 
     email = payload.get("email")
-    user = AuthUser(id=user_id, email=email if isinstance(email, str) else None)
+    user = AuthUser(id=user_id, email=email if isinstance(email, str) else None, access_token=access_token)
     logger.info("authentication accepted user_id=%s", user.id)
     return user

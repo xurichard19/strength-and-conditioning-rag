@@ -36,6 +36,7 @@ class ChatResponse(BaseModel):
 
 
 class Exercise(BaseModel):
+    date: datetime.date
     name: str
     reps: int | str | None = None
     sets: int | None = None
@@ -43,7 +44,6 @@ class Exercise(BaseModel):
 
 
 class Workout(BaseModel):
-    date: datetime.date
     exercises: list[Exercise]
 
 

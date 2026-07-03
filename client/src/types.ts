@@ -23,6 +23,7 @@ export type ChatResponse = {
 }
 
 export type Exercise = {
+    date: string
     name: string
     reps?: number | string | null
     sets?: number | null
@@ -30,7 +31,6 @@ export type Exercise = {
 }
 
 export type Workout = {
-    date: string
     exercises: Exercise[]
 }
 

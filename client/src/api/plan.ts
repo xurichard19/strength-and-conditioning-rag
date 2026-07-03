@@ -34,3 +34,23 @@ export async function submitPlan(
 
   return response.json() as Promise<PlanResponse>
 }
+
+export async function savePlan(
+  plan: PlanResponse,
+  accessToken?: string,
+): Promise<boolean> {
+  const response = await fetch(apiPath('/plan'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
+    body: JSON.stringify(plan),
+  })
+
+  if (!response.ok) {
+    throw new ApiRequestError('Plan save failed', response.status)
+  }
+
+  return response.json() as Promise<boolean>
+}

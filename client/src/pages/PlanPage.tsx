@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from "react"
 import { ApiRequestError } from "../api/errors"
-import { submitPlan } from "../api/plan"
+import { savePlan, submitPlan } from "../api/plan"
 import { saveLatestPlanWorkouts } from "../lib/workoutStorage"
 import type { PlanResponse } from "../types"
 
@@ -73,6 +73,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                 experience_level: experienceLevel,
                 ...(trimmedConstraints ? { constraints: trimmedConstraints } : {}),
             }, accessToken)
+            await savePlan(data, accessToken)
             setPlan(data)
             saveLatestPlanWorkouts(data.workouts)
         } catch (error) {
@@ -190,7 +191,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                         <div className="grid gap-4 xl:grid-cols-3">
                             {visibleWorkouts.map((workout, dayIndex) => (
                                 <article
-                                    key={workout.date}
+                                    key={`${workout.exercises[0]?.date ?? "workout"}-${dayIndex}`}
                                     className="flex min-h-80 flex-col rounded-lg border border-[var(--border)] bg-[var(--social-bg)]"
                                 >
                                     <div className="border-b border-[var(--border)] bg-[var(--bg)] p-4">
@@ -200,11 +201,11 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                                                     Day {workoutPage * workoutsPerPage + dayIndex + 1}
                                                 </p>
                                                 <h3 className="m-0 mt-1 text-lg font-semibold text-[var(--text-h)]">
-                                                    {formatWorkoutDate(workout.date)}
+                                                    {formatWorkoutDate(workout.exercises[0]?.date ?? "")}
                                                 </h3>
                                             </div>
                                             <span className="shrink-0 rounded-full border border-[var(--border)] px-3 py-1 text-xs font-semibold text-[var(--text-h)]">
-                                                {formatShortDate(workout.date)}
+                                                {formatShortDate(workout.exercises[0]?.date ?? "")}
                                             </span>
                                         </div>
                                     </div>
