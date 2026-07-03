@@ -70,7 +70,8 @@ workout, do NOT rely on outside knowledge or prior training, and do NOT consider
 invented facts in your plan.
 
 Your response should create a JSON seven day workout plan starting from the given date with each 
-day containing a list of personalized exercises as well as additional notes when necessary."""
+workout containing a list of personalized exercises. Each exercise must include the date it is 
+scheduled for, as well as additional notes when necessary."""
 
 
 def build_plan_messages(date: datetime.date, goal: str, constraints: str, retrieved_data: dict) -> list[dict]:

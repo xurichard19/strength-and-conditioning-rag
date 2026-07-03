@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { getLatestPlanWorkouts } from "../lib/workoutStorage"
-import type { Workout } from "../types"
+import type { Exercise, Workout } from "../types"
 
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
@@ -50,10 +50,13 @@ function buildCalendarDates(displayDate: Date) {
     })
 }
 
-function groupWorkoutsByDate(workouts: Workout[]) {
-    return workouts.reduce<Record<string, Workout[]>>((groupedWorkouts, workout) => {
-        groupedWorkouts[workout.date] = [...(groupedWorkouts[workout.date] ?? []), workout]
-        return groupedWorkouts
+function groupExercisesByDate(workouts: Workout[]) {
+    return workouts.reduce<Record<string, Exercise[]>>((groupedExercises, workout) => {
+        workout.exercises.forEach((exercise) => {
+            groupedExercises[exercise.date] = [...(groupedExercises[exercise.date] ?? []), exercise]
+        })
+
+        return groupedExercises
     }, {})
 }
 
@@ -63,9 +66,9 @@ export function CalendarPage() {
     const [displayDate, setDisplayDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
     const [selectedDate, setSelectedDate] = useState(todayKey)
     const workouts = useMemo(() => getLatestPlanWorkouts(), [])
-    const workoutsByDate = useMemo(() => groupWorkoutsByDate(workouts), [workouts])
+    const exercisesByDate = useMemo(() => groupExercisesByDate(workouts), [workouts])
     const calendarDates = useMemo(() => buildCalendarDates(displayDate), [displayDate])
-    const selectedWorkouts = workoutsByDate[selectedDate] ?? []
+    const selectedExercises = exercisesByDate[selectedDate] ?? []
 
     const showPreviousMonth = () => {
         setDisplayDate((date) => new Date(date.getFullYear(), date.getMonth() - 1, 1))
@@ -136,7 +139,7 @@ export function CalendarPage() {
                     <div className="grid grid-cols-7">
                         {calendarDates.map((date) => {
                             const dateKey = toDateKey(date)
-                            const dateWorkouts = workoutsByDate[dateKey] ?? []
+                            const dateExercises = exercisesByDate[dateKey] ?? []
                             const isCurrentMonth = date.getMonth() === displayDate.getMonth()
                             const isToday = dateKey === todayKey
                             const isSelected = dateKey === selectedDate
@@ -158,24 +161,24 @@ export function CalendarPage() {
                                         >
                                             {date.getDate()}
                                         </span>
-                                        {dateWorkouts.length > 0 && (
+                                        {dateExercises.length > 0 && (
                                             <span className="rounded-full bg-[var(--accent-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--accent)]">
-                                                {dateWorkouts.length}
+                                                {dateExercises.length}
                                             </span>
                                         )}
                                     </div>
                                     <div className="grid gap-1">
-                                        {dateWorkouts.slice(0, 2).map((workout, index) => (
+                                        {dateExercises.slice(0, 2).map((exercise, index) => (
                                             <span
                                                 key={`${dateKey}-${index}`}
                                                 className="truncate rounded-md border border-[var(--accent-border)] bg-[var(--bg)] px-2 py-1 text-xs font-semibold text-[var(--text-h)]"
                                             >
-                                                {workout.exercises[0]?.name ?? "Workout"}
+                                                {exercise.name}
                                             </span>
                                         ))}
-                                        {dateWorkouts.length > 2 && (
+                                        {dateExercises.length > 2 && (
                                             <span className="text-xs font-semibold text-[var(--text)]">
-                                                +{dateWorkouts.length - 2} more
+                                                +{dateExercises.length - 2} more
                                             </span>
                                         )}
                                     </div>
@@ -192,40 +195,28 @@ export function CalendarPage() {
                     <h2 className="mt-2 text-2xl font-semibold text-[var(--text-h)]">{formatSelectedDate(selectedDate)}</h2>
 
                     <div className="mt-5 grid gap-3">
-                        {selectedWorkouts.length > 0 ? (
-                            selectedWorkouts.map((workout, workoutIndex) => (
+                        {selectedExercises.length > 0 ? (
+                            selectedExercises.map((exercise, exerciseIndex) => (
                                 <article
-                                    key={`${selectedDate}-${workoutIndex}`}
-                                    className="rounded-md border border-[var(--border)] bg-[var(--social-bg)] p-4"
+                                    key={`${exercise.name}-${exerciseIndex}`}
+                                    className="rounded-md border border-[var(--border)] bg-[var(--social-bg)] p-4 text-sm"
                                 >
-                                    <h3 className="m-0 text-base font-semibold text-[var(--text-h)]">
-                                        Session {workoutIndex + 1}
-                                    </h3>
-                                    <ul className="mt-3 grid gap-2 p-0">
-                                        {workout.exercises.map((exercise, exerciseIndex) => (
-                                            <li
-                                                key={`${exercise.name}-${exerciseIndex}`}
-                                                className="list-none rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 text-sm"
-                                            >
-                                                <div className="font-semibold text-[var(--text-h)]">{exercise.name}</div>
-                                                <div className="mt-1 flex flex-wrap gap-2">
-                                                    {exercise.sets != null && (
-                                                        <span className="rounded-full bg-[var(--social-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--text-h)]">
-                                                            {exercise.sets} sets
-                                                        </span>
-                                                    )}
-                                                    {exercise.reps != null && (
-                                                        <span className="rounded-full bg-[var(--social-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--text-h)]">
-                                                            {exercise.reps} reps
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                {exercise.notes && (
-                                                    <p className="m-0 mt-2 text-sm leading-6 text-[var(--text)]">{exercise.notes}</p>
-                                                )}
-                                            </li>
-                                        ))}
-                                    </ul>
+                                    <div className="font-semibold text-[var(--text-h)]">{exercise.name}</div>
+                                    <div className="mt-1 flex flex-wrap gap-2">
+                                        {exercise.sets != null && (
+                                            <span className="rounded-full bg-[var(--bg)] px-2 py-0.5 text-xs font-semibold text-[var(--text-h)]">
+                                                {exercise.sets} sets
+                                            </span>
+                                        )}
+                                        {exercise.reps != null && (
+                                            <span className="rounded-full bg-[var(--bg)] px-2 py-0.5 text-xs font-semibold text-[var(--text-h)]">
+                                                {exercise.reps} reps
+                                            </span>
+                                        )}
+                                    </div>
+                                    {exercise.notes && (
+                                        <p className="m-0 mt-2 text-sm leading-6 text-[var(--text)]">{exercise.notes}</p>
+                                    )}
                                 </article>
                             ))
                         ) : (

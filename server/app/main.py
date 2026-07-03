@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 import sentry_sdk
@@ -70,6 +70,42 @@ app.add_middleware(
 @app.get("/")
 async def root():
     return {"app": settings.app_name}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+@app.get("/ready")
+async def ready(request: Request):
+    db = getattr(request.app.state, "db", None)
+    if db is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Vector store is not initialized",
+        )
+
+    try:
+        is_ready, chunk_count = db.system_docs_ready()
+    except Exception as exc:
+        logger.exception("readiness check failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Vector store is unavailable",
+        ) from exc
+
+    if not is_ready:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="System document collection is not indexed",
+        )
+
+    return {
+        "status": "ready",
+        "system_collection_name": settings.system_collection_name,
+        "system_document_chunks": chunk_count,
+    }
 
 
 if settings.environment == "development":

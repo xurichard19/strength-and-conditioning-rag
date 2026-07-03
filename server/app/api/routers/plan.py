@@ -1,11 +1,12 @@
 import logging
 from datetime import date
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api.schemas import PlanRequest, PlanResponse
 from app.auth.supabase import AuthUser, require_user
-from app.db.supabase import get_supabase_admin
+from app.db.supabase import SupabaseDataError, insert_rows
 from app.rag.pipeline import generate_plan
 
 
@@ -19,7 +20,7 @@ def generate_workout_plan(
     request: Request,
     user: AuthUser = Depends(require_user),
 ) -> PlanResponse:
-    logger.info("authenticated plan requested user_id=%s email=%s", user.id, user.email)
+    logger.info("authenticated plan requested user_id=%s", user.id)
 
     db = request.app.state.db
     try:
@@ -29,6 +30,12 @@ def generate_workout_plan(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.exception("plan generation failed user_id=%s", user.id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Plan generation service is temporarily unavailable",
         ) from exc
 
     logger.info("authenticated plan completed user_id=%s", user.id)
@@ -40,35 +47,41 @@ def save_workout_plan(
     plan: PlanResponse,
     user: AuthUser = Depends(require_user),
 ) -> bool:
-    supabase = get_supabase_admin()
+    try:
+        for workout in plan.workouts:
+            w_id = str(uuid4())
 
-    for workout in plan.workouts:
-        w_id = None # FIX, DETERMINE BEST HASH/COUNT METHOD, uuid
-
-        supabase.table("workouts").insert(
-            {
-                "id": w_id,
-                "user_id": user.id,
-                "scheduled_date": workout.date,
-                "status": "scheduled",
-                # ... handle rest of mandatory fields
-            }
-        ).execute()
-
-        for idx, exercise in enumerate(workout.exercises):
-            e_id = None
-
-            supabase.table("exercises").insert(
+            insert_rows(
+                "workouts",
                 {
-                    "id": e_id,
+                    "id": w_id,
+                    "user_id": user.id,
+                    "status": "scheduled",
+                },
+                user.access_token,
+            )
+
+            exercise_rows = [
+                {
+                    "id": str(uuid4()),
                     "workout_id": w_id,
+                    "scheduled_date": exercise.date.isoformat(),
                     "order_index": idx,
                     "name": exercise.name,
                     "sets": exercise.sets,
-                    "reps": exercise.reps,
-                    "notes": exercise.notes, 
-                    #... fill rest of fields
+                    "reps": str(exercise.reps) if exercise.reps is not None else None,
+                    "notes": exercise.notes,
                 }
-            ).execute()
+                for idx, exercise in enumerate(workout.exercises)
+            ]
+
+            if exercise_rows:
+                insert_rows("exercises", exercise_rows, user.access_token)
+    except SupabaseDataError as exc:
+        logger.exception("plan save failed user_id=%s", user.id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Plan save failed",
+        ) from exc
 
     return True

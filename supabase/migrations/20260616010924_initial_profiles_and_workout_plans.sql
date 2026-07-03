@@ -46,7 +46,6 @@ for each row execute function public.handle_new_user();
 create table public.workouts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
-  scheduled_date date not null,
   title text,
   goal text,
   status text not null default 'scheduled' check (status in ('scheduled', 'completed', 'skipped', 'archived')),
@@ -58,7 +57,6 @@ create table public.workouts (
 );
 
 create index workouts_user_id_idx on public.workouts(user_id);
-create index workouts_user_scheduled_date_idx on public.workouts(user_id, scheduled_date);
 create index workouts_user_status_idx on public.workouts(user_id, status);
 
 create trigger set_workouts_updated_at
@@ -68,6 +66,7 @@ for each row execute function public.set_updated_at();
 create table public.exercises (
   id uuid primary key default gen_random_uuid(),
   workout_id uuid not null references public.workouts(id) on delete cascade,
+  scheduled_date date not null,
   order_index int not null default 0,
   name text not null,
   sets int check (sets is null or sets > 0),
@@ -81,6 +80,7 @@ create table public.exercises (
 );
 
 create index exercises_workout_id_idx on public.exercises(workout_id);
+create index exercises_scheduled_date_idx on public.exercises(scheduled_date);
 create index exercises_order_idx on public.exercises(workout_id, order_index);
 
 create trigger set_exercises_updated_at

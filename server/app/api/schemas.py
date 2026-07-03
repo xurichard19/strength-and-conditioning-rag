@@ -1,6 +1,14 @@
 import datetime
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Any
+import json
+from typing import Any, Self
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+MAX_CHAT_TEXT_LENGTH = 4000
+MAX_PLAN_GOAL_LENGTH = 1000
+MAX_PLAN_EXTRA_KEYS = 20
+MAX_PLAN_EXTRA_JSON_LENGTH = 4000
 
 
 class Source(BaseModel):
@@ -11,7 +19,7 @@ class Source(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    text: str
+    text: str = Field(min_length=1, max_length=MAX_CHAT_TEXT_LENGTH)
 
     @field_validator("text")
     @classmethod
@@ -28,6 +36,7 @@ class ChatResponse(BaseModel):
 
 
 class Exercise(BaseModel):
+    date: datetime.date
     name: str
     reps: int | str | None = None
     sets: int | None = None
@@ -35,14 +44,13 @@ class Exercise(BaseModel):
 
 
 class Workout(BaseModel):
-    date: datetime.date
     exercises: list[Exercise]
 
 
 class PlanRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    goal: str = Field(min_length=1)
+    goal: str = Field(min_length=1, max_length=MAX_PLAN_GOAL_LENGTH)
 
     @field_validator("goal")
     @classmethod
@@ -51,9 +59,23 @@ class PlanRequest(BaseModel):
         if not stripped:
             raise ValueError("goal is required")
         return stripped
+
+    @model_validator(mode="after")
+    def user_factors_must_be_bounded(self) -> Self:
+        extra = self.model_extra or {}
+        if len(extra) > MAX_PLAN_EXTRA_KEYS:
+            raise ValueError(f"plan factors cannot include more than {MAX_PLAN_EXTRA_KEYS} fields")
+
+        serialized = json.dumps(extra, separators=(",", ":"))
+        if len(serialized) > MAX_PLAN_EXTRA_JSON_LENGTH:
+            raise ValueError(
+                f"plan factors cannot exceed {MAX_PLAN_EXTRA_JSON_LENGTH} serialized characters"
+            )
+
+        return self
     
     def user_factors(self) -> dict[str, Any]:
-        return self.model_extra or {}
+        return dict(self.model_extra or {})
 
 
 class PlanResponse(BaseModel):
