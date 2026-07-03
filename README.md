@@ -30,7 +30,7 @@ flowchart LR
 
 ---
 
-Future work includes completing a hardened backend deployment, adding retrieval and generation evals to measure answer quality, expanding automated test coverage across the API and frontend, and improving production design features such as source citation UX, admin tools for document ingestion/reindexing, user-specific program history, and monitoring dashboards for latency, errors, and retrieval performance.
+Working on RAG eval, test suites, and CI/CD tooling...
 
 ---
 
