@@ -2,12 +2,14 @@ services:
   proxy:
     image: nginx:alpine
     container_name: shingo-proxy
+    restart: unless-stopped
     ports:
-      - "80:80"
+      - "8000:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   api:
     image: shingo-backend
@@ -15,14 +17,11 @@ services:
       context: .
       dockerfile: server/Dockerfile
     container_name: shingo-api
+    restart: unless-stopped
     expose:
       - "8000"
     env_file:
       - .env
-    environment:
-      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcp-sa.json
-    volumes:
-      - ./secrets/gcp-sa.json:/run/secrets/gcp-sa.json:ro
 
   api-local:
     image: shingo-backend
@@ -30,6 +29,7 @@ services:
       context: .
       dockerfile: server/Dockerfile
     container_name: shingo-api-local
+    user: root
     ports:
       - "8000:8000"
     env_file:
@@ -44,6 +44,7 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile
+    user: root
     env_file:
       - .env
     environment:

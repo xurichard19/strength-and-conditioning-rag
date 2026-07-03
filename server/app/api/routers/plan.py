@@ -19,7 +19,7 @@ def generate_workout_plan(
     request: Request,
     user: AuthUser = Depends(require_user),
 ) -> PlanResponse:
-    logger.info("authenticated plan requested user_id=%s email=%s", user.id, user.email)
+    logger.info("authenticated plan requested user_id=%s", user.id)
 
     db = request.app.state.db
     try:
@@ -29,6 +29,12 @@ def generate_workout_plan(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.exception("plan generation failed user_id=%s", user.id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Plan generation service is temporarily unavailable",
         ) from exc
 
     logger.info("authenticated plan completed user_id=%s", user.id)
