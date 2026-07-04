@@ -59,19 +59,21 @@ def generate_streamed_response(model, query: str):
         yield chunk.text
 
 
-
+"""
 model = get_model()
 agent = get_agent(model, [get_weather, get_location])
 response = generate_chat_response(agent, "create a picture of a cat")
 for i in response["messages"]:
     print("\n\n")
-    print([i])
+    print([i])"""
+
+
 
 
 """for token in generate_streamed_response(model, "how do i back cookie"):
     print(token, end="", flush=True)"""
 
-#  from root: python -m app.rag.devtest
+#  from root: python -m app.agent.devtest
 
 # see https://docs.langchain.com/oss/python/langchain/models#structured-output for structured
 
@@ -100,3 +102,34 @@ two workflows: chat and plan
 produce a structured output for plan
 (4) sources should be passed up along with the response
 """
+
+
+rewrite_model = init_chat_model(
+    'gpt-4o-mini',
+    api_key=settings.openai_api_key,
+    temperature=0.1
+)
+from langchain.messages import SystemMessage, HumanMessage
+system_prompt = SystemMessage(
+    """"
+    You are a personal strength and conditioning assistant. Your role is to rephrase user queries into RAG/web search 
+    compatible prompts by extracting keywords and meaning. You offer two services: a conversational CHAT service and 
+    a workout programming PLAN service. The guidance for the services are as follows...
+
+    CHAT: Given a user question and message history, you should extract key information from the conversation history 
+    between the user and the agent relevant to the current question. You should rewrite the user's prompt to make it 
+    search-friendly. The new prompt should retain the core meaning of the user's request (no significant changes, 
+    simple rewording/rephrasing is okay) and include relevant information from the conversation history.
+
+    PROMPT: Given a user goal and various constraints, you should create a prompt for generating a workout based on 
+    the user's needs. Your search-friendly prompt should incorporate the keywords from the user's request while 
+    considering qualities of a reasonable workout when applicable (ex. periodization, peaking, progressive overload, 
+    recovery), insert sports-specific terms when applicable.
+    """
+)
+
+query = "CHAT: hey"
+conversation = [system_prompt] + [] + [HumanMessage(query)]
+
+response = rewrite_model.invoke(conversation)
+print(response)
