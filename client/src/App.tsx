@@ -94,7 +94,12 @@ function AppContent() {
                 onUnauthorized={auth.handleUnauthorized}
               />
             )}
-            {currentPage === 'calendar' && <CalendarPage />}
+            {currentPage === 'calendar' && (
+              <CalendarPage
+                accessToken={auth.session.access_token}
+                onUnauthorized={auth.handleUnauthorized}
+              />
+            )}
             {currentPage === 'settings' && <SettingsPage userEmail={auth.session.user.email} />}
             {isInfoPage(currentPage) && <InfoPage page={currentPage} />}
           </div>

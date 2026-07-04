@@ -1,7 +1,6 @@
 import { type FormEvent, useState } from "react"
 import { ApiRequestError } from "../api/errors"
 import { savePlan, submitPlan } from "../api/plan"
-import { saveLatestPlanWorkouts } from "../lib/workoutStorage"
 import type { PlanResponse } from "../types"
 
 const workoutsPerPage = 3
@@ -75,7 +74,6 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
             }, accessToken)
             await savePlan(data, accessToken)
             setPlan(data)
-            saveLatestPlanWorkouts(data.workouts)
         } catch (error) {
             if (error instanceof ApiRequestError && error.status === 401) {
                 onUnauthorized()

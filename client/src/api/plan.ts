@@ -39,7 +39,7 @@ export async function savePlan(
   plan: PlanResponse,
   accessToken?: string,
 ): Promise<boolean> {
-  const response = await fetch(apiPath('/plan'), {
+  const response = await fetch(apiPath('/plan/'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -53,4 +53,19 @@ export async function savePlan(
   }
 
   return response.json() as Promise<boolean>
+}
+
+export async function fetchSavedPlan(accessToken?: string): Promise<PlanResponse> {
+  const response = await fetch(apiPath('/plan/'), {
+    method: 'GET',
+    headers: {
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
+  })
+
+  if (!response.ok) {
+    throw new ApiRequestError('Plan load failed', response.status)
+  }
+
+  return response.json() as Promise<PlanResponse>
 }
