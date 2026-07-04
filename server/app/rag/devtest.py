@@ -71,6 +71,32 @@ for i in response["messages"]:
 """for token in generate_streamed_response(model, "how do i back cookie"):
     print(token, end="", flush=True)"""
 
-#  from root: python -m app.rag.langchain_wrapped
+#  from root: python -m app.rag.devtest
 
 # see https://docs.langchain.com/oss/python/langchain/models#structured-output for structured
+
+
+
+"""
+
+1) create nodes in langchain
+2) wire up with langgraph
+
+
+SCRAPPED: outdated, we want agentic action
+two workflows: chat and plan
+
+(chat only) pull conversation history from supabase if exists, trim context window to constant size
+(1) query rewriting langchain model accepts incoming query, rewrites chat prompts to compact context, rewrites plan prompts to structure as a plan
+(2) central agent with tools [rag, rerank, online search], agent should run rag and online search in parallel and optionally rerank when under threshold
+    (2.1) rag is initialized with: read documents and produce langchain documents, run text splitter, open langchain chroma client
+    (see https://reference.langchain.com/python/langchain-chroma/vectorstores/Chroma), save to chroma, create rrf ranking
+    (2.2) rag is called like: given the rewritten prompt, we create a search strategy, run hybrid search on chroma client, return results,
+    see https://reference.langchain.com/python/langchain-chroma/vectorstores/Chroma/hybrid_search
+    (2.3) rerank tool uses cohere directly, we should use langchain if possible
+    (2.4) online search is supported with tavily, we wrap into a tool, description should make it clear to reject irrelevant searches
+    (2.5) we should bundle all sources of information once complete (rag takes precedence, cut online search if taking too long) and provide to final models
+(3) we have two different final models, one for chat one for plan, the model should stream a conversational response for chat and the other should
+produce a structured output for plan
+(4) sources should be passed up along with the response
+"""
