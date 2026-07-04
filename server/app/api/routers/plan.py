@@ -4,14 +4,60 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from app.api.schemas import PlanRequest, PlanResponse
+from app.api.schemas import Exercise, PlanRequest, PlanResponse, Workout
 from app.auth.supabase import AuthUser, require_user
-from app.db.supabase import SupabaseDataError, insert_rows
+from app.db.supabase import SupabaseDataError, insert_rows, select_rows
 from app.rag.pipeline import generate_plan
 
 
 router = APIRouter(prefix='/plan')
 logger = logging.getLogger(__name__)
+
+
+@router.get('', include_in_schema=False)
+@router.get('/')
+def list_saved_workout_plan(
+    user: AuthUser = Depends(require_user),
+) -> PlanResponse:
+    try:
+        rows = select_rows(
+            "exercises",
+            [
+                ("select", "workout_id,scheduled_date,order_index,name,sets,reps,notes"),
+                ("order", "scheduled_date.asc,order_index.asc"),
+            ],
+            user.access_token,
+        )
+    except SupabaseDataError as exc:
+        logger.exception("plan load failed user_id=%s", user.id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Plan load failed",
+        ) from exc
+
+    exercises_by_workout: dict[str, list[Exercise]] = {}
+    for row in rows:
+        workout_id = row.get("workout_id")
+        if not isinstance(workout_id, str) or not workout_id:
+            continue
+
+        exercises_by_workout.setdefault(workout_id, []).append(
+            Exercise(
+                date=row["scheduled_date"],
+                name=row["name"],
+                sets=row.get("sets"),
+                reps=row.get("reps"),
+                notes=row.get("notes"),
+            )
+        )
+
+    return PlanResponse(
+        workouts=[
+            Workout(exercises=exercises)
+            for exercises in exercises_by_workout.values()
+            if exercises
+        ]
+    )
 
 
 @router.post('/generate')
@@ -42,7 +88,8 @@ def generate_workout_plan(
     return plan
 
 
-@router.post('')
+@router.post('', include_in_schema=False)
+@router.post('/')
 def save_workout_plan(
     plan: PlanResponse,
     user: AuthUser = Depends(require_user),
