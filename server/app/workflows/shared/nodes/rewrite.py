@@ -1,7 +1,7 @@
 from langchain.chat_models import init_chat_model
 from langchain.messages import HumanMessage, SystemMessage
 
-from app.core.config import get_settings
+from app.config import get_settings
 
 from app.agent.state import ChatState, PlanState, Query
 
@@ -29,13 +29,13 @@ chat_system_prompt = SystemMessage(
     - Preserve the user's original meaning.
     - Add relevant context from prior messages only when it directly clarifies the latest input.
     - Do not invent user constraints, equipment, injuries, dates, experience level, or sport details.
-    - If the user input is just a greeting, small talk, or unrelated to strength and conditioning, set intent to "out_of_scope" 
-    and should_retrieve to false.
-    - Set should_retrieve to true for strength and conditioning questions that need evidence retrieval.
     - The rewritten query should preserve the user's meaning and be suitable for corpus retrieval and parallel web search.
 
     CHAT rewrite rules:
+    - If the user input is just a greeting, small talk, or unrelated to strength and conditioning, set intent to "out_of_scope" 
+    and should_retrieve to false.
     - Set intent to "chat" for strength and conditioning questions.
+    - Set should_retrieve to true for strength and conditioning questions that need evidence retrieval.
     - Rewrite the user's question for evidence retrieval.
     - Keep the rewrite close to the user's actual question.
     - Do not add broad programming concepts unless the user asks about programming, training plans, or workout design.
@@ -59,9 +59,7 @@ plan_system_prompt = SystemMessage(
     - Preserve the user's original goal and constraints.
     - Add relevant context from prior messages only when it directly clarifies the latest input.
     - Do not invent user constraints, equipment, injuries, dates, experience level, sport details, or competition dates.
-    - If the user input is just a greeting, small talk, or unrelated to strength and conditioning, set intent to "out_of_scope" 
-    and should_retrieve to false.
-    - Set should_retrieve to true for workout plan requests that need evidence retrieval.
+    - Always set should_retrieve to true.
     - The rewritten query should preserve the user's goal and be suitable for corpus retrieval and parallel web search.
 
     PLAN rewrite rules:

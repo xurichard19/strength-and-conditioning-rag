@@ -15,7 +15,7 @@ from sentry_sdk.integrations.stdlib import StdlibIntegration
 from dotenv import load_dotenv
 load_dotenv()
 
-from app.core.config import get_settings
+from app.config import get_settings
 from app.rag.vector_store import VectorDB
 
 # import routers

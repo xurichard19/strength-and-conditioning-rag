@@ -7,7 +7,7 @@ from langchain_openai.chat_models.base import ChatOpenAI
 
 from functools import lru_cache
 
-from app.core.config import get_settings
+from app.config import get_settings
 
 
 
