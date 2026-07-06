@@ -72,3 +72,36 @@ def insert_rows(table: str, rows: dict[str, Any] | list[dict[str, Any]], access_
         raise SupabaseDataError(details) from exc
     except URLError as exc:
         raise SupabaseDataError("Supabase data API is unavailable") from exc
+
+
+def upsert_rows(
+    table: str,
+    rows: dict[str, Any] | list[dict[str, Any]],
+    access_token: str,
+    on_conflict: str,
+) -> None:
+    settings = get_settings()
+    supabase_url = settings.supabase_url.rstrip("/")
+    query = urlencode({"on_conflict": on_conflict})
+    url = f"{supabase_url}/rest/v1/{table}?{query}"
+
+    request = UrlRequest(
+        url,
+        data=json.dumps(rows).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "apikey": settings.supabase_publishable_key,
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates,return=minimal",
+        },
+    )
+
+    try:
+        with urlopen(request, timeout=10):
+            return
+    except HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace")
+        raise SupabaseDataError(details) from exc
+    except URLError as exc:
+        raise SupabaseDataError("Supabase data API is unavailable") from exc

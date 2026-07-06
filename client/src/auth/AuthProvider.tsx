@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 
+import { createProfile } from '../api/profile'
 import { supabase } from '../lib/supabase'
 import { AuthContext } from './AuthContext'
 
@@ -112,6 +113,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       })
 
       if (signUpError) throw signUpError
+
+      if (data.session) {
+        await createProfile(data.session.access_token)
+      }
 
       if (!data.session) {
         setMessage(
