@@ -26,12 +26,14 @@ export function ChatPanel({ accessToken, onUnauthorized }: ChatPanelProps) {
 
     setIsLoading(true)
     setError('')
+    setResponse('')
     setSources([])
 
     try {
-      const data = await submitChat(trimmedQuestion, accessToken)
-      setResponse(data.text ?? '')
-      setSources(data.sources ?? [])
+      await submitChat(trimmedQuestion, accessToken, {
+        onText: (delta) => setResponse((currentResponse) => currentResponse + delta),
+        onSources: setSources,
+      })
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 401) {
         onUnauthorized()

@@ -27,6 +27,21 @@ def generate_response(messages: list[dict], temperature: float = 0.4) -> str:
         return "Sorry, something went wrong while generating a response."
 
 
+def generate_streamed_response(messages: list[dict], temperature: float = 0.4):
+    try:
+        response = client.responses.stream(
+            model="gpt-4o-mini",
+            input=messages,
+            temperature=temperature,
+        )
+        for event in response:
+            if event.type == "response.output_text.delta":
+                yield event.delta
+    except Exception:
+        logger.exception("llm streamed text generation failed")
+        yield "Sorry, something went wrong while generating a response."
+
+
 def generate_structured_response(
     messages: list[dict],
     response_model: type[StructuredResponse],
