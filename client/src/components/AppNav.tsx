@@ -54,7 +54,7 @@ export function AppNav({ currentPage, userEmail, onNavigate, onLogin, onSignOut 
                     onClick={() => navigate("home")}
                     className="text-left text-lg font-semibold text-[var(--text-h)]"
                 >
-                    Shingo
+                    Arcel
                 </button>
 
                 <div className="flex items-center gap-2">

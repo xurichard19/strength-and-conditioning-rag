@@ -74,7 +74,7 @@ export function FloatingChatWidget({ accessToken, onUnauthorized }: FloatingChat
                 <section className="flex h-[30rem] w-[min(calc(100vw-2.5rem),22rem)] flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg)] shadow-[var(--shadow)]">
                     <header className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3 text-left">
                         <div className="min-w-0 flex-1">
-                            <h2 className="m-0 text-sm font-semibold text-[var(--text-h)]">Ask Shingo</h2>
+                            <h2 className="m-0 text-sm font-semibold text-[var(--text-h)]">Ask Arcel</h2>
                             <p className="m-0 mt-0.5 text-xs text-[var(--text)]">Quick research checks</p>
                         </div>
                         <button

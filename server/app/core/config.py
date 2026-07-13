@@ -11,7 +11,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "shingo api"
+    app_name: str = "arcel api"
     environment: str = "development"
 
     cors_origins: list[str] = Field(

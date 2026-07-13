@@ -1,7 +1,7 @@
 services:
   proxy:
     image: nginx:alpine
-    container_name: shingo-proxy
+    container_name: arcel-proxy
     restart: unless-stopped
     ports:
       - "8000:80"
@@ -12,11 +12,11 @@ services:
         condition: service_healthy
 
   api:
-    image: shingo-backend
+    image: arcel-backend
     build:
       context: .
       dockerfile: server/Dockerfile
-    container_name: shingo-api
+    container_name: arcel-api
     restart: unless-stopped
     expose:
       - "8000"
@@ -24,11 +24,11 @@ services:
       - .env
 
   api-local:
-    image: shingo-backend
+    image: arcel-backend
     build:
       context: .
       dockerfile: server/Dockerfile
-    container_name: shingo-api-local
+    container_name: arcel-api-local
     user: root
     ports:
       - "8000:8000"
@@ -40,7 +40,7 @@ services:
       - ./secrets/gcp-sa.json:/run/secrets/gcp-sa.json:ro
 
   index:
-    image: shingo-backend
+    image: arcel-backend
     build:
       context: .
       dockerfile: server/Dockerfile

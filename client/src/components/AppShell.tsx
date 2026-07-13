@@ -13,7 +13,7 @@ export function AppShell({ children }: AppShellProps) {
             Hybrid athlete research assistant
           </p>
           <h1 className="m-0 text-5xl font-semibold tracking-normal text-[var(--text-h)] sm:text-6xl">
-            Shingo
+            Arcel
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--text-h)]">
             Ask hybrid training questions and get evidence-backed answers from the document library.

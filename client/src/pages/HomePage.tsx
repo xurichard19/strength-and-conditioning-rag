@@ -13,7 +13,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
                         Hybrid athlete research workspace
                     </p>
                     <h1 className="m-0 text-5xl font-semibold tracking-normal text-[var(--text-h)] sm:text-6xl">
-                        Shingo
+                        Arcel
                     </h1>
                     <p className="mt-5 max-w-2xl text-lg leading-8 text-[var(--text-h)]">
                         Turn strength, endurance, and recovery questions into research-backed training decisions for concurrent performance.

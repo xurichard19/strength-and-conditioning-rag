@@ -14,11 +14,11 @@ const pageContent: Record<InfoPageProps["page"], {
 }> = {
     about: {
         eyebrow: "Company",
-        title: "About Shingo",
+        title: "About Arcel",
         sections: [
             {
                 heading: "Purpose",
-                body: "Shingo helps hybrid athletes explore research-backed training insights across strength, endurance, conditioning, and recovery.",
+                body: "Arcel helps hybrid athletes explore research-backed training insights across strength, endurance, conditioning, and recovery.",
             },
             {
                 heading: "How it works",
@@ -32,7 +32,7 @@ const pageContent: Record<InfoPageProps["page"], {
         sections: [
             {
                 heading: "Acceptance of terms",
-                body: "Placeholder copy. By using Shingo, users agree to follow these terms and any additional policies referenced here.",
+                body: "Placeholder copy. By using Arcel, users agree to follow these terms and any additional policies referenced here.",
             },
             {
                 heading: "Accounts and subscriptions",
@@ -40,7 +40,7 @@ const pageContent: Record<InfoPageProps["page"], {
             },
             {
                 heading: "Limitations",
-                body: "Placeholder copy. Shingo is provided as-is, without guarantees of availability, accuracy, performance outcomes, or fitness results.",
+                body: "Placeholder copy. Arcel is provided as-is, without guarantees of availability, accuracy, performance outcomes, or fitness results.",
             },
         ],
     },
@@ -50,11 +50,11 @@ const pageContent: Record<InfoPageProps["page"], {
         sections: [
             {
                 heading: "Information collected",
-                body: "Placeholder copy. Shingo may collect account information, authentication data, prompts, generated outputs, usage data, and billing-related information.",
+                body: "Placeholder copy. Arcel may collect account information, authentication data, prompts, generated outputs, usage data, and billing-related information.",
             },
             {
                 heading: "Service providers",
-                body: "Placeholder copy. Shingo may use third-party providers for authentication, hosting, payments, analytics, AI generation, and document retrieval.",
+                body: "Placeholder copy. Arcel may use third-party providers for authentication, hosting, payments, analytics, AI generation, and document retrieval.",
             },
             {
                 heading: "User choices",
@@ -68,7 +68,7 @@ const pageContent: Record<InfoPageProps["page"], {
         sections: [
             {
                 heading: "Educational information",
-                body: "Shingo provides educational training information for hybrid athletes and does not provide medical advice, diagnosis, or treatment.",
+                body: "Arcel provides educational training information for hybrid athletes and does not provide medical advice, diagnosis, or treatment.",
             },
             {
                 heading: "Exercise risk",
@@ -86,7 +86,7 @@ const pageContent: Record<InfoPageProps["page"], {
         sections: [
             {
                 heading: "Commitment",
-                body: "Placeholder copy. Shingo aims to provide a usable experience for people with diverse access needs.",
+                body: "Placeholder copy. Arcel aims to provide a usable experience for people with diverse access needs.",
             },
             {
                 heading: "Feedback",

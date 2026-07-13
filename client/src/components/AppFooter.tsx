@@ -21,7 +21,7 @@ export function AppFooter({ onNavigate }: AppFooterProps) {
     return (
         <footer className="border-t border-[var(--border)] bg-[var(--bg)] px-4 py-6 text-sm text-[var(--text)] sm:px-6 lg:px-8">
             <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="m-0">© {new Date().getFullYear()} Shingo</p>
+                <p className="m-0">© {new Date().getFullYear()} Arcel</p>
                 <nav className="flex flex-wrap gap-x-4 gap-y-2">
                     {footerLinks.map((link) => (
                         <button

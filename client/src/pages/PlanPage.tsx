@@ -298,7 +298,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                         </div>
                     ) : (
                         <p className="leading-7 text-[var(--text)]">
-                            Your evidence-informed training week will appear here after Shingo reviews the research context.
+                            Your evidence-informed training week will appear here after Arcel reviews the research context.
                         </p>
                         )}
                     </div>

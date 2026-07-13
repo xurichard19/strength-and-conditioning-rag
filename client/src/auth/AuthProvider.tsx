@@ -54,7 +54,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     void loadSession()
 
-    if (window.sessionStorage.getItem('shingo-password-recovery') === 'true') {
+    if (window.sessionStorage.getItem('arcel-password-recovery') === 'true') {
       setIsPasswordRecovery(true)
     }
 
@@ -62,7 +62,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, currentSession) => {
       if (event === 'PASSWORD_RECOVERY') {
-        window.sessionStorage.setItem('shingo-password-recovery', 'true')
+        window.sessionStorage.setItem('arcel-password-recovery', 'true')
         setIsPasswordRecovery(true)
         resetFeedback()
       }
@@ -177,7 +177,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (updateError) throw updateError
 
-      window.sessionStorage.removeItem('shingo-password-recovery')
+      window.sessionStorage.removeItem('arcel-password-recovery')
       setIsPasswordRecovery(false)
       setMessage('Password updated. Please sign in with your new password.')
       await supabase.auth.signOut()
@@ -191,14 +191,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const signOut = async () => {
     await supabase.auth.signOut()
-    window.sessionStorage.removeItem('shingo-password-recovery')
+    window.sessionStorage.removeItem('arcel-password-recovery')
     setIsPasswordRecovery(false)
     setSession(null)
   }
 
   const handleUnauthorized = () => {
     void supabase.auth.signOut()
-    window.sessionStorage.removeItem('shingo-password-recovery')
+    window.sessionStorage.removeItem('arcel-password-recovery')
     setIsPasswordRecovery(false)
     setSession(null)
     setError('Your session expired. Please sign in again.')
