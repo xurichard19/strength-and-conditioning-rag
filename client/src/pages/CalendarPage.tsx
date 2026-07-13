@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react"
-import { getLatestPlanWorkouts } from "../lib/workoutStorage"
+import { useEffect, useMemo, useState } from "react"
+import { ApiRequestError } from "../api/errors"
+import { fetchSavedPlan } from "../api/plan"
 import type { Exercise, Workout } from "../types"
 
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
@@ -60,15 +61,59 @@ function groupExercisesByDate(workouts: Workout[]) {
     }, {})
 }
 
-export function CalendarPage() {
+type CalendarPageProps = {
+    accessToken: string
+    onUnauthorized: () => void
+}
+
+export function CalendarPage({ accessToken, onUnauthorized }: CalendarPageProps) {
     const today = useMemo(() => new Date(), [])
     const todayKey = toDateKey(today)
     const [displayDate, setDisplayDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
     const [selectedDate, setSelectedDate] = useState(todayKey)
-    const workouts = useMemo(() => getLatestPlanWorkouts(), [])
+    const [workouts, setWorkouts] = useState<Workout[]>([])
+    const [isLoading, setIsLoading] = useState(true)
+    const [error, setError] = useState("")
     const exercisesByDate = useMemo(() => groupExercisesByDate(workouts), [workouts])
     const calendarDates = useMemo(() => buildCalendarDates(displayDate), [displayDate])
     const selectedExercises = exercisesByDate[selectedDate] ?? []
+
+    useEffect(() => {
+        let isMounted = true
+
+        const loadSavedPlan = async () => {
+            setIsLoading(true)
+            setError("")
+
+            try {
+                const data = await fetchSavedPlan(accessToken)
+
+                if (isMounted) {
+                    setWorkouts(data.workouts)
+                }
+            } catch (error) {
+                if (error instanceof ApiRequestError && error.status === 401) {
+                    onUnauthorized()
+                    return
+                }
+
+                if (isMounted) {
+                    setWorkouts([])
+                    setError("Could not load saved training sessions.")
+                }
+            } finally {
+                if (isMounted) {
+                    setIsLoading(false)
+                }
+            }
+        }
+
+        void loadSavedPlan()
+
+        return () => {
+            isMounted = false
+        }
+    }, [accessToken, onUnauthorized])
 
     const showPreviousMonth = () => {
         setDisplayDate((date) => new Date(date.getFullYear(), date.getMonth() - 1, 1))
@@ -195,7 +240,11 @@ export function CalendarPage() {
                     <h2 className="mt-2 text-2xl font-semibold text-[var(--text-h)]">{formatSelectedDate(selectedDate)}</h2>
 
                     <div className="mt-5 grid gap-3">
-                        {selectedExercises.length > 0 ? (
+                        {isLoading ? (
+                            <p className="leading-7 text-[var(--text)]">Loading saved training sessions...</p>
+                        ) : error ? (
+                            <p className="leading-7 text-red-700">{error}</p>
+                        ) : selectedExercises.length > 0 ? (
                             selectedExercises.map((exercise, exerciseIndex) => (
                                 <article
                                     key={`${exercise.name}-${exerciseIndex}`}

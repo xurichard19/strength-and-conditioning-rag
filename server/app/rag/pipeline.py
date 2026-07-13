@@ -1,10 +1,11 @@
 import json
 import datetime
 import sentry_sdk
+from collections.abc import Iterable
 from typing import Any
 
 from app.api.schemas import PlanResponse
-from app.rag.llm import generate_response, generate_structured_response
+from app.rag.llm import generate_streamed_response, generate_structured_response
 from app.rag.prompts import build_chat_messages, build_plan_messages
 from app.rag.reranker import rerank_chroma_results
 from app.rag.vector_store import VectorDB
@@ -30,8 +31,8 @@ def _generate_context(
     return context
 
 
-def answer_question(query: str, db: VectorDB) -> tuple[str, dict]:
-    """ answer single question """
+def answer_question(query: str, db: VectorDB) -> tuple[Iterable[str], dict]:
+    """answer single question with streamed response text"""
 
     with sentry_sdk.start_span(op="rag.context", name="generate context"):
         context = _generate_context(query, db)
@@ -39,10 +40,7 @@ def answer_question(query: str, db: VectorDB) -> tuple[str, dict]:
     with sentry_sdk.start_span(op="rag.prompt", name="build prompt"):
         messages = build_chat_messages(query, context)
 
-    with sentry_sdk.start_span(op="ai.openai", name="openai response"):
-        response = generate_response(messages)
-
-    return response, context
+    return generate_streamed_response(messages), context
 
 
 def generate_plan(date: datetime.date, goal: str, constraints: dict[str, Any], db: VectorDB) -> PlanResponse:

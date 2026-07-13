@@ -19,7 +19,7 @@ from app.config import get_settings
 from app.rag.vector_store import VectorDB
 
 # import routers
-from app.api.routers import chat, plan
+from app.api.routers import chat, plan, profile
 
 
 settings = get_settings()
@@ -56,6 +56,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.include_router(chat.router)
 app.include_router(plan.router)
+app.include_router(profile.router)
 
 
 app.add_middleware(

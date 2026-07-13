@@ -1,7 +1,6 @@
 import { type FormEvent, useState } from "react"
 import { ApiRequestError } from "../api/errors"
 import { savePlan, submitPlan } from "../api/plan"
-import { saveLatestPlanWorkouts } from "../lib/workoutStorage"
 import type { PlanResponse } from "../types"
 
 const workoutsPerPage = 3
@@ -44,7 +43,10 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
     const [constraints, setConstraints] = useState("")
     const [plan, setPlan] = useState<PlanResponse | null>(null)
     const [isLoading, setIsLoading] = useState(false)
+    const [isSaving, setIsSaving] = useState(false)
     const [error, setError] = useState("")
+    const [saveError, setSaveError] = useState("")
+    const [saveMessage, setSaveMessage] = useState("")
     const [workoutPage, setWorkoutPage] = useState(0)
 
     const visibleWorkouts = plan?.workouts.slice(
@@ -64,6 +66,8 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
 
         setIsLoading(true)
         setError("")
+        setSaveError("")
+        setSaveMessage("")
         setPlan(null)
         setWorkoutPage(0)
 
@@ -73,9 +77,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                 experience_level: experienceLevel,
                 ...(trimmedConstraints ? { constraints: trimmedConstraints } : {}),
             }, accessToken)
-            await savePlan(data, accessToken)
             setPlan(data)
-            saveLatestPlanWorkouts(data.workouts)
         } catch (error) {
             if (error instanceof ApiRequestError && error.status === 401) {
                 onUnauthorized()
@@ -86,6 +88,28 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
             setWorkoutPage(0)
         } finally {
             setIsLoading(false)
+        }
+    }
+
+    const handleSavePlan = async () => {
+        if (!plan || isSaving) return
+
+        setIsSaving(true)
+        setSaveError("")
+        setSaveMessage("")
+
+        try {
+            await savePlan(plan, accessToken)
+            setSaveMessage("Plan saved to your calendar.")
+        } catch (error) {
+            if (error instanceof ApiRequestError && error.status === 401) {
+                onUnauthorized()
+                return
+            }
+
+            setSaveError("The plan was generated, but it could not be saved. Please try again.")
+        } finally {
+            setIsSaving(false)
         }
     }
 
@@ -185,6 +209,23 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                     </div>
 
                     <div className="p-5">
+                        {plan && !error && (
+                            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                                <p className="m-0 text-sm leading-6 text-[var(--text)]">
+                                    Review the generated week, then save it when it looks right.
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={handleSavePlan}
+                                    disabled={isSaving}
+                                    className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:border disabled:border-[var(--border)] disabled:bg-[var(--social-bg)] disabled:text-[var(--text)]"
+                                >
+                                    {isSaving ? "Saving..." : "Save plan"}
+                                </button>
+                            </div>
+                        )}
+                        {saveMessage && <p className="mb-4 leading-7 text-[var(--accent)]">{saveMessage}</p>}
+                        {saveError && <p className="mb-4 leading-7 text-red-700">{saveError}</p>}
                         {error ? (
                         <p className="leading-7 text-red-700">{error}</p>
                     ) : plan ? (

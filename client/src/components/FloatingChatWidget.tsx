@@ -20,6 +20,22 @@ export function FloatingChatWidget({ accessToken, onUnauthorized }: FloatingChat
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState("")
 
+    const appendAssistantText = (delta: string) => {
+        setMessages((currentMessages) => {
+            const nextMessages = [...currentMessages]
+            const lastMessage = nextMessages[nextMessages.length - 1]
+
+            if (lastMessage?.role === "assistant") {
+                nextMessages[nextMessages.length - 1] = {
+                    ...lastMessage,
+                    text: lastMessage.text + delta,
+                }
+            }
+
+            return nextMessages
+        })
+    }
+
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
 
@@ -32,20 +48,20 @@ export function FloatingChatWidget({ accessToken, onUnauthorized }: FloatingChat
         setMessages((currentMessages) => [
             ...currentMessages,
             { role: "user", text: trimmedQuestion },
+            { role: "assistant", text: "" },
         ])
 
         try {
-            const data = await submitChat(trimmedQuestion, accessToken)
-            setMessages((currentMessages) => [
-                ...currentMessages,
-                { role: "assistant", text: data.text ?? "I could not generate a response." },
-            ])
+            await submitChat(trimmedQuestion, accessToken, {
+                onText: appendAssistantText,
+            })
         } catch (error) {
             if (error instanceof ApiRequestError && error.status === 401) {
                 onUnauthorized()
                 return
             }
 
+            setMessages((currentMessages) => currentMessages.filter((_, index) => index !== currentMessages.length - 1))
             setError("Something went wrong. Please try again.")
         } finally {
             setIsLoading(false)
@@ -85,7 +101,7 @@ export function FloatingChatWidget({ accessToken, onUnauthorized }: FloatingChat
                                                 : "bg-[var(--social-bg)] text-[var(--text-h)]"
                                         }`}
                                     >
-                                        {message.text}
+                                        {message.text || "Reviewing..."}
                                     </div>
                                 </div>
                             ))
