@@ -1,0 +1,17 @@
+{
+  "name": "strength-and-conditioning-rag",
+  "private": true,
+  "scripts": {
+    "db:init": "supabase init",
+    "db:login": "supabase login",
+    "db:link": "supabase link",
+    "db:migrations": "supabase migration list",
+    "db:new": "supabase migration new",
+    "db:pull": "supabase db pull",
+    "db:push:check": "supabase db push --dry-run",
+    "db:push": "supabase db push"
+  },
+  "devDependencies": {
+    "supabase": "^2.109.1"
+  }
+}
