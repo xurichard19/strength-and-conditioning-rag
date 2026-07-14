@@ -1,1 +1,29 @@
 @import "tailwindcss";
+
+#root:has(.onboarding-page) {
+  width: 100%;
+  max-width: none;
+  border-inline: 0;
+}
+
+@keyframes onboarding-step-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.onboarding-step {
+  animation: onboarding-step-enter 280ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-step {
+    animation: none;
+  }
+}

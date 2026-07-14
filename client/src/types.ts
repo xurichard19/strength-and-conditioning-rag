@@ -1,5 +1,6 @@
 export type Page =
     | "home"
+    | "onboarding"
     | "chat"
     | "plan"
     | "calendar"
