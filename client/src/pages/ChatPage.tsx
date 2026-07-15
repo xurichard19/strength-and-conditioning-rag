@@ -63,7 +63,7 @@ export function ChatPage({ accessToken, onUnauthorized }: ChatPageProps) {
         description="Get a focused answer, then open the source drawer to inspect the exact research excerpts behind it."
       />
 
-      <Panel raised className="flex min-h-[34rem] flex-1 flex-col overflow-hidden">
+      <Panel raised className="flex h-[clamp(34rem,calc(100dvh-18rem),46rem)] flex-none flex-col overflow-hidden">
         <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] px-5 py-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[var(--accent-bg)] text-[var(--accent)]">
@@ -86,7 +86,7 @@ export function ChatPage({ accessToken, onUnauthorized }: ChatPageProps) {
           </div>
         </div>
 
-        <div aria-live="polite" className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8 sm:py-8">
+        <div aria-live="polite" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-6 sm:px-8 sm:py-8">
           {error ? (
             <p role="alert" className="feedback-error">{error}</p>
           ) : response ? (
