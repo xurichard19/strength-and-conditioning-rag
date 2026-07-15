@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { BookOpenCheck, MessageSquareText, Search, Send } from 'lucide-react'
 
 import { submitChat } from '../api/chat'
@@ -20,12 +20,20 @@ const promptSuggestions = [
 ]
 
 export function ChatPage({ accessToken, onUnauthorized }: ChatPageProps) {
+  const answerViewportRef = useRef<HTMLDivElement | null>(null)
   const [question, setQuestion] = useState('')
   const [submittedQuestion, setSubmittedQuestion] = useState('')
   const [response, setResponse] = useState('')
   const [sources, setSources] = useState<Source[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    const viewport = answerViewportRef.current
+    if (!viewport || !isLoading) return
+
+    viewport.scrollTop = viewport.scrollHeight
+  }, [isLoading, response])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -86,7 +94,11 @@ export function ChatPage({ accessToken, onUnauthorized }: ChatPageProps) {
           </div>
         </div>
 
-        <div aria-live="polite" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-6 sm:px-8 sm:py-8">
+        <div
+          ref={answerViewportRef}
+          aria-live="polite"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-6 sm:px-8 sm:py-8"
+        >
           {error ? (
             <p role="alert" className="feedback-error">{error}</p>
           ) : response ? (
