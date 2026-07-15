@@ -13,6 +13,11 @@ from app.rag.pipeline import generate_plan
 router = APIRouter(prefix='/plan')
 logger = logging.getLogger(__name__)
 
+PLAN_PROFILE_COLUMNS = (
+    "primary_goal,experience_level,training_days_per_week,"
+    "session_duration_minutes,equipment_access"
+)
+
 
 @router.get('', include_in_schema=False)
 @router.get('/')
@@ -69,8 +74,34 @@ def generate_workout_plan(
     logger.info("authenticated plan requested user_id=%s", user.id)
 
     db = request.app.state.db
+
     try:
-        plan = generate_plan(date.today(), query.goal, query.user_factors(), db)
+        # get string ver. of user profile
+        profile = select_rows(
+            "profiles",
+            [
+                ("select", PLAN_PROFILE_COLUMNS),
+                ("id", f"eq.{user.id}"),
+                ("limit", "1"),
+            ],
+            user.access_token,
+        )
+    except SupabaseDataError as exc:
+        logger.exception("profile load failed user_id=%s", user.id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Profile load failed",
+        ) from exc
+
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Profile could not be loaded",
+        )
+
+    try:
+        plan_context = {"specific_goal": query.goal, "additional_context": query.additional_context, **profile[0]}
+        plan = generate_plan(date.today(), plan_context, db)
         # this gets server date, careful to use helper function in frontend in the future for user date
     except ValueError as exc:
         raise HTTPException(

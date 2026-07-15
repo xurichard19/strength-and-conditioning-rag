@@ -38,9 +38,8 @@ type PlanPageProps = {
 }
 
 export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
-    const [experienceLevel, setExperienceLevel] = useState("intermediate")
     const [goal, setGoal] = useState("")
-    const [constraints, setConstraints] = useState("")
+    const [additionalContext, setAdditionalContext] = useState("")
     const [plan, setPlan] = useState<PlanResponse | null>(null)
     const [isLoading, setIsLoading] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
@@ -61,7 +60,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
         e.preventDefault()
 
         const trimmedGoal = goal.trim()
-        const trimmedConstraints = constraints.trim()
+        const trimmedAdditionalContext = additionalContext.trim()
         if (!trimmedGoal || isLoading) return
 
         setIsLoading(true)
@@ -74,8 +73,9 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
         try {
             const data = await submitPlan({
                 goal: trimmedGoal,
-                experience_level: experienceLevel,
-                ...(trimmedConstraints ? { constraints: trimmedConstraints } : {}),
+                ...(trimmedAdditionalContext
+                    ? { additional_context: trimmedAdditionalContext }
+                    : {}),
             }, accessToken)
             setPlan(data)
         } catch (error) {
@@ -114,7 +114,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
     }
 
     return (
-        <main className="mx-auto min-h-[calc(100vh-4.25rem)] max-w-6xl px-4 py-8 text-left text-[var(--text)] sm:px-6 lg:px-8">
+        <main className="mx-auto flex min-h-[calc(100vh-4.25rem)] max-w-6xl flex-col px-4 py-8 text-left text-[var(--text)] sm:px-6 lg:px-8">
             <header className="mb-8">
                 <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--text-h)]">
                     Hybrid training builder
@@ -127,22 +127,9 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                 </p>
             </header>
 
-            <div className="grid gap-5 lg:grid-cols-[minmax(14rem,0.55fr)_minmax(0,1.45fr)]">
-                <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-4 shadow-[var(--shadow)]">
+            <div className="grid gap-5 lg:flex-1 lg:grid-cols-[minmax(14rem,0.55fr)_minmax(0,1.45fr)] lg:grid-rows-[minmax(24rem,1fr)]">
+                <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--bg)] p-4 shadow-[var(--shadow)]">
                     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                        <label className="flex flex-col gap-2 text-sm font-medium text-[var(--text-h)]">
-                            Experience level
-                            <select
-                                value={experienceLevel}
-                                onChange={(e) => setExperienceLevel(e.target.value)}
-                                className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 text-base text-[var(--text-h)] outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)]"
-                            >
-                                <option value="beginner">Beginner</option>
-                                <option value="intermediate">Intermediate</option>
-                                <option value="advanced">Advanced</option>
-                            </select>
-                        </label>
-
                         <label htmlFor="goal" className="flex flex-col gap-2 text-sm font-medium text-[var(--text-h)]">
                             Performance goal
                             <textarea
@@ -154,13 +141,13 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                             />
                         </label>
 
-                        <label htmlFor="constraints" className="flex flex-col gap-2 text-sm font-medium text-[var(--text-h)]">
-                            Training context
+                        <label htmlFor="additional-context" className="flex flex-col gap-2 text-sm font-medium text-[var(--text-h)]">
+                            Additional context
                             <textarea
-                                id="constraints"
-                                value={constraints}
-                                onChange={(e) => setConstraints(e.target.value)}
-                                placeholder="Four training days, 60 minutes, gym access, long run Sunday, avoid heavy legs before intervals."
+                                id="additional-context"
+                                value={additionalContext}
+                                onChange={(e) => setAdditionalContext(e.target.value)}
+                                placeholder="Preparing for a race in eight weeks, prefer morning sessions, long run Sunday, avoid heavy legs before intervals."
                                 className="min-h-32 resize-y rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 text-base leading-6 text-[var(--text-h)] outline-none transition placeholder:text-[var(--text)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)]"
                             />
                         </label>
@@ -175,7 +162,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                     </form>
                 </section>
 
-                <section className="min-h-96 rounded-lg border border-[var(--border)] bg-[var(--bg)] shadow-[var(--shadow)]">
+                <section className="h-full min-h-96 rounded-lg border border-[var(--border)] bg-[var(--bg)] shadow-[var(--shadow)]">
                     <div className="relative border-b border-[var(--border)] px-14 py-4 text-center">
                         <button
                             type="button"
@@ -194,9 +181,6 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                                 </p>
                             )}
                         </div>
-                        {isLoading && (
-                            <span className="mt-2 block text-sm font-medium text-[var(--accent)]">Retrieving evidence</span>
-                        )}
                         <button
                             type="button"
                             onClick={() => setWorkoutPage((page) => Math.min(page + 1, totalWorkoutPages - 1))}
@@ -207,6 +191,22 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                             {">"}
                         </button>
                     </div>
+
+                    {isLoading && (
+                        <div
+                            className="border-b border-[var(--border)] px-5 py-4"
+                            role="progressbar"
+                            aria-label="Generating training plan"
+                        >
+                            <div className="mb-2 flex items-center justify-between gap-4 text-sm font-medium">
+                                <span className="text-[var(--text-h)]">Generating your training week</span>
+                                <span className="shrink-0 text-[var(--accent)]">Working...</span>
+                            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-[var(--accent-bg)]">
+                                <div className="plan-loading-bar h-full w-2/5 rounded-full bg-[var(--accent)]" />
+                            </div>
+                        </div>
+                    )}
 
                     <div className="p-5">
                         {plan && !error && (

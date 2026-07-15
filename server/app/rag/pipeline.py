@@ -2,7 +2,6 @@ import json
 import datetime
 import sentry_sdk
 from collections.abc import Iterable
-from typing import Any
 
 from app.api.schemas import PlanResponse
 from app.rag.llm import generate_streamed_response, generate_structured_response
@@ -43,19 +42,24 @@ def answer_question(query: str, db: VectorDB) -> tuple[Iterable[str], dict]:
     return generate_streamed_response(messages), context
 
 
-def generate_plan(date: datetime.date, goal: str, constraints: dict[str, Any], db: VectorDB) -> PlanResponse:
+def generate_plan(
+    date: datetime.date,
+    plan_context: dict[str, object],
+    db: VectorDB,
+) -> PlanResponse:
     """ build workout plan given parameters """
 
+    goal = plan_context.get("specific_goal")
     if not goal.strip():
         raise ValueError("goal is required")
 
-    constraints_json = json.dumps(constraints)
+    plan_context_json = json.dumps(plan_context, separators=(",", ":"))
 
     with sentry_sdk.start_span(op="rag.context", name="generate context"):
-        context = _generate_context(f"goal: {goal}, constraints: {constraints_json}", db, top_k=30, top_n=20)
+        context = _generate_context(plan_context_json, db, top_k=30, top_n=20)
 
     with sentry_sdk.start_span(op="rag.prompt", name="build prompt"):
-        messages = build_plan_messages(date, goal, constraints_json, context)
+        messages = build_plan_messages(date, plan_context_json, context)
 
     with sentry_sdk.start_span(op="ai.openai", name="openai structured plan"):
         return generate_structured_response(
