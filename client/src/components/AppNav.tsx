@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  Bookmark,
   CalendarDays,
+  CircleHelp,
   Dumbbell,
   Home,
+  History,
   LogIn,
   LogOut,
   Menu,
@@ -139,6 +142,22 @@ export function AppNav({ currentPage, userEmail, onNavigate, onLogin, onSignOut 
                   <div className="pt-2">
                     <button
                       type="button"
+                      onClick={() => navigate('saved')}
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
+                    >
+                      <Bookmark aria-hidden="true" size={17} />
+                      Saved research
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate('activity')}
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
+                    >
+                      <History aria-hidden="true" size={17} />
+                      Activity
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => navigate('settings')}
                       className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
                     >
@@ -147,8 +166,17 @@ export function AppNav({ currentPage, userEmail, onNavigate, onLogin, onSignOut 
                     </button>
                     <button
                       type="button"
+                      onClick={() => navigate('help')}
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
+                    >
+                      <CircleHelp aria-hidden="true" size={17} />
+                      Help &amp; support
+                    </button>
+                    <div className="my-2 border-t border-[var(--border)]" />
+                    <button
+                      type="button"
                       onClick={handleSignOut}
-                      className="mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--text)] transition hover:bg-[var(--danger-bg)] hover:text-[var(--danger)]"
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--text)] transition hover:bg-[var(--danger-bg)] hover:text-[var(--danger)]"
                     >
                       <LogOut aria-hidden="true" size={17} />
                       Sign out

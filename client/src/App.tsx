@@ -20,6 +20,7 @@ import { InfoPage } from './pages/InfoPage'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { PlanPage } from './pages/PlanPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { UserUtilityPage } from './pages/UserUtilityPage'
 import { getPageFromPath, getPathForPage, isInfoPage } from './routing'
 import type { Page } from './types'
 import type { Profile, ProfileAccess, ProfileUpdate } from './types/profile'
@@ -262,6 +263,9 @@ function AppContent() {
                 userEmail={auth.session.user.email}
                 onUpdate={handleProfileUpdate}
               />
+            )}
+            {(renderedPage === 'saved' || renderedPage === 'activity' || renderedPage === 'help') && (
+              <UserUtilityPage page={renderedPage} onNavigate={navigate} />
             )}
             {isInfoPage(renderedPage) && <InfoPage page={renderedPage} />}
           </div>
