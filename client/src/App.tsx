@@ -258,7 +258,13 @@ function AppContent() {
                 onUnauthorized={auth.handleUnauthorized}
               />
             )}
-            {renderedPage === 'settings' && <SettingsPage userEmail={auth.session.user.email} />}
+            {renderedPage === 'settings' && profile && (
+              <SettingsPage
+                profile={profile}
+                userEmail={auth.session.user.email}
+                onUpdate={handleProfileUpdate}
+              />
+            )}
             {isInfoPage(renderedPage) && <InfoPage page={renderedPage} />}
           </div>
           <AppFooter onNavigate={navigate} />
