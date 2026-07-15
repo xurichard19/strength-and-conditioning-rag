@@ -2,6 +2,8 @@ import './App.css'
 
 import { useEffect, useState } from 'react'
 
+import { ApiRequestError } from './api/errors'
+import { completeOnboarding, getProfile, updateProfile } from './api/profile'
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/useAuth'
 import { AppFooter } from './components/AppFooter'
@@ -14,14 +16,27 @@ import { CalendarPage } from './pages/CalendarPage'
 import { ChatPage } from './pages/ChatPage'
 import { HomePage } from './pages/HomePage'
 import { InfoPage } from './pages/InfoPage'
+import { OnboardingPage } from './pages/OnboardingPage'
 import { PlanPage } from './pages/PlanPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { getPageFromPath, getPathForPage, isInfoPage } from './routing'
 import type { Page } from './types'
+import type { Profile, ProfileAccess, ProfileUpdate } from './types/profile'
 
 function AppContent() {
   const auth = useAuth()
   const [currentPage, setCurrentPage] = useState<Page>(() => getPageFromPath(window.location.pathname))
+  const [loadedProfile, setLoadedProfile] = useState<{ profile: Profile; userId: string } | null>(null)
+  const [profileFailure, setProfileFailure] = useState<{ message: string; userId: string } | null>(null)
+  const [profileLoadAttempt, setProfileLoadAttempt] = useState(0)
+
+  const sessionUserId = auth.session?.user.id
+  const sessionAccessToken = auth.session?.access_token
+  const handleUnauthorized = auth.handleUnauthorized
+  const profile = loadedProfile && loadedProfile.userId === sessionUserId ? loadedProfile.profile : null
+  const hasUsableProfile = Boolean(profile)
+  const profileError =
+    profileFailure && profileFailure.userId === sessionUserId ? profileFailure.message : ''
 
   useEffect(() => {
     const handlePopState = () => {
@@ -33,6 +48,64 @@ function AppContent() {
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
+  useEffect(() => {
+    if (!sessionUserId || !sessionAccessToken) {
+      return
+    }
+
+    let isCurrent = true
+    const access: ProfileAccess = {
+      userId: sessionUserId,
+      accessToken: sessionAccessToken,
+    }
+
+    void getProfile(access)
+      .then((loadedProfile) => {
+        if (!isCurrent) return
+        setLoadedProfile({ profile: loadedProfile, userId: sessionUserId })
+        setProfileFailure(null)
+      })
+      .catch((loadError: unknown) => {
+        if (!isCurrent) return
+        if (loadError instanceof ApiRequestError && loadError.status === 401) {
+          handleUnauthorized()
+          return
+        }
+        setProfileFailure({
+          message: loadError instanceof Error ? loadError.message : 'Could not load your profile.',
+          userId: sessionUserId,
+        })
+      })
+
+    return () => {
+      isCurrent = false
+    }
+  }, [handleUnauthorized, profileLoadAttempt, sessionAccessToken, sessionUserId])
+
+  useEffect(() => {
+    if (
+      !auth.session ||
+      auth.isPasswordRecovery ||
+      isInfoPage(currentPage) ||
+      !profile
+    ) {
+      return
+    }
+
+    const nextPage: Page | null = !profile.onboarding_completed_at
+      ? currentPage === 'onboarding'
+        ? null
+        : 'onboarding'
+      : currentPage === 'onboarding'
+        ? 'home'
+        : null
+
+    if (!nextPage) return
+
+    window.history.replaceState(null, '', getPathForPage(nextPage))
+    window.scrollTo({ top: 0 })
+  }, [auth.isPasswordRecovery, auth.session, currentPage, profile])
+
   const navigate = (page: Page) => {
     const nextPath = getPathForPage(page)
 
@@ -43,6 +116,49 @@ function AppContent() {
     setCurrentPage(page)
     window.scrollTo({ top: 0 })
   }
+
+  const getProfileAccess = (): ProfileAccess => {
+    if (!auth.session) throw new Error('Your session expired. Please sign in again.')
+
+    return {
+      userId: auth.session.user.id,
+      accessToken: auth.session.access_token,
+    }
+  }
+
+  const handleProfileUpdate = async (update: ProfileUpdate) => {
+    const access = getProfileAccess()
+    try {
+      const updatedProfile = await updateProfile(access, update)
+      setLoadedProfile({ profile: updatedProfile, userId: access.userId })
+      return updatedProfile
+    } catch (updateError) {
+      if (updateError instanceof ApiRequestError && updateError.status === 401) {
+        handleUnauthorized()
+      }
+      throw updateError
+    }
+  }
+
+  const handleOnboardingComplete = async () => {
+    const access = getProfileAccess()
+    try {
+      const completedProfile = await completeOnboarding(access)
+      setLoadedProfile({ profile: completedProfile, userId: access.userId })
+      navigate('home')
+      return completedProfile
+    } catch (completionError) {
+      if (completionError instanceof ApiRequestError && completionError.status === 401) {
+        handleUnauthorized()
+      }
+      throw completionError
+    }
+  }
+
+  const isPublicInfoPage = isInfoPage(currentPage)
+  const isProfilePending = !hasUsableProfile && !profileError && Boolean(sessionUserId)
+  const isProfileUnavailable = !hasUsableProfile && Boolean(profileError)
+  const renderedPage = currentPage === 'onboarding' ? 'home' : currentPage
 
   if (auth.isLoading) {
     return (
@@ -70,10 +186,52 @@ function AppContent() {
           </div>
           <AppFooter onNavigate={navigate} />
         </div>
+      ) : auth.session && !isPublicInfoPage && isProfilePending ? (
+        <AppShell>
+          <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)]">
+            <p className="leading-7 text-[var(--text-h)]">Loading your profile...</p>
+          </section>
+        </AppShell>
+      ) : auth.session && !isPublicInfoPage && isProfileUnavailable ? (
+        <AppShell>
+          <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)]">
+            <h2 className="m-0 text-xl font-semibold text-[var(--text-h)]">Profile unavailable</h2>
+            <p role="alert" className="mt-3 leading-7 text-red-700">
+              {profileError}
+            </p>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setProfileFailure(null)
+                  setProfileLoadAttempt((attempt) => attempt + 1)
+                }}
+                className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+              >
+                Try again
+              </button>
+              <button
+                type="button"
+                onClick={() => void auth.signOut()}
+                className="rounded-md border border-[var(--border)] px-5 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:border-[var(--accent-border)]"
+              >
+                Sign out
+              </button>
+            </div>
+          </section>
+        </AppShell>
+      ) : auth.session && !isPublicInfoPage && profile && !profile.onboarding_completed_at ? (
+        <OnboardingPage
+          key={auth.session.user.id}
+          profile={profile}
+          onComplete={handleOnboardingComplete}
+          onSignOut={auth.signOut}
+          onUpdate={handleProfileUpdate}
+        />
       ) : auth.session ? (
         <div className="flex min-h-screen flex-col bg-[var(--bg)]">
           <AppNav
-            currentPage={currentPage}
+            currentPage={renderedPage}
             userEmail={auth.session.user.email}
             onNavigate={navigate}
             onSignOut={() => {
@@ -81,27 +239,33 @@ function AppContent() {
             }}
           />
           <div className="flex-1">
-            {currentPage === 'home' && <HomePage onNavigate={navigate} />}
-            {currentPage === 'chat' && (
+            {renderedPage === 'home' && <HomePage onNavigate={navigate} />}
+            {renderedPage === 'chat' && (
               <ChatPage
                 accessToken={auth.session.access_token}
                 onUnauthorized={auth.handleUnauthorized}
               />
             )}
-            {currentPage === 'plan' && (
+            {renderedPage === 'plan' && (
               <PlanPage
                 accessToken={auth.session.access_token}
                 onUnauthorized={auth.handleUnauthorized}
               />
             )}
-            {currentPage === 'calendar' && (
+            {renderedPage === 'calendar' && (
               <CalendarPage
                 accessToken={auth.session.access_token}
                 onUnauthorized={auth.handleUnauthorized}
               />
             )}
-            {currentPage === 'settings' && <SettingsPage userEmail={auth.session.user.email} />}
-            {isInfoPage(currentPage) && <InfoPage page={currentPage} />}
+            {renderedPage === 'settings' && profile && (
+              <SettingsPage
+                profile={profile}
+                userEmail={auth.session.user.email}
+                onUpdate={handleProfileUpdate}
+              />
+            )}
+            {isInfoPage(renderedPage) && <InfoPage page={renderedPage} />}
           </div>
           <AppFooter onNavigate={navigate} />
           <FloatingChatWidget

@@ -6,6 +6,7 @@ export type InfoPageName = (typeof infoPages)[number]
 
 const pagePaths: Record<Page, string> = {
     home: "/home",
+    onboarding: "/onboarding",
     chat: "/chat",
     plan: "/plan",
     calendar: "/calendar",
