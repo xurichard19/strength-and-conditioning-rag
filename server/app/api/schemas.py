@@ -1,14 +1,11 @@
 import datetime
-import json
-from typing import Any, Literal, Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 MAX_CHAT_TEXT_LENGTH = 4000
 MAX_PLAN_GOAL_LENGTH = 1000
-MAX_PLAN_EXTRA_KEYS = 20
-MAX_PLAN_EXTRA_JSON_LENGTH = 4000
 
 PrimaryGoal = Literal[
     "balanced_hybrid",
@@ -63,6 +60,8 @@ class PlanRequest(BaseModel):
 
     goal: str = Field(min_length=1, max_length=MAX_PLAN_GOAL_LENGTH)
 
+    additional_context: str | None = Field(default=None, max_length=MAX_CHAT_TEXT_LENGTH)
+
     @field_validator("goal")
     @classmethod
     def goal_must_not_be_blank(cls, value: str) -> str:
@@ -70,23 +69,6 @@ class PlanRequest(BaseModel):
         if not stripped:
             raise ValueError("goal is required")
         return stripped
-
-    @model_validator(mode="after")
-    def user_factors_must_be_bounded(self) -> Self:
-        extra = self.model_extra or {}
-        if len(extra) > MAX_PLAN_EXTRA_KEYS:
-            raise ValueError(f"plan factors cannot include more than {MAX_PLAN_EXTRA_KEYS} fields")
-
-        serialized = json.dumps(extra, separators=(",", ":"))
-        if len(serialized) > MAX_PLAN_EXTRA_JSON_LENGTH:
-            raise ValueError(
-                f"plan factors cannot exceed {MAX_PLAN_EXTRA_JSON_LENGTH} serialized characters"
-            )
-
-        return self
-    
-    def user_factors(self) -> dict[str, Any]:
-        return dict(self.model_extra or {})
 
 
 class PlanResponse(BaseModel):

@@ -74,7 +74,7 @@ workout containing a list of personalized exercises. Each exercise must include 
 scheduled for, as well as additional notes when necessary."""
 
 
-def build_plan_messages(date: datetime.date, goal: str, constraints: str, retrieved_data: dict) -> list[dict]:
+def build_plan_messages(date: datetime.date, plan_context: str, retrieved_data: dict) -> list[dict]:
 
     context = "\n".join(format_context(retrieved_data))
 
@@ -84,9 +84,8 @@ def build_plan_messages(date: datetime.date, goal: str, constraints: str, retrie
             "role": "user",
             "content": (
                 f"from date: {date}\n"
-                f"goal: {goal}\n"
-                f"additional_user_constraints: {constraints}\n"
-                f"context: {context}"
+                f"plan requirements: {plan_context}\n"
+                f"research context: {context}"
             ),
         },
     ]
