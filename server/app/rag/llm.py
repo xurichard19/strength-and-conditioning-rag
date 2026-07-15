@@ -17,7 +17,7 @@ StructuredResponse = TypeVar("StructuredResponse", bound=BaseModel)
 def generate_response(messages: list[dict], temperature: float = 0.4) -> str:
     try:
         response = client.responses.create(
-            model="gpt-4o-mini",
+            model="gpt-5",
             input=messages,
             temperature=temperature,
         )
@@ -30,7 +30,7 @@ def generate_response(messages: list[dict], temperature: float = 0.4) -> str:
 def generate_streamed_response(messages: list[dict], temperature: float = 0.4):
     try:
         stream_manager = client.responses.stream(
-            model="gpt-4o-mini",
+            model="gpt-5",
             input=messages,
             temperature=temperature,
         )
@@ -51,21 +51,21 @@ def generate_structured_response(
 ) -> StructuredResponse:
     try:
         response = client.responses.parse(
-            model="gpt-4o-mini",
+            model="gpt-5",
             input=messages,
             temperature=temperature,
             text_format=response_model,
         )
     except Exception as exc:
         logger.exception("llm structured generation failed model=%s", response_model.__name__)
-        raise LLMGenerationError("structured llm generation failed") from exc
+        raise RuntimeError("structured llm generation failed") from exc
 
     if response.output_parsed is None:
         logger.warning(
             "llm structured generation returned empty parsed output model=%s",
             response_model.__name__,
         )
-        raise LLMGenerationError("structured llm output was empty")
+        raise RuntimeError("structured llm output was empty")
 
     return response.output_parsed
 

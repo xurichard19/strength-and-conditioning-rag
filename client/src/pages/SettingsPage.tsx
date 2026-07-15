@@ -23,7 +23,8 @@ type Feedback = {
 } | null
 
 const controlClass =
-  'mt-2 w-full rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3.5 py-3 text-base text-[var(--text-h)] outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)] disabled:cursor-not-allowed disabled:opacity-60'
+  'mt-2 w-full rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3.5 py-3 text-base text-[var(--text-h)] outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)] disabled:cursor-default disabled:text-[var(--text-h)] disabled:opacity-90'
+const selectClass = `${controlClass} disabled:appearance-none`
 
 function profileAnswers(profile: Profile): OnboardingAnswers {
   return {
@@ -39,6 +40,7 @@ function profileAnswers(profile: Profile): OnboardingAnswers {
 export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps) {
   const [draft, setDraft] = useState<OnboardingAnswers>(() => profileAnswers(profile))
   const [feedback, setFeedback] = useState<Feedback>(null)
+  const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
   const isDirty = useMemo(
@@ -63,11 +65,18 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
   const discardChanges = () => {
     setDraft(profileAnswers(profile))
     setFeedback(null)
+    setIsEditing(false)
+  }
+
+  const editProfile = () => {
+    setDraft(profileAnswers(profile))
+    setFeedback(null)
+    setIsEditing(true)
   }
 
   const saveChanges = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!isDirty || isSaving) return
+    if (!isEditing || !isDirty || isSaving) return
 
     const displayName = draft.display_name?.trim() ?? ''
     if (!displayName) {
@@ -102,6 +111,7 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
     if (Object.keys(update).length === 0) {
       setDraft(profileAnswers(profile))
       setFeedback({ type: 'success', message: 'Your profile is already up to date.' })
+      setIsEditing(false)
       return
     }
 
@@ -112,6 +122,7 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
       const updatedProfile = await onUpdate(update)
       setDraft(profileAnswers(updatedProfile))
       setFeedback({ type: 'success', message: 'Your profile has been updated.' })
+      setIsEditing(false)
     } catch (saveError) {
       setFeedback({
         type: 'error',
@@ -156,7 +167,7 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
                 maxLength={60}
                 autoComplete="given-name"
                 required
-                disabled={isSaving}
+                disabled={!isEditing || isSaving}
                 aria-describedby="display-name-help"
                 className={controlClass}
               />
@@ -173,13 +184,9 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
                 id="email"
                 type="email"
                 value={userEmail ?? ''}
-                readOnly
-                aria-describedby="email-help"
+                disabled
                 className={`${controlClass} bg-[var(--social-bg)]`}
               />
-              <p id="email-help" className="mt-2 text-sm leading-5">
-                Email changes are not supported from this page.
-              </p>
             </div>
           </div>
         </section>
@@ -205,8 +212,8 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
                   )
                 }
                 required
-                disabled={isSaving}
-                className={controlClass}
+                disabled={!isEditing || isSaving}
+                className={selectClass}
               >
                 <option value="" disabled>Select your primary goal</option>
                 {PRIMARY_GOALS.map((option) => (
@@ -229,8 +236,8 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
                   )
                 }
                 required
-                disabled={isSaving}
-                className={controlClass}
+                disabled={!isEditing || isSaving}
+                className={selectClass}
               >
                 <option value="" disabled>Select your experience</option>
                 {EXPERIENCE_LEVELS.map((option) => (
@@ -255,8 +262,8 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
                   )
                 }
                 required
-                disabled={isSaving}
-                className={controlClass}
+                disabled={!isEditing || isSaving}
+                className={selectClass}
               >
                 <option value="" disabled>Select days per week</option>
                 {TRAINING_DAYS.map((days) => (
@@ -281,8 +288,8 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
                   )
                 }
                 required
-                disabled={isSaving}
-                className={controlClass}
+                disabled={!isEditing || isSaving}
+                className={selectClass}
               >
                 <option value="" disabled>Select session duration</option>
                 {SESSION_DURATIONS.map((minutes) => (
@@ -307,8 +314,8 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
                   )
                 }
                 required
-                disabled={isSaving}
-                className={controlClass}
+                disabled={!isEditing || isSaving}
+                className={selectClass}
               >
                 <option value="" disabled>Select your equipment</option>
                 {EQUIPMENT_OPTIONS.map((option) => (
@@ -328,23 +335,33 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
             )}
           </div>
 
-          <div className="flex flex-col-reverse gap-3 sm:flex-row">
+          {isEditing ? (
+            <div className="flex flex-col-reverse gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={discardChanges}
+                disabled={isSaving}
+                className="rounded-lg border border-[var(--border)] bg-[var(--bg)] px-5 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:border-[var(--accent-border)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Discard changes
+              </button>
+              <button
+                type="submit"
+                disabled={!isDirty || isSaving}
+                className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSaving ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          ) : (
             <button
               type="button"
-              onClick={discardChanges}
-              disabled={!isDirty || isSaving}
-              className="rounded-lg border border-[var(--border)] bg-[var(--bg)] px-5 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:border-[var(--accent-border)] disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={editProfile}
+              className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
             >
-              Discard changes
+              Edit profile
             </button>
-            <button
-              type="submit"
-              disabled={!isDirty || isSaving}
-              className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isSaving ? 'Saving…' : 'Save changes'}
-            </button>
-          </div>
+          )}
         </div>
       </form>
     </main>

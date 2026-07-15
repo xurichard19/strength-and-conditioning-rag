@@ -89,18 +89,18 @@ export function ChatPage({ accessToken, onUnauthorized }: ChatPageProps) {
             <section className="mt-5 min-h-40 rounded-lg border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)]">
                 <div className="mb-3 flex items-center justify-between gap-4">
                     <h2 className="m-0 text-lg font-semibold text-[var(--text-h)]">Answer</h2>
-                    {isLoading && (
-                        <span className="text-sm font-medium text-[var(--accent)]">Searching research</span>
-                    )}
+                    <div className="flex items-center gap-3">
+                        {isLoading && (
+                            <span className="text-sm font-medium text-[var(--accent)]">Searching research</span>
+                        )}
+                        <SourceList sources={sources} />
+                    </div>
                 </div>
 
                 {error ? (
                     <p className="leading-7 text-red-700">{error}</p>
                 ) : response ? (
-                    <>
-                        <MarkdownResponse content={response} />
-                        <SourceList sources={sources} />
-                    </>
+                    <MarkdownResponse content={response} />
                 ) : (
                     <p className="leading-7 text-[var(--text)]">
                         Your research-backed insight will appear here after you ask a question.

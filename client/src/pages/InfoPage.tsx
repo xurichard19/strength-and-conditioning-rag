@@ -100,14 +100,17 @@ const teamIntroductions = [
     {
         name: "rxu",
         body: "ML/Cloud/Backend",
+        linkedinUrl: "https://www.linkedin.com/in/richardrxu/",
     },
     {
         name: "dmahairas",
         body: "Cloud/DevOps/FullStack",
+        linkedinUrl: "https://www.linkedin.com/in/dimitrios-mahairas/",
     },
     {
         name: "codex",
         body: "goat",
+        linkedinUrl: "https://www.linkedin.com/company/openai/",
     },
 ]
 
@@ -150,7 +153,19 @@ export function InfoPage({ page }: InfoPageProps) {
                                 key={person.name}
                                 className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)]"
                             >
-                                <h2 className="m-0 text-lg font-semibold text-[var(--text-h)]">{person.name}</h2>
+                                <div className="flex items-start justify-between gap-4">
+                                    <h2 className="m-0 text-lg font-semibold text-[var(--text-h)]">{person.name}</h2>
+                                    <a
+                                        href={person.linkedinUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        aria-label={`${person.name} on LinkedIn`}
+                                        title={`${person.name} on LinkedIn`}
+                                        className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#0a66c2] text-sm font-bold text-white transition hover:opacity-85 focus:outline-none focus:ring-4 focus:ring-[var(--accent-bg)]"
+                                    >
+                                        in
+                                    </a>
+                                </div>
                                 <p className="m-0 mt-3 leading-7">{person.body}</p>
                             </article>
                         ))}

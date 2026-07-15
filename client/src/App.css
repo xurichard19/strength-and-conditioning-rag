@@ -22,8 +22,27 @@
   animation: onboarding-step-enter 280ms ease-out;
 }
 
+@keyframes plan-loading {
+  from {
+    transform: translateX(-110%);
+  }
+
+  to {
+    transform: translateX(260%);
+  }
+}
+
+.plan-loading-bar {
+  animation: plan-loading 1.35s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .onboarding-step {
+  .onboarding-step,
+  .plan-loading-bar {
     animation: none;
+  }
+
+  .plan-loading-bar {
+    width: 100%;
   }
 }

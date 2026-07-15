@@ -6,7 +6,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
 
 export type PlanRequest = {
   goal: string
-} & Record<string, unknown>
+  additional_context?: string
+}
 
 function apiPath(path: string) {
   const baseUrl = API_BASE_URL.replace(/\/$/, '')
