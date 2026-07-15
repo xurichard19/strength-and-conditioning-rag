@@ -36,9 +36,8 @@ def select_rows(
         with urlopen(request, timeout=10) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
-        details = exc.read().decode("utf-8", errors="replace")
-        raise SupabaseDataError(details) from exc
-    except URLError as exc:
+        raise SupabaseDataError("Supabase data API request failed") from exc
+    except (json.JSONDecodeError, TimeoutError, UnicodeDecodeError, URLError) as exc:
         raise SupabaseDataError("Supabase data API is unavailable") from exc
 
     if not isinstance(payload, list):
@@ -68,9 +67,8 @@ def insert_rows(table: str, rows: dict[str, Any] | list[dict[str, Any]], access_
         with urlopen(request, timeout=10):
             return
     except HTTPError as exc:
-        details = exc.read().decode("utf-8", errors="replace")
-        raise SupabaseDataError(details) from exc
-    except URLError as exc:
+        raise SupabaseDataError("Supabase data API request failed") from exc
+    except (TimeoutError, URLError) as exc:
         raise SupabaseDataError("Supabase data API is unavailable") from exc
 
 
@@ -101,7 +99,44 @@ def upsert_rows(
         with urlopen(request, timeout=10):
             return
     except HTTPError as exc:
-        details = exc.read().decode("utf-8", errors="replace")
-        raise SupabaseDataError(details) from exc
-    except URLError as exc:
+        raise SupabaseDataError("Supabase data API request failed") from exc
+    except (TimeoutError, URLError) as exc:
         raise SupabaseDataError("Supabase data API is unavailable") from exc
+
+
+def update_rows(
+    table: str,
+    values: dict[str, Any],
+    query_params: list[tuple[str, str]],
+    access_token: str,
+) -> list[dict[str, Any]]:
+    settings = get_settings()
+    supabase_url = settings.supabase_url.rstrip("/")
+    query = urlencode(query_params, safe=",().")
+    url = f"{supabase_url}/rest/v1/{table}?{query}"
+
+    request = UrlRequest(
+        url,
+        data=json.dumps(values).encode("utf-8"),
+        method="PATCH",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "apikey": settings.supabase_publishable_key,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        },
+    )
+
+    try:
+        with urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        raise SupabaseDataError("Supabase data API request failed") from exc
+    except (json.JSONDecodeError, TimeoutError, UnicodeDecodeError, URLError) as exc:
+        raise SupabaseDataError("Supabase data API is unavailable") from exc
+
+    if not isinstance(payload, list) or any(not isinstance(row, dict) for row in payload):
+        raise SupabaseDataError("Supabase data API returned an unexpected response")
+
+    return payload

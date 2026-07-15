@@ -2,6 +2,7 @@ import './App.css'
 
 import { useEffect, useState } from 'react'
 
+import { ApiRequestError } from './api/errors'
 import { completeOnboarding, getProfile, updateProfile } from './api/profile'
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/useAuth'
@@ -27,12 +28,13 @@ function AppContent() {
   const [currentPage, setCurrentPage] = useState<Page>(() => getPageFromPath(window.location.pathname))
   const [loadedProfile, setLoadedProfile] = useState<{ profile: Profile; userId: string } | null>(null)
   const [profileFailure, setProfileFailure] = useState<{ message: string; userId: string } | null>(null)
-  const [isProfileLoading, setIsProfileLoading] = useState(false)
   const [profileLoadAttempt, setProfileLoadAttempt] = useState(0)
 
   const sessionUserId = auth.session?.user.id
   const sessionAccessToken = auth.session?.access_token
+  const handleUnauthorized = auth.handleUnauthorized
   const profile = loadedProfile && loadedProfile.userId === sessionUserId ? loadedProfile.profile : null
+  const hasUsableProfile = Boolean(profile)
   const profileError =
     profileFailure && profileFailure.userId === sessionUserId ? profileFailure.message : ''
 
@@ -65,26 +67,26 @@ function AppContent() {
       })
       .catch((loadError: unknown) => {
         if (!isCurrent) return
+        if (loadError instanceof ApiRequestError && loadError.status === 401) {
+          handleUnauthorized()
+          return
+        }
         setProfileFailure({
           message: loadError instanceof Error ? loadError.message : 'Could not load your profile.',
           userId: sessionUserId,
         })
       })
-      .finally(() => {
-        if (isCurrent) setIsProfileLoading(false)
-      })
 
     return () => {
       isCurrent = false
     }
-  }, [profileLoadAttempt, sessionAccessToken, sessionUserId])
+  }, [handleUnauthorized, profileLoadAttempt, sessionAccessToken, sessionUserId])
 
   useEffect(() => {
     if (
       !auth.session ||
       auth.isPasswordRecovery ||
       isInfoPage(currentPage) ||
-      isProfileLoading ||
       !profile
     ) {
       return
@@ -102,7 +104,7 @@ function AppContent() {
 
     window.history.replaceState(null, '', getPathForPage(nextPage))
     window.scrollTo({ top: 0 })
-  }, [auth.isPasswordRecovery, auth.session, currentPage, isProfileLoading, profile])
+  }, [auth.isPasswordRecovery, auth.session, currentPage, profile])
 
   const navigate = (page: Page) => {
     const nextPath = getPathForPage(page)
@@ -126,21 +128,36 @@ function AppContent() {
 
   const handleProfileUpdate = async (update: ProfileUpdate) => {
     const access = getProfileAccess()
-    const updatedProfile = await updateProfile(access, update)
-    setLoadedProfile({ profile: updatedProfile, userId: access.userId })
-    return updatedProfile
+    try {
+      const updatedProfile = await updateProfile(access, update)
+      setLoadedProfile({ profile: updatedProfile, userId: access.userId })
+      return updatedProfile
+    } catch (updateError) {
+      if (updateError instanceof ApiRequestError && updateError.status === 401) {
+        handleUnauthorized()
+      }
+      throw updateError
+    }
   }
 
   const handleOnboardingComplete = async () => {
     const access = getProfileAccess()
-    const completedProfile = await completeOnboarding(access)
-    setLoadedProfile({ profile: completedProfile, userId: access.userId })
-    navigate('home')
-    return completedProfile
+    try {
+      const completedProfile = await completeOnboarding(access)
+      setLoadedProfile({ profile: completedProfile, userId: access.userId })
+      navigate('home')
+      return completedProfile
+    } catch (completionError) {
+      if (completionError instanceof ApiRequestError && completionError.status === 401) {
+        handleUnauthorized()
+      }
+      throw completionError
+    }
   }
 
   const isPublicInfoPage = isInfoPage(currentPage)
-  const isProfilePending = !profileError && (isProfileLoading || profile === null)
+  const isProfilePending = !hasUsableProfile && !profileError && Boolean(sessionUserId)
+  const isProfileUnavailable = !hasUsableProfile && Boolean(profileError)
   const renderedPage = currentPage === 'onboarding' ? 'home' : currentPage
 
   if (auth.isLoading) {
@@ -175,7 +192,7 @@ function AppContent() {
             <p className="leading-7 text-[var(--text-h)]">Loading your profile...</p>
           </section>
         </AppShell>
-      ) : auth.session && !isPublicInfoPage && profileError ? (
+      ) : auth.session && !isPublicInfoPage && isProfileUnavailable ? (
         <AppShell>
           <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)]">
             <h2 className="m-0 text-xl font-semibold text-[var(--text-h)]">Profile unavailable</h2>
@@ -187,7 +204,6 @@ function AppContent() {
                 type="button"
                 onClick={() => {
                   setProfileFailure(null)
-                  setIsProfileLoading(true)
                   setProfileLoadAttempt((attempt) => attempt + 1)
                 }}
                 className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
