@@ -12,6 +12,7 @@ import { AppShell } from './components/AppShell'
 import { AuthForm } from './components/AuthForm'
 import { FloatingChatWidget } from './components/FloatingChatWidget'
 import { UpdatePasswordForm } from './components/UpdatePasswordForm'
+import { Button, Panel } from './components/ui'
 import { CalendarPage } from './pages/CalendarPage'
 import { ChatPage } from './pages/ChatPage'
 import { HomePage } from './pages/HomePage'
@@ -163,9 +164,9 @@ function AppContent() {
   if (auth.isLoading) {
     return (
       <AppShell>
-        <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)]">
+        <Panel className="p-5">
           <p className="leading-7 text-[var(--text-h)]">Checking authentication...</p>
-        </section>
+        </Panel>
       </AppShell>
     )
   }
@@ -188,37 +189,34 @@ function AppContent() {
         </div>
       ) : auth.session && !isPublicInfoPage && isProfilePending ? (
         <AppShell>
-          <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)]">
+          <Panel className="p-5">
             <p className="leading-7 text-[var(--text-h)]">Loading your profile...</p>
-          </section>
+          </Panel>
         </AppShell>
       ) : auth.session && !isPublicInfoPage && isProfileUnavailable ? (
         <AppShell>
-          <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)]">
+          <Panel className="p-5">
             <h2 className="m-0 text-xl font-semibold text-[var(--text-h)]">Profile unavailable</h2>
-            <p role="alert" className="mt-3 leading-7 text-red-700">
+            <p role="alert" className="feedback-error mt-3">
               {profileError}
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
-              <button
-                type="button"
+              <Button
                 onClick={() => {
                   setProfileFailure(null)
                   setProfileLoadAttempt((attempt) => attempt + 1)
                 }}
-                className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
               >
                 Try again
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="secondary"
                 onClick={() => void auth.signOut()}
-                className="rounded-md border border-[var(--border)] px-5 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:border-[var(--accent-border)]"
               >
                 Sign out
-              </button>
+              </Button>
             </div>
-          </section>
+          </Panel>
         </AppShell>
       ) : auth.session && !isPublicInfoPage && profile && !profile.onboarding_completed_at ? (
         <OnboardingPage
@@ -268,10 +266,12 @@ function AppContent() {
             {isInfoPage(renderedPage) && <InfoPage page={renderedPage} />}
           </div>
           <AppFooter onNavigate={navigate} />
-          <FloatingChatWidget
-            accessToken={auth.session.access_token}
-            onUnauthorized={auth.handleUnauthorized}
-          />
+          {renderedPage !== 'chat' && (
+            <FloatingChatWidget
+              accessToken={auth.session.access_token}
+              onUnauthorized={auth.handleUnauthorized}
+            />
+          )}
         </div>
       ) : (
         <div className="flex min-h-screen flex-col bg-[var(--bg)]">

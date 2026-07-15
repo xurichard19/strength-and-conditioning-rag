@@ -1,309 +1,269 @@
-import { type FormEvent, useState } from "react"
-import { ApiRequestError } from "../api/errors"
-import { savePlan, submitPlan } from "../api/plan"
-import type { PlanResponse } from "../types"
+import { type FormEvent, useState } from 'react'
+import {
+  CalendarRange,
+  ChevronLeft,
+  ChevronRight,
+  Dumbbell,
+  Save,
+  Sparkles,
+  Target,
+} from 'lucide-react'
+
+import { ApiRequestError } from '../api/errors'
+import { savePlan, submitPlan } from '../api/plan'
+import { Button, EmptyState, IconButton, PageHeader, Panel } from '../components/ui'
+import type { PlanResponse } from '../types'
 
 const workoutsPerPage = 3
 
+function parseWorkoutDate(date: string) {
+  return new Date(`${date}T00:00:00`)
+}
+
 function formatWorkoutDate(date: string) {
-    const parsedDate = new Date(`${date}T00:00:00`)
-
-    if (Number.isNaN(parsedDate.getTime())) {
-        return date
-    }
-
-    return new Intl.DateTimeFormat(undefined, {
-        weekday: "long",
-        month: "short",
-        day: "numeric",
-    }).format(parsedDate)
+  const parsedDate = parseWorkoutDate(date)
+  if (Number.isNaN(parsedDate.getTime())) return date
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  }).format(parsedDate)
 }
 
 function formatShortDate(date: string) {
-    const parsedDate = new Date(`${date}T00:00:00`)
-
-    if (Number.isNaN(parsedDate.getTime())) {
-        return date
-    }
-
-    return new Intl.DateTimeFormat(undefined, {
-        month: "numeric",
-        day: "numeric",
-    }).format(parsedDate)
+  const parsedDate = parseWorkoutDate(date)
+  if (Number.isNaN(parsedDate.getTime())) return date
+  return new Intl.DateTimeFormat(undefined, { month: 'numeric', day: 'numeric' }).format(parsedDate)
 }
 
 type PlanPageProps = {
-    accessToken: string
-    onUnauthorized: () => void
+  accessToken: string
+  onUnauthorized: () => void
 }
 
 export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
-    const [goal, setGoal] = useState("")
-    const [additionalContext, setAdditionalContext] = useState("")
-    const [plan, setPlan] = useState<PlanResponse | null>(null)
-    const [isLoading, setIsLoading] = useState(false)
-    const [isSaving, setIsSaving] = useState(false)
-    const [error, setError] = useState("")
-    const [saveError, setSaveError] = useState("")
-    const [saveMessage, setSaveMessage] = useState("")
-    const [workoutPage, setWorkoutPage] = useState(0)
+  const [goal, setGoal] = useState('')
+  const [additionalContext, setAdditionalContext] = useState('')
+  const [plan, setPlan] = useState<PlanResponse | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [saveError, setSaveError] = useState('')
+  const [saveMessage, setSaveMessage] = useState('')
+  const [workoutPage, setWorkoutPage] = useState(0)
 
-    const visibleWorkouts = plan?.workouts.slice(
-        workoutPage * workoutsPerPage,
-        workoutPage * workoutsPerPage + workoutsPerPage,
-    ) ?? []
-    const totalWorkoutPages = plan ? Math.ceil(plan.workouts.length / workoutsPerPage) : 0
-    const canShowPreviousWorkouts = workoutPage > 0
-    const canShowNextWorkouts = totalWorkoutPages > 0 && workoutPage < totalWorkoutPages - 1
+  const visibleWorkouts = plan?.workouts.slice(
+    workoutPage * workoutsPerPage,
+    workoutPage * workoutsPerPage + workoutsPerPage,
+  ) ?? []
+  const totalWorkoutPages = plan ? Math.ceil(plan.workouts.length / workoutsPerPage) : 0
+  const canShowPreviousWorkouts = workoutPage > 0
+  const canShowNextWorkouts = totalWorkoutPages > 0 && workoutPage < totalWorkoutPages - 1
 
-    const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-        e.preventDefault()
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const trimmedGoal = goal.trim()
+    const trimmedAdditionalContext = additionalContext.trim()
+    if (!trimmedGoal || isLoading) return
 
-        const trimmedGoal = goal.trim()
-        const trimmedAdditionalContext = additionalContext.trim()
-        if (!trimmedGoal || isLoading) return
+    setIsLoading(true)
+    setError('')
+    setSaveError('')
+    setSaveMessage('')
+    setPlan(null)
+    setWorkoutPage(0)
 
-        setIsLoading(true)
-        setError("")
-        setSaveError("")
-        setSaveMessage("")
-        setPlan(null)
-        setWorkoutPage(0)
-
-        try {
-            const data = await submitPlan({
-                goal: trimmedGoal,
-                ...(trimmedAdditionalContext
-                    ? { additional_context: trimmedAdditionalContext }
-                    : {}),
-            }, accessToken)
-            setPlan(data)
-        } catch (error) {
-            if (error instanceof ApiRequestError && error.status === 401) {
-                onUnauthorized()
-                return
-            }
-
-            setError("Something went wrong while creating the plan. Please try again.")
-            setWorkoutPage(0)
-        } finally {
-            setIsLoading(false)
-        }
+    try {
+      const data = await submitPlan({
+        goal: trimmedGoal,
+        ...(trimmedAdditionalContext ? { additional_context: trimmedAdditionalContext } : {}),
+      }, accessToken)
+      setPlan(data)
+    } catch (requestError) {
+      if (requestError instanceof ApiRequestError && requestError.status === 401) {
+        onUnauthorized()
+        return
+      }
+      setError('Something went wrong while creating the plan. Please try again.')
+    } finally {
+      setIsLoading(false)
     }
+  }
 
-    const handleSavePlan = async () => {
-        if (!plan || isSaving) return
+  const handleSavePlan = async () => {
+    if (!plan || isSaving) return
+    setIsSaving(true)
+    setSaveError('')
+    setSaveMessage('')
 
-        setIsSaving(true)
-        setSaveError("")
-        setSaveMessage("")
-
-        try {
-            await savePlan(plan, accessToken)
-            setSaveMessage("Plan saved to your calendar.")
-        } catch (error) {
-            if (error instanceof ApiRequestError && error.status === 401) {
-                onUnauthorized()
-                return
-            }
-
-            setSaveError("The plan was generated, but it could not be saved. Please try again.")
-        } finally {
-            setIsSaving(false)
-        }
+    try {
+      await savePlan(plan, accessToken)
+      setSaveMessage('Plan saved to your calendar.')
+    } catch (requestError) {
+      if (requestError instanceof ApiRequestError && requestError.status === 401) {
+        onUnauthorized()
+        return
+      }
+      setSaveError('The plan was generated, but it could not be saved. Please try again.')
+    } finally {
+      setIsSaving(false)
     }
+  }
 
-    return (
-        <main className="mx-auto flex min-h-[calc(100vh-4.25rem)] max-w-6xl flex-col px-4 py-8 text-left text-[var(--text)] sm:px-6 lg:px-8">
-            <header className="mb-8">
-                <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--text-h)]">
-                    Hybrid training builder
-                </p>
-                <h1 className="m-0 text-4xl font-semibold tracking-normal text-[var(--text-h)] sm:text-5xl">
-                    Build an evidence-informed week
-                </h1>
-                <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--text-h)]">
-                    Generate a Monday through Sunday training week that balances strength, conditioning, recovery, and interference risk.
-                </p>
-            </header>
+  return (
+    <main className="app-page">
+      <PageHeader
+        eyebrow="Weekly planner"
+        icon={CalendarRange}
+        title="Build a coherent training week."
+        description="Combine a specific performance goal with the constraints that matter right now. Your profile supplies the durable context."
+      />
 
-            <div className="grid gap-5 lg:flex-1 lg:grid-cols-[minmax(14rem,0.55fr)_minmax(0,1.45fr)] lg:grid-rows-[minmax(24rem,1fr)]">
-                <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--bg)] p-4 shadow-[var(--shadow)]">
-                    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                        <label htmlFor="goal" className="flex flex-col gap-2 text-sm font-medium text-[var(--text-h)]">
-                            Performance goal
-                            <textarea
-                                id="goal"
-                                value={goal}
-                                onChange={(e) => setGoal(e.target.value)}
-                                placeholder="Improve 10K pace while maintaining lower-body strength."
-                                className="min-h-24 resize-y rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 text-base leading-6 text-[var(--text-h)] outline-none transition placeholder:text-[var(--text)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)]"
-                            />
-                        </label>
-
-                        <label htmlFor="additional-context" className="flex flex-col gap-2 text-sm font-medium text-[var(--text-h)]">
-                            Additional context
-                            <textarea
-                                id="additional-context"
-                                value={additionalContext}
-                                onChange={(e) => setAdditionalContext(e.target.value)}
-                                placeholder="Preparing for a race in eight weeks, prefer morning sessions, long run Sunday, avoid heavy legs before intervals."
-                                className="min-h-32 resize-y rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 text-base leading-6 text-[var(--text-h)] outline-none transition placeholder:text-[var(--text)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)]"
-                            />
-                        </label>
-
-                        <button
-                            type="submit"
-                            disabled={!goal.trim() || isLoading}
-                            className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:border disabled:border-[var(--border)] disabled:bg-[var(--social-bg)] disabled:text-[var(--text)]"
-                        >
-                            {isLoading ? "Synthesizing..." : "Build week"}
-                        </button>
-                    </form>
-                </section>
-
-                <section className="h-full min-h-96 rounded-lg border border-[var(--border)] bg-[var(--bg)] shadow-[var(--shadow)]">
-                    <div className="relative border-b border-[var(--border)] px-14 py-4 text-center">
-                        <button
-                            type="button"
-                            onClick={() => setWorkoutPage((page) => Math.max(page - 1, 0))}
-                            disabled={!canShowPreviousWorkouts}
-                            aria-label="Show previous workout days"
-                            className="absolute left-4 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full border border-[var(--border)] bg-[var(--social-bg)] text-xl font-semibold text-[var(--text-h)] transition hover:border-[var(--accent-border)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-[var(--border)] disabled:hover:text-[var(--text-h)]"
-                        >
-                            {"<"}
-                        </button>
-                        <div>
-                            <h2 className="m-0 text-lg font-semibold text-[var(--text-h)]">Training week</h2>
-                            {plan && (
-                                <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text)]">
-                                    Days {workoutPage * workoutsPerPage + 1}-{Math.min((workoutPage + 1) * workoutsPerPage, plan.workouts.length)} of {plan.workouts.length}
-                                </p>
-                            )}
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setWorkoutPage((page) => Math.min(page + 1, totalWorkoutPages - 1))}
-                            disabled={!canShowNextWorkouts}
-                            aria-label="Show next workout days"
-                            className="absolute right-4 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full border border-[var(--border)] bg-[var(--social-bg)] text-xl font-semibold text-[var(--text-h)] transition hover:border-[var(--accent-border)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-[var(--border)] disabled:hover:text-[var(--text-h)]"
-                        >
-                            {">"}
-                        </button>
-                    </div>
-
-                    {isLoading && (
-                        <div
-                            className="border-b border-[var(--border)] px-5 py-4"
-                            role="progressbar"
-                            aria-label="Generating training plan"
-                        >
-                            <div className="mb-2 flex items-center justify-between gap-4 text-sm font-medium">
-                                <span className="text-[var(--text-h)]">Generating your training week</span>
-                                <span className="shrink-0 text-[var(--accent)]">Working...</span>
-                            </div>
-                            <div className="h-2 overflow-hidden rounded-full bg-[var(--accent-bg)]">
-                                <div className="plan-loading-bar h-full w-2/5 rounded-full bg-[var(--accent)]" />
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="p-5">
-                        {plan && !error && (
-                            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                                <p className="m-0 text-sm leading-6 text-[var(--text)]">
-                                    Review the generated week, then save it when it looks right.
-                                </p>
-                                <button
-                                    type="button"
-                                    onClick={handleSavePlan}
-                                    disabled={isSaving}
-                                    className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:border disabled:border-[var(--border)] disabled:bg-[var(--social-bg)] disabled:text-[var(--text)]"
-                                >
-                                    {isSaving ? "Saving..." : "Save plan"}
-                                </button>
-                            </div>
-                        )}
-                        {saveMessage && <p className="mb-4 leading-7 text-[var(--accent)]">{saveMessage}</p>}
-                        {saveError && <p className="mb-4 leading-7 text-red-700">{saveError}</p>}
-                        {error ? (
-                        <p className="leading-7 text-red-700">{error}</p>
-                    ) : plan ? (
-                        <div className="grid gap-4 xl:grid-cols-3">
-                            {visibleWorkouts.map((workout, dayIndex) => (
-                                <article
-                                    key={`${workout.exercises[0]?.date ?? "workout"}-${dayIndex}`}
-                                    className="flex min-h-80 flex-col rounded-lg border border-[var(--border)] bg-[var(--social-bg)]"
-                                >
-                                    <div className="border-b border-[var(--border)] bg-[var(--bg)] p-4">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
-                                                    Day {workoutPage * workoutsPerPage + dayIndex + 1}
-                                                </p>
-                                                <h3 className="m-0 mt-1 text-lg font-semibold text-[var(--text-h)]">
-                                                    {formatWorkoutDate(workout.exercises[0]?.date ?? "")}
-                                                </h3>
-                                            </div>
-                                            <span className="shrink-0 rounded-full border border-[var(--border)] px-3 py-1 text-xs font-semibold text-[var(--text-h)]">
-                                                {formatShortDate(workout.exercises[0]?.date ?? "")}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <ul className="grid flex-1 content-start gap-2.5 p-3">
-                                        {workout.exercises.map((exercise, index) => (
-                                            <li
-                                                key={`${exercise.name}-${index}`}
-                                                className="group list-none rounded-md border border-[var(--border)] bg-[var(--bg)] text-sm leading-6 text-[var(--text)] transition hover:border-[var(--accent-border)] hover:shadow-sm focus-within:border-[var(--accent-border)] focus-within:ring-4 focus-within:ring-[var(--accent-bg)]"
-                                            >
-                                                <button
-                                                    type="button"
-                                                    className="flex w-full items-center gap-2.5 rounded-md p-2.5 text-left focus:outline-none"
-                                                >
-                                                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--accent-bg)] text-xs font-semibold text-[var(--accent)]">
-                                                        {index + 1}
-                                                    </span>
-                                                    <div className="min-w-0 flex-1">
-                                                        <div className="break-words text-sm font-semibold leading-5 text-[var(--text-h)]">
-                                                            {exercise.name}
-                                                        </div>
-                                                    </div>
-                                                </button>
-                                                <div className="grid max-h-0 overflow-hidden px-2.5 text-left opacity-0 transition-all duration-200 group-hover:max-h-48 group-hover:pb-2.5 group-hover:opacity-100 group-focus-within:max-h-48 group-focus-within:pb-2.5 group-focus-within:opacity-100">
-                                                    <div className="border-t border-[var(--border)] pt-2">
-                                                        <div className="flex flex-wrap gap-1.5">
-                                                        {exercise.sets != null && (
-                                                            <span className="rounded-full bg-[var(--social-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--text-h)]">
-                                                                {exercise.sets} sets
-                                                            </span>
-                                                        )}
-                                                        {exercise.reps != null && (
-                                                            <span className="rounded-full bg-[var(--social-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--text-h)]">
-                                                                {exercise.reps} reps
-                                                            </span>
-                                                        )}
-                                                        </div>
-                                                        {exercise.notes && (
-                                                            <p className="m-0 mt-2 text-xs leading-5 text-[var(--text)]">
-                                                                {exercise.notes}
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </article>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="leading-7 text-[var(--text)]">
-                            Your evidence-informed training week will appear here after Arcel reviews the research context.
-                        </p>
-                        )}
-                    </div>
-                </section>
+      <div className="grid items-start gap-5 lg:grid-cols-[21rem_minmax(0,1fr)]">
+        <Panel className="p-5 lg:sticky lg:top-24">
+          <div className="mb-5 flex items-center gap-3">
+            <span className="grid h-9 w-9 place-items-center rounded-md bg-[var(--accent-bg)] text-[var(--accent)]">
+              <Target aria-hidden="true" size={18} />
+            </span>
+            <div>
+              <h2 className="text-sm font-semibold">Plan context</h2>
+              <p className="mt-0.5 text-xs text-[var(--text-muted)]">Specific beats exhaustive.</p>
             </div>
-        </main>
-    )
+          </div>
+
+          <form onSubmit={handleSubmit} className="grid gap-4">
+            <label htmlFor="goal">
+              <span className="field-label">Performance goal</span>
+              <textarea
+                id="goal"
+                value={goal}
+                onChange={(event) => setGoal(event.target.value)}
+                placeholder="Improve 10K pace while maintaining lower-body strength."
+                rows={4}
+                className="field-control resize-y px-3.5 py-3 text-sm leading-6"
+              />
+            </label>
+
+            <label htmlFor="additional-context">
+              <span className="field-label">Additional context</span>
+              <textarea
+                id="additional-context"
+                value={additionalContext}
+                onChange={(event) => setAdditionalContext(event.target.value)}
+                placeholder="Race in eight weeks, long run Sunday, avoid heavy legs before intervals..."
+                rows={6}
+                className="field-control resize-y px-3.5 py-3 text-sm leading-6"
+              />
+            </label>
+
+            <Button type="submit" icon={Sparkles} disabled={!goal.trim() || isLoading} className="w-full">
+              {isLoading ? 'Building your week...' : 'Generate week'}
+            </Button>
+          </form>
+        </Panel>
+
+        <Panel raised className="min-h-[38rem] overflow-hidden">
+          <header className="flex min-h-[4.5rem] items-center justify-between gap-4 border-b border-[var(--border)] px-4 sm:px-5">
+            <div>
+              <h2 className="text-base font-semibold">Training week</h2>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                {plan
+                  ? `Days ${workoutPage * workoutsPerPage + 1}-${Math.min((workoutPage + 1) * workoutsPerPage, plan.workouts.length)} of ${plan.workouts.length}`
+                  : 'Monday through Sunday'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <IconButton
+                icon={ChevronLeft}
+                label="Show previous workout days"
+                disabled={!canShowPreviousWorkouts}
+                onClick={() => setWorkoutPage((page) => Math.max(page - 1, 0))}
+              />
+              <IconButton
+                icon={ChevronRight}
+                label="Show next workout days"
+                disabled={!canShowNextWorkouts}
+                onClick={() => setWorkoutPage((page) => Math.min(page + 1, totalWorkoutPages - 1))}
+              />
+            </div>
+          </header>
+
+          {isLoading && (
+            <div className="border-b border-[var(--border)] px-5 py-4" role="progressbar" aria-label="Generating training plan">
+              <div className="mb-2 flex items-center justify-between gap-4 text-xs font-semibold">
+                <span className="text-[var(--text-h)]">Balancing volume, stress, and recovery</span>
+                <span className="text-[var(--accent)]">Working...</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded bg-[var(--accent-bg)]">
+                <div className="plan-loading-bar h-full w-2/5 rounded bg-[var(--accent)]" />
+              </div>
+            </div>
+          )}
+
+          {plan && !error && (
+            <div className="flex flex-col gap-3 border-b border-[var(--border)] bg-[var(--surface-muted)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm">Review all seven days before saving the week.</p>
+              <Button icon={Save} onClick={handleSavePlan} disabled={isSaving}>
+                {isSaving ? 'Saving...' : 'Save to calendar'}
+              </Button>
+            </div>
+          )}
+
+          <div className="p-4 sm:p-5">
+            {saveMessage && <p className="feedback-success mb-4">{saveMessage}</p>}
+            {saveError && <p role="alert" className="feedback-error mb-4">{saveError}</p>}
+            {error ? (
+              <p role="alert" className="feedback-error">{error}</p>
+            ) : plan ? (
+              <div className="grid gap-4 xl:grid-cols-3">
+                {visibleWorkouts.map((workout, dayIndex) => {
+                  const date = workout.exercises[0]?.date ?? ''
+                  return (
+                    <article key={`${date}-${dayIndex}`} className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-muted)]">
+                      <div className="border-b border-[var(--border)] bg-[var(--surface)] p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold text-[var(--accent)]">Day {workoutPage * workoutsPerPage + dayIndex + 1}</p>
+                            <h3 className="mt-1 text-base font-semibold">{formatWorkoutDate(date)}</h3>
+                          </div>
+                          <span className="rounded border border-[var(--border)] px-2 py-1 text-xs font-semibold text-[var(--text)]">
+                            {formatShortDate(date)}
+                          </span>
+                        </div>
+                      </div>
+                      <ol className="list-none divide-y divide-[var(--border)] p-0">
+                        {workout.exercises.map((exercise, index) => (
+                          <li key={`${exercise.name}-${index}`} className="p-3.5">
+                            <div className="flex items-start gap-3">
+                              <span className="font-mono text-xs font-semibold text-[var(--accent)]">{String(index + 1).padStart(2, '0')}</span>
+                              <div className="min-w-0 flex-1">
+                                <h4 className="break-words text-sm font-semibold leading-5">{exercise.name}</h4>
+                                {(exercise.sets != null || exercise.reps != null) && (
+                                  <div className="mt-2 flex flex-wrap gap-2 text-xs font-medium text-[var(--text)]">
+                                    {exercise.sets != null && <span>{exercise.sets} sets</span>}
+                                    {exercise.reps != null && <span>{exercise.reps} reps</span>}
+                                  </div>
+                                )}
+                                {exercise.notes && <p className="mt-2 text-xs leading-5 text-[var(--text-muted)]">{exercise.notes}</p>}
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+                    </article>
+                  )
+                })}
+              </div>
+            ) : (
+              <EmptyState
+                icon={Dumbbell}
+                title="Your week will appear here"
+                description="Add a performance goal and any immediate constraints, then generate a balanced Monday-to-Sunday plan."
+              />
+            )}
+          </div>
+        </Panel>
+      </div>
+    </main>
+  )
 }

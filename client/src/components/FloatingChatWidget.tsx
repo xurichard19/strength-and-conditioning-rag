@@ -1,157 +1,127 @@
-import { type FormEvent, useState } from "react"
+import { type FormEvent, useState } from 'react'
+import { MessageCircle, Send, Sparkles, X } from 'lucide-react'
 
-import { submitChat } from "../api/chat"
-import { ApiRequestError } from "../api/errors"
+import { submitChat } from '../api/chat'
+import { ApiRequestError } from '../api/errors'
+import { IconButton } from './ui'
 
 type FloatingChatWidgetProps = {
-    accessToken: string
-    onUnauthorized: () => void
+  accessToken: string
+  onUnauthorized: () => void
 }
 
-type ChatMessage = {
-    role: "user" | "assistant"
-    text: string
-}
+type ChatMessage = { role: 'user' | 'assistant'; text: string }
 
 export function FloatingChatWidget({ accessToken, onUnauthorized }: FloatingChatWidgetProps) {
-    const [isOpen, setIsOpen] = useState(false)
-    const [question, setQuestion] = useState("")
-    const [messages, setMessages] = useState<ChatMessage[]>([])
-    const [isLoading, setIsLoading] = useState(false)
-    const [error, setError] = useState("")
+  const [isOpen, setIsOpen] = useState(false)
+  const [question, setQuestion] = useState('')
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
 
-    const appendAssistantText = (delta: string) => {
-        setMessages((currentMessages) => {
-            const nextMessages = [...currentMessages]
-            const lastMessage = nextMessages[nextMessages.length - 1]
+  const appendAssistantText = (delta: string) => {
+    setMessages((currentMessages) => {
+      const nextMessages = [...currentMessages]
+      const lastMessage = nextMessages[nextMessages.length - 1]
+      if (lastMessage?.role === 'assistant') {
+        nextMessages[nextMessages.length - 1] = { ...lastMessage, text: lastMessage.text + delta }
+      }
+      return nextMessages
+    })
+  }
 
-            if (lastMessage?.role === "assistant") {
-                nextMessages[nextMessages.length - 1] = {
-                    ...lastMessage,
-                    text: lastMessage.text + delta,
-                }
-            }
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const trimmedQuestion = question.trim()
+    if (!trimmedQuestion || isLoading) return
 
-            return nextMessages
-        })
+    setQuestion('')
+    setError('')
+    setIsLoading(true)
+    setMessages((currentMessages) => [
+      ...currentMessages,
+      { role: 'user', text: trimmedQuestion },
+      { role: 'assistant', text: '' },
+    ])
+
+    try {
+      await submitChat(trimmedQuestion, accessToken, { onText: appendAssistantText })
+    } catch (requestError) {
+      if (requestError instanceof ApiRequestError && requestError.status === 401) {
+        onUnauthorized()
+        return
+      }
+      setMessages((currentMessages) => currentMessages.slice(0, -1))
+      setError('Something went wrong. Please try again.')
+    } finally {
+      setIsLoading(false)
     }
+  }
 
-    const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault()
+  return (
+    <div className="fixed bottom-4 right-4 z-30 flex flex-col items-end gap-3 sm:bottom-5 sm:right-5">
+      {isOpen && (
+        <section className="panel panel-raised flex h-[32rem] w-[min(calc(100vw-2rem),23rem)] flex-col overflow-hidden">
+          <header className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3 text-left">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="grid h-8 w-8 place-items-center rounded-md bg-[var(--accent-bg)] text-[var(--accent)]">
+                <Sparkles aria-hidden="true" size={16} />
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold">Ask Arcel</h2>
+                <p className="mt-0.5 text-xs text-[var(--text-muted)]">Quick research check</p>
+              </div>
+            </div>
+            <IconButton icon={X} label="Close chat" onClick={() => setIsOpen(false)} />
+          </header>
 
-        const trimmedQuestion = question.trim()
-        if (!trimmedQuestion || isLoading) return
-
-        setQuestion("")
-        setError("")
-        setIsLoading(true)
-        setMessages((currentMessages) => [
-            ...currentMessages,
-            { role: "user", text: trimmedQuestion },
-            { role: "assistant", text: "" },
-        ])
-
-        try {
-            await submitChat(trimmedQuestion, accessToken, {
-                onText: appendAssistantText,
-            })
-        } catch (error) {
-            if (error instanceof ApiRequestError && error.status === 401) {
-                onUnauthorized()
-                return
-            }
-
-            setMessages((currentMessages) => currentMessages.filter((_, index) => index !== currentMessages.length - 1))
-            setError("Something went wrong. Please try again.")
-        } finally {
-            setIsLoading(false)
-        }
-    }
-
-    return (
-        <div className="fixed bottom-5 right-5 z-30 flex flex-col items-end gap-3">
-            {isOpen && (
-                <section className="flex h-[30rem] w-[min(calc(100vw-2.5rem),22rem)] flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg)] shadow-[var(--shadow)]">
-                    <header className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3 text-left">
-                        <div className="min-w-0 flex-1">
-                            <h2 className="m-0 text-sm font-semibold text-[var(--text-h)]">Ask Arcel</h2>
-                            <p className="m-0 mt-0.5 text-xs text-[var(--text)]">Quick research checks</p>
-                        </div>
-                        <button
-                            type="button"
-                            aria-label="Close chat"
-                            onClick={() => setIsOpen(false)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-lg font-semibold text-[var(--text-h)] transition hover:bg-[var(--social-bg)]"
-                        >
-                            x
-                        </button>
-                    </header>
-
-                    <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
-                        {messages.length ? (
-                            messages.map((message, index) => (
-                                <div
-                                    key={`${message.role}-${index}`}
-                                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                                >
-                                    <div
-                                        className={`w-fit max-w-[85%] whitespace-pre-wrap break-words rounded-md px-3 py-2 text-left text-sm leading-6 ${
-                                            message.role === "user"
-                                                ? "bg-[var(--accent)] text-white"
-                                                : "bg-[var(--social-bg)] text-[var(--text-h)]"
-                                        }`}
-                                    >
-                                        {message.text || "Reviewing..."}
-                                    </div>
-                                </div>
-                            ))
-                        ) : (
-                            <p className="m-0 text-sm leading-6 text-[var(--text)]">
-                                Ask a quick hybrid training question without leaving the page.
-                            </p>
-                        )}
-
-                        {isLoading && (
-                            <p className="m-0 text-sm font-medium text-[var(--accent)]">Reviewing...</p>
-                        )}
-                        {error && <p className="m-0 text-sm leading-6 text-red-700">{error}</p>}
-                    </div>
-
-                    <form onSubmit={handleSubmit} className="border-t border-[var(--border)] p-3">
-                        <label htmlFor="floating-chat-question" className="sr-only">
-                            Question
-                        </label>
-                        <div className="flex gap-2">
-                            <input
-                                id="floating-chat-question"
-                                value={question}
-                                onChange={(event) => setQuestion(event.target.value)}
-                                placeholder="Ask about training..."
-                                className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text-h)] outline-none transition placeholder:text-[var(--text)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)]"
-                            />
-                            <button
-                                type="submit"
-                                disabled={!question.trim() || isLoading}
-                                className="rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:border disabled:border-[var(--border)] disabled:bg-[var(--social-bg)] disabled:text-[var(--text)]"
-                            >
-                                Ask
-                            </button>
-                        </div>
-                    </form>
-                </section>
+          <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+            {messages.length ? messages.map((message, index) => (
+              <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`w-fit max-w-[88%] whitespace-pre-wrap break-words rounded-md px-3 py-2 text-left text-sm leading-6 ${
+                  message.role === 'user'
+                    ? 'bg-[var(--accent)] text-[#160a20]'
+                    : 'border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--text-h)]'
+                }`}>
+                  {message.text || 'Reviewing...'}
+                </div>
+              </div>
+            )) : (
+              <div className="empty-state min-h-full px-3">
+                <MessageCircle aria-hidden="true" size={24} className="mb-3 text-[var(--accent)]" />
+                <p className="text-sm leading-6">Ask a quick training question without leaving this page.</p>
+              </div>
             )}
+            {error && <p role="alert" className="feedback-error">{error}</p>}
+          </div>
 
-            <button
-                type="button"
-                aria-label={isOpen ? "Close chat" : "Open chat"}
-                aria-expanded={isOpen}
-                onClick={() => setIsOpen((open) => !open)}
-                className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--accent)] text-white shadow-[var(--shadow)] transition hover:opacity-90"
-            >
-                <span className="relative h-6 w-7 rounded-full border-2 border-current">
-                    <span className="absolute -bottom-1 left-3 h-2 w-2 rotate-45 border-b-2 border-r-2 border-current bg-[var(--accent)]" />
-                </span>
-            </button>
-        </div>
-    )
+          <form onSubmit={handleSubmit} className="border-t border-[var(--border)] bg-[var(--surface-muted)] p-3">
+            <label htmlFor="floating-chat-question" className="sr-only">Question</label>
+            <div className="flex gap-2">
+              <input
+                id="floating-chat-question"
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                placeholder="Ask about training..."
+                className="field-control min-w-0 flex-1 px-3 py-2 text-sm"
+              />
+              <button type="submit" disabled={!question.trim() || isLoading} aria-label="Send question" title="Send question" className="icon-button border-[var(--accent)] bg-[var(--accent)] text-[#160a20] hover:bg-[#c384f5] hover:text-[#160a20] disabled:opacity-40">
+                <Send aria-hidden="true" size={17} />
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      <button
+        type="button"
+        aria-label={isOpen ? 'Close chat' : 'Open chat'}
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((open) => !open)}
+        className="grid h-13 w-13 place-items-center rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[#160a20] shadow-[var(--shadow)] transition hover:-translate-y-1 hover:bg-[#c384f5]"
+      >
+        {isOpen ? <X aria-hidden="true" size={21} /> : <MessageCircle aria-hidden="true" size={22} />}
+      </button>
+    </div>
+  )
 }

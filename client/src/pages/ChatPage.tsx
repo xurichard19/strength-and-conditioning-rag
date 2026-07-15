@@ -1,112 +1,142 @@
-import { type FormEvent, useState } from "react"
-import { submitChat } from "../api/chat"
-import { ApiRequestError } from "../api/errors"
-import { MarkdownResponse } from "../components/MarkdownResponse"
-import { SourceList } from "../components/SourceList"
-import type { Source } from "../types"
+import { type FormEvent, useState } from 'react'
+import { BookOpenCheck, MessageSquareText, Search, Send } from 'lucide-react'
+
+import { submitChat } from '../api/chat'
+import { ApiRequestError } from '../api/errors'
+import { MarkdownResponse } from '../components/MarkdownResponse'
+import { SourceList } from '../components/SourceList'
+import { Button, EmptyState, PageHeader, Panel } from '../components/ui'
+import type { Source } from '../types'
 
 type ChatPageProps = {
-    accessToken: string
-    onUnauthorized: () => void
+  accessToken: string
+  onUnauthorized: () => void
 }
 
+const promptSuggestions = [
+  'How should I place intervals around heavy lower-body lifting?',
+  'What is a sensible weekly strength volume for endurance athletes?',
+  'How can I improve recovery between concurrent training sessions?',
+]
+
 export function ChatPage({ accessToken, onUnauthorized }: ChatPageProps) {
-    const [question, setQuestion] = useState("")
-    const [response, setResponse] = useState("")
-    const [sources, setSources] = useState<Source[]>([])
-    const [isLoading, setIsLoading] = useState(false)
-    const [error, setError] = useState("")
+  const [question, setQuestion] = useState('')
+  const [submittedQuestion, setSubmittedQuestion] = useState('')
+  const [response, setResponse] = useState('')
+  const [sources, setSources] = useState<Source[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
 
-    const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-        e.preventDefault()
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const trimmedQuestion = question.trim()
+    if (!trimmedQuestion || isLoading) return
 
-        const trimmedQuestion = question.trim()
-        if (!trimmedQuestion || isLoading) return
+    setSubmittedQuestion(trimmedQuestion)
+    setIsLoading(true)
+    setError('')
+    setResponse('')
+    setSources([])
 
-        setIsLoading(true)
-        setError("")
-        setResponse("")
-        setSources([])
-
-        try {
-            await submitChat(trimmedQuestion, accessToken, {
-                onText: (delta) => setResponse((currentResponse) => currentResponse + delta),
-                onSources: setSources,
-            })
-        } catch (error) {
-            if (error instanceof ApiRequestError && error.status === 401) {
-                onUnauthorized()
-                return
-            }
-
-            setError("Something went wrong. Please try again.")
-        } finally {
-            setIsLoading(false)
-        }
+    try {
+      await submitChat(trimmedQuestion, accessToken, {
+        onText: (delta) => setResponse((currentResponse) => currentResponse + delta),
+        onSources: setSources,
+      })
+    } catch (requestError) {
+      if (requestError instanceof ApiRequestError && requestError.status === 401) {
+        onUnauthorized()
+        return
+      }
+      setError('Something went wrong while generating the answer. Please try again.')
+    } finally {
+      setIsLoading(false)
     }
+  }
 
-    return (
-        <main className="mx-auto flex min-h-[calc(100vh-4.25rem)] max-w-3xl flex-col justify-center px-4 py-8 text-left text-[var(--text)] sm:px-6 lg:px-8">
-            <header className="mb-8">
-                <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--text-h)]">
-                    Hybrid athlete research assistant
-                </p>
-                <h1 className="m-0 text-5xl font-semibold tracking-normal text-[var(--text-h)] sm:text-6xl">
-                    Arcel
-                </h1>
-                <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--text-h)]">
-                    Ask about concurrent training, endurance work, strength development, recovery, or sport demands and get an evidence-backed answer from the document library.
-                </p>
-            </header>
+  return (
+    <main className="app-page app-page-narrow flex flex-col">
+      <PageHeader
+        eyebrow="Research assistant"
+        icon={BookOpenCheck}
+        title="Ask the training literature."
+        description="Get a focused answer, then open the source drawer to inspect the exact research excerpts behind it."
+      />
 
-            <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-4 shadow-[var(--shadow)] sm:p-5">
-                <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-                    <label htmlFor="question" className="text-sm font-medium text-[var(--text-h)]">
-                        Research question
-                    </label>
-                    <textarea
-                        id="question"
-                        value={question}
-                        onChange={(e) => setQuestion(e.target.value)}
-                        placeholder="How should I place threshold runs around heavy lower-body strength work?"
-                        className="min-h-28 resize-y rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 text-base leading-6 text-[var(--text-h)] outline-none transition placeholder:text-[var(--text)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)]"
-                    />
-                    <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm text-[var(--text)]">
-                            Retrieves and reranks research excerpts before generating an answer.
-                        </p>
-                        <button
-                            type="submit"
-                            disabled={!question.trim() || isLoading}
-                            className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:border disabled:border-[var(--border)] disabled:bg-[var(--social-bg)] disabled:text-[var(--text)]"
-                        >
-                            {isLoading ? "Reviewing..." : "Ask"}
-                        </button>
-                    </div>
-                </form>
-            </section>
+      <Panel raised className="flex min-h-[34rem] flex-1 flex-col overflow-hidden">
+        <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] px-5 py-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[var(--accent-bg)] text-[var(--accent)]">
+              <MessageSquareText aria-hidden="true" size={18} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold">Research answer</h2>
+              <p className="mt-0.5 truncate text-xs text-[var(--text-muted)]">
+                {submittedQuestion || 'Ready for your question'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {isLoading && (
+              <span className="loading-pulse hidden text-xs font-semibold text-[var(--accent)] sm:inline">
+                Searching and synthesizing
+              </span>
+            )}
+            <SourceList sources={sources} />
+          </div>
+        </div>
 
-            <section className="mt-5 min-h-40 rounded-lg border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)]">
-                <div className="mb-3 flex items-center justify-between gap-4">
-                    <h2 className="m-0 text-lg font-semibold text-[var(--text-h)]">Answer</h2>
-                    <div className="flex items-center gap-3">
-                        {isLoading && (
-                            <span className="text-sm font-medium text-[var(--accent)]">Searching research</span>
-                        )}
-                        <SourceList sources={sources} />
-                    </div>
-                </div>
+        <div aria-live="polite" className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8 sm:py-8">
+          {error ? (
+            <p role="alert" className="feedback-error">{error}</p>
+          ) : response ? (
+            <MarkdownResponse content={response} />
+          ) : isLoading ? (
+            <div className="space-y-3" aria-label="Generating answer">
+              <div className="loading-pulse h-4 w-3/4 rounded bg-[var(--surface-raised)]" />
+              <div className="loading-pulse h-4 w-full rounded bg-[var(--surface-raised)]" />
+              <div className="loading-pulse h-4 w-5/6 rounded bg-[var(--surface-raised)]" />
+            </div>
+          ) : (
+            <EmptyState
+              icon={Search}
+              title="Start with a specific decision"
+              description="The more concrete the training question, the more useful the retrieved evidence will be."
+            />
+          )}
+        </div>
 
-                {error ? (
-                    <p className="leading-7 text-red-700">{error}</p>
-                ) : response ? (
-                    <MarkdownResponse content={response} />
-                ) : (
-                    <p className="leading-7 text-[var(--text)]">
-                        Your research-backed insight will appear here after you ask a question.
-                    </p>
-                )}
-            </section>
-        </main>
-    )
+        <div className="border-t border-[var(--border)] bg-[var(--surface-muted)] p-4 sm:p-5">
+          {!submittedQuestion && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {promptSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => setQuestion(suggestion)}
+                  className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-left text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent-border)] hover:text-[var(--text-h)]"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          )}
+          <form onSubmit={handleSubmit} className="flex items-end gap-3">
+            <label htmlFor="research-question" className="sr-only">Research question</label>
+            <textarea
+              id="research-question"
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              placeholder="Ask a focused question about training..."
+              rows={2}
+              className="field-control min-h-[3.25rem] flex-1 resize-none px-3.5 py-3 text-sm leading-6"
+            />
+            <Button type="submit" icon={Send} disabled={!question.trim() || isLoading} className="h-[3.25rem] px-4">
+              <span className="hidden sm:inline">Ask Arcel</span>
+            </Button>
+          </form>
+        </div>
+      </Panel>
+    </main>
+  )
 }

@@ -1,4 +1,6 @@
 import type { Page } from "../types"
+import linkedinLogo from "../assets/linkedinlogo.png"
+import { ArrowDown, ArrowRight } from "lucide-react"
 
 type InfoPageProps = {
     page: Extract<Page, "about" | "terms" | "privacy" | "disclaimer" | "accessibility">
@@ -98,12 +100,12 @@ const pageContent: Record<InfoPageProps["page"], {
 
 const teamIntroductions = [
     {
-        name: "rxu",
-        body: "ML/Cloud/Backend",
+        name: "richard xu",
+        body: "AI/Cloud/Backend",
         linkedinUrl: "https://www.linkedin.com/in/richardrxu/",
     },
     {
-        name: "dmahairas",
+        name: "dimitrios mahairas",
         body: "Cloud/DevOps/FullStack",
         linkedinUrl: "https://www.linkedin.com/in/dimitrios-mahairas/",
     },
@@ -114,16 +116,39 @@ const teamIntroductions = [
     },
 ]
 
+const architectureSteps = [
+    { label: "Client", detail: "React + Vite on Vercel" },
+    { label: "Edge", detail: "Cloud Load Balancing + Cloud Armor" },
+    { label: "API", detail: "FastAPI on Cloud Run" },
+    { label: "Retrieval", detail: "Chroma search + Cohere reranking" },
+    { label: "Generation", detail: "OpenAI grounded response" },
+]
+
+const technologyGroups = [
+    {
+        heading: "Application",
+        body: "React, TypeScript, Vite, Tailwind CSS, and FastAPI",
+    },
+    {
+        heading: "AI and data",
+        body: "OpenAI, Chroma Cloud, Cohere, Supabase, and Google Cloud Storage",
+    },
+    {
+        heading: "Infrastructure",
+        body: "Vercel, Google Cloud Run, Cloud Load Balancing, Cloud Armor, and Sentry",
+    },
+]
+
 export function InfoPage({ page }: InfoPageProps) {
     const content = pageContent[page]
 
     return (
-        <main className="mx-auto min-h-[calc(100vh-9rem)] max-w-5xl px-4 py-8 text-left text-[var(--text)] sm:px-6 lg:px-8">
+        <main className="app-page max-w-5xl">
             <header className="mb-8">
-                <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--text-h)]">
+                <p className="page-eyebrow">
                     {content.eyebrow}
                 </p>
-                <h1 className="m-0 text-4xl font-semibold tracking-normal text-[var(--text-h)] sm:text-5xl">
+                <h1 className="page-title">
                     {content.title}
                 </h1>
             </header>
@@ -132,7 +157,7 @@ export function InfoPage({ page }: InfoPageProps) {
                 {content.sections.map((section) => (
                     <section
                         key={section.heading}
-                        className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)]"
+                        className="panel p-5"
                     >
                         <h2 className="m-0 text-lg font-semibold text-[var(--text-h)]">{section.heading}</h2>
                         <p className="m-0 mt-3 leading-7">{section.body}</p>
@@ -141,36 +166,103 @@ export function InfoPage({ page }: InfoPageProps) {
             </div>
 
             {page === "about" && (
-                <section className="mt-6">
-                    <div className="mb-4 flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--text)]">
-                        <span className="h-px flex-1 bg-[var(--border)]" />
-                        <span>Team</span>
-                        <span className="h-px flex-1 bg-[var(--border)]" />
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                        {teamIntroductions.map((person) => (
-                            <article
-                                key={person.name}
-                                className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)]"
-                            >
-                                <div className="flex items-start justify-between gap-4">
-                                    <h2 className="m-0 text-lg font-semibold text-[var(--text-h)]">{person.name}</h2>
-                                    <a
-                                        href={person.linkedinUrl}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        aria-label={`${person.name} on LinkedIn`}
-                                        title={`${person.name} on LinkedIn`}
-                                        className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[#0a66c2] text-sm font-bold text-white transition hover:opacity-85 focus:outline-none focus:ring-4 focus:ring-[var(--accent-bg)]"
-                                    >
-                                        in
-                                    </a>
+                <>
+                    <section className="mt-6">
+                        <div className="mb-4 flex items-center gap-3 text-sm font-semibold uppercase text-[var(--text)]">
+                            <span className="h-px flex-1 bg-[var(--border)]" />
+                            <span>Team</span>
+                            <span className="h-px flex-1 bg-[var(--border)]" />
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-2">
+                            {teamIntroductions.map((person) => (
+                                <article
+                                    key={person.name}
+                                className="panel p-5"
+                                >
+                                    <div className="flex items-start justify-between gap-4">
+                                        <h2 className="m-0 text-lg font-semibold text-[var(--text-h)]">{person.name}</h2>
+                                        <a
+                                            href={person.linkedinUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            aria-label={`${person.name} on LinkedIn`}
+                                            title={`${person.name} on LinkedIn`}
+                                            className="group grid h-8 w-8 shrink-0 place-items-center rounded-sm no-underline focus:outline-none focus-visible:ring-4 focus-visible:ring-[var(--accent-bg)]"
+                                        >
+                                            <span className="block h-6 w-6 overflow-hidden rounded-[20%] transition group-hover:opacity-80">
+                                                <img
+                                                    src={linkedinLogo}
+                                                    alt=""
+                                                    className="h-[2.027rem] w-[1.875rem] max-w-none -translate-x-[0.1875rem] -translate-y-[0.324rem]"
+                                                />
+                                            </span>
+                                        </a>
+                                    </div>
+                                    <p className="m-0 mt-3 leading-7">{person.body}</p>
+                                </article>
+                            ))}
+                        </div>
+                    </section>
+
+                    <section className="mt-6" aria-labelledby="technology-heading">
+                        <div className="mb-4 flex items-center gap-3 text-sm font-semibold uppercase text-[var(--text)]">
+                            <span className="h-px flex-1 bg-[var(--border)]" />
+                            <span>Technology</span>
+                            <span className="h-px flex-1 bg-[var(--border)]" />
+                        </div>
+
+                        <div className="panel p-5 sm:p-6">
+                            <div className="max-w-3xl">
+                                <h2 id="technology-heading" className="m-0 text-xl font-semibold text-[var(--text-h)]">
+                                    From question to evidence-backed answer
+                                </h2>
+                                <p className="m-0 mt-3 leading-7">
+                                    Arcel uses a two-stage retrieval pipeline to find and rerank relevant research before generating a practical response.
+                                </p>
+                            </div>
+
+                            <figure className="m-0 mt-6" aria-label="Arcel application architecture">
+                                <div className="grid items-stretch gap-2 lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr_auto_1fr]">
+                                    {architectureSteps.map((step, index) => (
+                                        <div key={step.label} className="contents">
+                                            <div className="flex min-h-24 flex-col justify-between border border-[var(--border)] bg-[var(--social-bg)] p-4">
+                                                <span className="text-xs font-semibold uppercase text-[var(--accent)]">
+                                                    {step.label}
+                                                </span>
+                                                <span className="mt-3 text-sm font-semibold leading-5 text-[var(--text-h)]">
+                                                    {step.detail}
+                                                </span>
+                                            </div>
+                                            {index < architectureSteps.length - 1 && (
+                                                <span className="grid min-h-7 place-items-center text-xl text-[var(--text)]" aria-hidden="true">
+                                                    <ArrowDown className="lg:hidden" size={18} />
+                                                    <ArrowRight className="hidden lg:block" size={18} />
+                                                </span>
+                                            )}
+                                        </div>
+                                    ))}
                                 </div>
-                                <p className="m-0 mt-3 leading-7">{person.body}</p>
-                            </article>
-                        ))}
-                    </div>
-                </section>
+
+                                <figcaption className="mt-4 border-l-2 border-[var(--accent)] pl-4 text-sm leading-6">
+                                    Supabase provides authentication and application data, Google Cloud Storage supplies source documents for offline indexing, and Sentry monitors errors and performance.
+                                </figcaption>
+                            </figure>
+
+                            <div className="mt-6 grid border-t border-[var(--border)] pt-5 sm:grid-cols-3">
+                                {technologyGroups.map((group) => (
+                                    <div
+                                        key={group.heading}
+                                        className="border-b border-[var(--border)] py-4 last:border-b-0 sm:border-b-0 sm:border-r sm:px-5 sm:py-0 sm:first:pl-0 sm:last:border-r-0 sm:last:pr-0"
+                                    >
+                                        <h3 className="m-0 text-sm font-semibold text-[var(--text-h)]">{group.heading}</h3>
+                                        <p className="m-0 mt-2 text-sm leading-6">{group.body}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </section>
+
+                </>
             )}
         </main>
     )

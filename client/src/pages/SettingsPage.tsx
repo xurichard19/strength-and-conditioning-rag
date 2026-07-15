@@ -1,5 +1,7 @@
 import { type FormEvent, useMemo, useState } from 'react'
+import { Activity, Pencil, Save, Settings, Undo2, UserRound } from 'lucide-react'
 
+import { Button, PageHeader, Panel } from '../components/ui'
 import {
   EQUIPMENT_OPTIONS,
   EXPERIENCE_LEVELS,
@@ -17,14 +19,39 @@ type SettingsPageProps = {
   onUpdate: (update: ProfileUpdate) => Promise<Profile>
 }
 
-type Feedback = {
-  type: 'error' | 'success'
-  message: string
-} | null
+type Feedback = { type: 'error' | 'success'; message: string } | null
+type SelectOption = { label: string; value: string | number }
 
-const controlClass =
-  'mt-2 w-full rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3.5 py-3 text-base text-[var(--text-h)] outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)] disabled:cursor-default disabled:text-[var(--text-h)] disabled:opacity-90'
-const selectClass = `${controlClass} disabled:appearance-none`
+type ProfileSelectProps = {
+  disabled: boolean
+  id: string
+  label: string
+  onChange: (value: string) => void
+  options: readonly SelectOption[]
+  placeholder: string
+  value: string | number | null
+}
+
+function ProfileSelect({ disabled, id, label, onChange, options, placeholder, value }: ProfileSelectProps) {
+  return (
+    <label htmlFor={id}>
+      <span className="field-label">{label}</span>
+      <select
+        id={id}
+        value={value ?? ''}
+        onChange={(event) => onChange(event.target.value)}
+        required
+        disabled={disabled}
+        className="field-control px-3.5 py-3 disabled:appearance-none"
+      >
+        <option value="" disabled>{placeholder}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+    </label>
+  )
+}
 
 function profileAnswers(profile: Profile): OnboardingAnswers {
   return {
@@ -44,20 +71,11 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
   const [isSaving, setIsSaving] = useState(false)
 
   const isDirty = useMemo(
-    () =>
-      draft.display_name !== profile.display_name ||
-      draft.primary_goal !== profile.primary_goal ||
-      draft.experience_level !== profile.experience_level ||
-      draft.training_days_per_week !== profile.training_days_per_week ||
-      draft.session_duration_minutes !== profile.session_duration_minutes ||
-      draft.equipment_access !== profile.equipment_access,
+    () => (Object.keys(draft) as Array<keyof OnboardingAnswers>).some((field) => draft[field] !== profile[field]),
     [draft, profile],
   )
 
-  const updateField = <Field extends keyof OnboardingAnswers,>(
-    field: Field,
-    value: OnboardingAnswers[Field],
-  ) => {
+  const updateField = <Field extends keyof OnboardingAnswers>(field: Field, value: OnboardingAnswers[Field]) => {
     setDraft((current) => ({ ...current, [field]: value }))
     setFeedback(null)
   }
@@ -66,12 +84,6 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
     setDraft(profileAnswers(profile))
     setFeedback(null)
     setIsEditing(false)
-  }
-
-  const editProfile = () => {
-    setDraft(profileAnswers(profile))
-    setFeedback(null)
-    setIsEditing(true)
   }
 
   const saveChanges = async (event: FormEvent<HTMLFormElement>) => {
@@ -86,30 +98,13 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
 
     const update: ProfileUpdate = {}
     if (displayName !== profile.display_name) update.display_name = displayName
-    if (draft.primary_goal !== profile.primary_goal && draft.primary_goal) {
-      update.primary_goal = draft.primary_goal
-    }
-    if (draft.experience_level !== profile.experience_level && draft.experience_level) {
-      update.experience_level = draft.experience_level
-    }
-    if (
-      draft.training_days_per_week !== profile.training_days_per_week &&
-      draft.training_days_per_week
-    ) {
-      update.training_days_per_week = draft.training_days_per_week
-    }
-    if (
-      draft.session_duration_minutes !== profile.session_duration_minutes &&
-      draft.session_duration_minutes
-    ) {
-      update.session_duration_minutes = draft.session_duration_minutes
-    }
-    if (draft.equipment_access !== profile.equipment_access && draft.equipment_access) {
-      update.equipment_access = draft.equipment_access
-    }
+    if (draft.primary_goal !== profile.primary_goal && draft.primary_goal) update.primary_goal = draft.primary_goal
+    if (draft.experience_level !== profile.experience_level && draft.experience_level) update.experience_level = draft.experience_level
+    if (draft.training_days_per_week !== profile.training_days_per_week && draft.training_days_per_week) update.training_days_per_week = draft.training_days_per_week
+    if (draft.session_duration_minutes !== profile.session_duration_minutes && draft.session_duration_minutes) update.session_duration_minutes = draft.session_duration_minutes
+    if (draft.equipment_access !== profile.equipment_access && draft.equipment_access) update.equipment_access = draft.equipment_access
 
     if (Object.keys(update).length === 0) {
-      setDraft(profileAnswers(profile))
       setFeedback({ type: 'success', message: 'Your profile is already up to date.' })
       setIsEditing(false)
       return
@@ -117,7 +112,6 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
 
     setIsSaving(true)
     setFeedback(null)
-
     try {
       const updatedProfile = await onUpdate(update)
       setDraft(profileAnswers(updatedProfile))
@@ -133,32 +127,38 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
     }
   }
 
+  const controlsDisabled = !isEditing || isSaving
+
   return (
-    <main className="mx-auto min-h-[calc(100vh-4.25rem)] max-w-5xl px-4 py-8 text-left text-[var(--text)] sm:px-6 lg:px-8">
-      <header className="mb-8">
-        <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
-          Account
-        </p>
-        <h1 className="m-0 text-4xl font-semibold tracking-normal text-[var(--text-h)] sm:text-5xl">
-          Settings
-        </h1>
-        <p className="mt-3 max-w-2xl leading-7">
-          Keep your training profile current so recommendations stay aligned with your goals and schedule.
-        </p>
-      </header>
+    <main className="app-page app-page-narrow">
+      <PageHeader
+        eyebrow="Account"
+        icon={Settings}
+        title="Training profile"
+        description="Keep the stable parts of your training context current. Arcel uses these details when shaping recommendations and plans."
+        actions={!isEditing && (
+          <Button icon={Pencil} onClick={() => {
+            setDraft(profileAnswers(profile))
+            setFeedback(null)
+            setIsEditing(true)
+          }}>
+            Edit profile
+          </Button>
+        )}
+      />
 
       <form onSubmit={(event) => void saveChanges(event)} className="grid gap-5">
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)] sm:p-6">
-          <div>
-            <h2 className="m-0 text-xl font-semibold text-[var(--text-h)]">Personal details</h2>
-            <p className="mt-1 text-sm leading-6">The information associated with your account.</p>
-          </div>
-
-          <div className="mt-6 grid gap-5 sm:grid-cols-2">
+        <Panel className="overflow-hidden">
+          <div className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-4 sm:px-6">
+            <UserRound aria-hidden="true" size={18} className="text-[var(--accent)]" />
             <div>
-              <label htmlFor="display-name" className="text-sm font-semibold text-[var(--text-h)]">
-                Display name
-              </label>
+              <h2 className="text-base font-semibold">Personal details</h2>
+              <p className="mt-0.5 text-xs text-[var(--text-muted)]">The information associated with your account.</p>
+            </div>
+          </div>
+          <div className="grid gap-5 p-5 sm:grid-cols-2 sm:p-6">
+            <label htmlFor="display-name">
+              <span className="field-label">Display name</span>
               <input
                 id="display-name"
                 type="text"
@@ -167,202 +167,100 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
                 maxLength={60}
                 autoComplete="given-name"
                 required
-                disabled={!isEditing || isSaving}
-                aria-describedby="display-name-help"
-                className={controlClass}
+                disabled={controlsDisabled}
+                className="field-control px-3.5 py-3"
               />
-              <p id="display-name-help" className="mt-2 text-sm leading-5">
-                The name Arcel uses when speaking with you.
-              </p>
-            </div>
-
-            <div>
-              <label htmlFor="email" className="text-sm font-semibold text-[var(--text-h)]">
-                Email
-              </label>
+              <span className="mt-2 block text-xs text-[var(--text-muted)]">The name Arcel uses when speaking with you.</span>
+            </label>
+            <label htmlFor="email">
+              <span className="field-label">Email</span>
               <input
                 id="email"
                 type="email"
                 value={userEmail ?? ''}
                 disabled
-                className={`${controlClass} bg-[var(--social-bg)]`}
+                className="field-control px-3.5 py-3"
+              />
+            </label>
+          </div>
+        </Panel>
+
+        <Panel className="overflow-hidden">
+          <div className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-4 sm:px-6">
+            <Activity aria-hidden="true" size={18} className="text-[var(--accent)]" />
+            <div>
+              <h2 className="text-base font-semibold">Training context</h2>
+              <p className="mt-0.5 text-xs text-[var(--text-muted)]">Update these as your needs, schedule, or access change.</p>
+            </div>
+          </div>
+          <div className="grid gap-5 p-5 sm:grid-cols-2 sm:p-6">
+            <div className="sm:col-span-2">
+              <ProfileSelect
+                id="primary-goal"
+                label="Primary goal"
+                value={draft.primary_goal}
+                options={PRIMARY_GOALS}
+                placeholder="Select your primary goal"
+                disabled={controlsDisabled}
+                onChange={(value) => updateField('primary_goal', value as NonNullable<OnboardingAnswers['primary_goal']>)}
               />
             </div>
+            <ProfileSelect
+              id="experience-level"
+              label="Experience level"
+              value={draft.experience_level}
+              options={EXPERIENCE_LEVELS}
+              placeholder="Select your experience"
+              disabled={controlsDisabled}
+              onChange={(value) => updateField('experience_level', value as NonNullable<OnboardingAnswers['experience_level']>)}
+            />
+            <ProfileSelect
+              id="training-days"
+              label="Training days per week"
+              value={draft.training_days_per_week}
+              options={TRAINING_DAYS.map((days) => ({ value: days, label: `${days} days` }))}
+              placeholder="Select days per week"
+              disabled={controlsDisabled}
+              onChange={(value) => updateField('training_days_per_week', Number(value) as NonNullable<OnboardingAnswers['training_days_per_week']>)}
+            />
+            <ProfileSelect
+              id="session-duration"
+              label="Session duration"
+              value={draft.session_duration_minutes}
+              options={SESSION_DURATIONS.map((minutes) => ({ value: minutes, label: minutes === 90 ? '90+ minutes' : `${minutes} minutes` }))}
+              placeholder="Select session duration"
+              disabled={controlsDisabled}
+              onChange={(value) => updateField('session_duration_minutes', Number(value) as NonNullable<OnboardingAnswers['session_duration_minutes']>)}
+            />
+            <ProfileSelect
+              id="equipment-access"
+              label="Equipment access"
+              value={draft.equipment_access}
+              options={EQUIPMENT_OPTIONS}
+              placeholder="Select your equipment"
+              disabled={controlsDisabled}
+              onChange={(value) => updateField('equipment_access', value as NonNullable<OnboardingAnswers['equipment_access']>)}
+            />
           </div>
-        </section>
+        </Panel>
 
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-5 shadow-[var(--shadow)] sm:p-6">
-          <div>
-            <h2 className="m-0 text-xl font-semibold text-[var(--text-h)]">Training profile</h2>
-            <p className="mt-1 text-sm leading-6">Update any answer as your training needs change.</p>
-          </div>
-
-          <div className="mt-6 grid gap-5 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label htmlFor="primary-goal" className="text-sm font-semibold text-[var(--text-h)]">
-                Primary goal
-              </label>
-              <select
-                id="primary-goal"
-                value={draft.primary_goal ?? ''}
-                onChange={(event) =>
-                  updateField(
-                    'primary_goal',
-                    event.target.value as NonNullable<OnboardingAnswers['primary_goal']>,
-                  )
-                }
-                required
-                disabled={!isEditing || isSaving}
-                className={selectClass}
-              >
-                <option value="" disabled>Select your primary goal</option>
-                {PRIMARY_GOALS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
+        {(feedback || isEditing) && (
+          <div className="panel flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div aria-live="polite" className="min-h-5">
+              {feedback && (
+                <p role={feedback.type === 'error' ? 'alert' : 'status'} className={feedback.type === 'error' ? 'feedback-error' : 'feedback-success'}>
+                  {feedback.message}
+                </p>
+              )}
             </div>
-
-            <div>
-              <label htmlFor="experience-level" className="text-sm font-semibold text-[var(--text-h)]">
-                Experience level
-              </label>
-              <select
-                id="experience-level"
-                value={draft.experience_level ?? ''}
-                onChange={(event) =>
-                  updateField(
-                    'experience_level',
-                    event.target.value as NonNullable<OnboardingAnswers['experience_level']>,
-                  )
-                }
-                required
-                disabled={!isEditing || isSaving}
-                className={selectClass}
-              >
-                <option value="" disabled>Select your experience</option>
-                {EXPERIENCE_LEVELS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="training-days" className="text-sm font-semibold text-[var(--text-h)]">
-                Training days per week
-              </label>
-              <select
-                id="training-days"
-                value={draft.training_days_per_week ?? ''}
-                onChange={(event) =>
-                  updateField(
-                    'training_days_per_week',
-                    Number(event.target.value) as NonNullable<
-                      OnboardingAnswers['training_days_per_week']
-                    >,
-                  )
-                }
-                required
-                disabled={!isEditing || isSaving}
-                className={selectClass}
-              >
-                <option value="" disabled>Select days per week</option>
-                {TRAINING_DAYS.map((days) => (
-                  <option key={days} value={days}>{days} days</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="session-duration" className="text-sm font-semibold text-[var(--text-h)]">
-                Session duration
-              </label>
-              <select
-                id="session-duration"
-                value={draft.session_duration_minutes ?? ''}
-                onChange={(event) =>
-                  updateField(
-                    'session_duration_minutes',
-                    Number(event.target.value) as NonNullable<
-                      OnboardingAnswers['session_duration_minutes']
-                    >,
-                  )
-                }
-                required
-                disabled={!isEditing || isSaving}
-                className={selectClass}
-              >
-                <option value="" disabled>Select session duration</option>
-                {SESSION_DURATIONS.map((minutes) => (
-                  <option key={minutes} value={minutes}>
-                    {minutes === 90 ? '90+ minutes' : `${minutes} minutes`}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="equipment-access" className="text-sm font-semibold text-[var(--text-h)]">
-                Equipment access
-              </label>
-              <select
-                id="equipment-access"
-                value={draft.equipment_access ?? ''}
-                onChange={(event) =>
-                  updateField(
-                    'equipment_access',
-                    event.target.value as NonNullable<OnboardingAnswers['equipment_access']>,
-                  )
-                }
-                required
-                disabled={!isEditing || isSaving}
-                className={selectClass}
-              >
-                <option value="" disabled>Select your equipment</option>
-                {EQUIPMENT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </section>
-
-        <div className="flex flex-col gap-4 rounded-xl border border-[var(--border)] bg-[var(--social-bg)] p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div aria-live="polite" className="min-h-5 text-sm font-medium">
-            {feedback && (
-              <p role={feedback.type === 'error' ? 'alert' : 'status'} className={feedback.type === 'error' ? 'text-red-700' : 'text-emerald-700'}>
-                {feedback.message}
-              </p>
+            {isEditing && (
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                <Button variant="secondary" icon={Undo2} onClick={discardChanges} disabled={isSaving}>Discard</Button>
+                <Button type="submit" icon={Save} disabled={!isDirty || isSaving}>{isSaving ? 'Saving...' : 'Save changes'}</Button>
+              </div>
             )}
           </div>
-
-          {isEditing ? (
-            <div className="flex flex-col-reverse gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={discardChanges}
-                disabled={isSaving}
-                className="rounded-lg border border-[var(--border)] bg-[var(--bg)] px-5 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:border-[var(--accent-border)] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Discard changes
-              </button>
-              <button
-                type="submit"
-                disabled={!isDirty || isSaving}
-                className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isSaving ? 'Saving…' : 'Save changes'}
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={editProfile}
-              className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-            >
-              Edit profile
-            </button>
-          )}
-        </div>
+        )}
       </form>
     </main>
   )

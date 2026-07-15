@@ -1,4 +1,7 @@
 import { type BaseSyntheticEvent, useState } from 'react'
+import { ArrowLeft, KeyRound, LogIn, Send, UserPlus } from 'lucide-react'
+
+import { Button, Panel } from './ui'
 
 type AuthFormProps = {
   error: string
@@ -26,13 +29,11 @@ export function AuthForm({
   const [email, setEmail] = useState('')
   const [mode, setMode] = useState<AuthMode>('sign-in')
   const [password, setPassword] = useState('')
-
   const isSignIn = mode === 'sign-in'
   const isPasswordReset = mode === 'reset-password'
 
   const selectMode = (nextMode: AuthMode) => {
     if (mode === nextMode || isLoading) return
-
     setMode(nextMode)
     setPassword('')
     onClearFeedback()
@@ -40,110 +41,100 @@ export function AuthForm({
 
   const handleSubmit = async (event: BaseSyntheticEvent<SubmitEvent, HTMLFormElement>) => {
     event.preventDefault()
-
     const trimmedEmail = email.trim()
     if (!trimmedEmail || isLoading) return
 
-    if (isPasswordReset) {
-      await onPasswordReset(trimmedEmail)
-      return
-    }
-
-    if (!password) return
-
-    if (isSignIn) {
-      await onSignIn(trimmedEmail, password)
-    } else {
-      await onSignUp(trimmedEmail, password)
-    }
+    if (isPasswordReset) await onPasswordReset(trimmedEmail)
+    else if (password && isSignIn) await onSignIn(trimmedEmail, password)
+    else if (password) await onSignUp(trimmedEmail, password)
   }
 
+  const submitLabel = isPasswordReset ? 'Send reset link' : isSignIn ? 'Sign in' : 'Create account'
+  const SubmitIcon = isPasswordReset ? Send : isSignIn ? LogIn : UserPlus
+
   return (
-    <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-4 shadow-[var(--shadow)] sm:p-5">
-      <div className="mb-5 flex rounded-md border border-[var(--border)] p-1">
-        <button
-          type="button"
-          onClick={() => selectMode('sign-in')}
-          disabled={isLoading}
-          aria-pressed={isSignIn}
-          className={`flex-1 rounded px-3 py-2 text-sm font-semibold transition ${
-            isSignIn
-              ? 'bg-[var(--accent)] text-white'
-              : 'text-[var(--text-h)] hover:bg-[var(--social-bg)] disabled:text-[var(--text)]'
-          }`}
-        >
-          Sign in
-        </button>
-        <button
-          type="button"
-          onClick={() => selectMode('sign-up')}
-          disabled={isLoading}
-          aria-pressed={!isSignIn && !isPasswordReset}
-          className={`flex-1 rounded px-3 py-2 text-sm font-semibold transition ${
-            !isSignIn && !isPasswordReset
-              ? 'bg-[var(--accent)] text-white'
-              : 'text-[var(--text-h)] hover:bg-[var(--social-bg)] disabled:text-[var(--text)]'
-          }`}
-        >
-          Create account
-        </button>
+    <Panel raised className="p-5 sm:p-6">
+      <div className="mb-6">
+        <p className="page-eyebrow">Account access</p>
+        <h2 className="text-2xl font-semibold text-[var(--text-h)]">
+          {isPasswordReset ? 'Reset your password' : isSignIn ? 'Welcome back' : 'Create your account'}
+        </h2>
+        <p className="mt-2 text-sm leading-6">
+          {isPasswordReset
+            ? 'Enter your email and we will send recovery instructions.'
+            : isSignIn
+              ? 'Continue where you left off.'
+              : 'Build a training profile in a few quick steps.'}
+        </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <label htmlFor="email" className="text-sm font-medium text-[var(--text-h)]">
-          Email
+      {!isPasswordReset && (
+        <div className="mb-6 grid grid-cols-2 rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] p-1">
+          <button
+            type="button"
+            onClick={() => selectMode('sign-in')}
+            disabled={isLoading}
+            aria-pressed={isSignIn}
+            className={`rounded px-3 py-2 text-sm font-semibold transition ${
+              isSignIn ? 'bg-[var(--surface-raised)] text-[var(--text-h)] shadow-sm' : 'text-[var(--text)] hover:text-[var(--text-h)]'
+            }`}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            onClick={() => selectMode('sign-up')}
+            disabled={isLoading}
+            aria-pressed={!isSignIn}
+            className={`rounded px-3 py-2 text-sm font-semibold transition ${
+              !isSignIn ? 'bg-[var(--surface-raised)] text-[var(--text-h)] shadow-sm' : 'text-[var(--text)] hover:text-[var(--text-h)]'
+            }`}
+          >
+            Create account
+          </button>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="grid gap-4">
+        <label>
+          <span className="field-label">Email</span>
+          <input
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="you@example.com"
+            required
+            autoComplete="email"
+            className="field-control px-3.5 py-3"
+          />
         </label>
-        <input
-          id="email"
-          type="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          placeholder="you@example.com"
-          required
-          autoComplete="email"
-          className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 text-base leading-6 text-[var(--text-h)] outline-none transition placeholder:text-[var(--text)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)]"
-        />
 
         {!isPasswordReset && (
-          <>
-            <label htmlFor="password" className="text-sm font-medium text-[var(--text-h)]">
-              Password
-            </label>
+          <label>
+            <span className="field-label">Password</span>
             <input
-              id="password"
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
               minLength={6}
               autoComplete={isSignIn ? 'current-password' : 'new-password'}
-              className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 text-base leading-6 text-[var(--text-h)] outline-none transition placeholder:text-[var(--text)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)]"
+              className="field-control px-3.5 py-3"
             />
-          </>
+            <span className="mt-2 block text-xs text-[var(--text-muted)]">
+              {isSignIn ? 'Use your account credentials.' : 'Use at least 6 characters.'}
+            </span>
+          </label>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-[var(--text)]">
-            {isPasswordReset
-              ? 'We will send reset instructions if the account exists.'
-              : isSignIn
-                ? 'Use your account credentials.'
-                : 'Use at least 6 characters.'}
-          </p>
-          <button
-            type="submit"
-            disabled={!email.trim() || (!isPasswordReset && !password) || isLoading}
-            className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:border disabled:border-[var(--border)] disabled:bg-[var(--social-bg)] disabled:text-[var(--text)]"
-          >
-            {isLoading
-              ? 'Working...'
-              : isPasswordReset
-                ? 'Send reset link'
-                : isSignIn
-                  ? 'Sign in'
-                  : 'Create account'}
-          </button>
-        </div>
+        <Button
+          type="submit"
+          icon={SubmitIcon}
+          disabled={!email.trim() || (!isPasswordReset && !password) || isLoading}
+          className="mt-1 w-full"
+        >
+          {isLoading ? 'Working...' : submitLabel}
+        </Button>
       </form>
 
       {isSignIn && (
@@ -151,8 +142,9 @@ export function AuthForm({
           type="button"
           onClick={() => selectMode('reset-password')}
           disabled={isLoading}
-          className="mt-4 text-sm font-semibold text-[var(--accent)]"
+          className="mt-4 flex items-center gap-2 text-sm font-semibold text-[var(--accent)]"
         >
+          <KeyRound aria-hidden="true" size={15} />
           Forgot password?
         </button>
       )}
@@ -162,31 +154,27 @@ export function AuthForm({
           type="button"
           onClick={() => selectMode('sign-in')}
           disabled={isLoading}
-          className="mt-4 text-sm font-semibold text-[var(--accent)]"
+          className="mt-4 flex items-center gap-2 text-sm font-semibold text-[var(--accent)]"
         >
+          <ArrowLeft aria-hidden="true" size={15} />
           Return to sign in
         </button>
       ) : (
         <>
-          <div className="my-5 flex items-center gap-3 text-sm text-[var(--text)]">
+          <div className="my-5 flex items-center gap-3 text-xs text-[var(--text-muted)]">
             <span className="h-px flex-1 bg-[var(--border)]" />
-            <span>or</span>
+            <span>or continue with</span>
             <span className="h-px flex-1 bg-[var(--border)]" />
           </div>
-
-          <button
-            type="button"
-            onClick={onGoogleSignIn}
-            disabled={isLoading}
-            className="w-full rounded-md border border-[var(--border)] px-5 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:bg-[var(--social-bg)] disabled:text-[var(--text)]"
-          >
-            Continue with Google
-          </button>
+          <Button variant="secondary" onClick={onGoogleSignIn} disabled={isLoading} className="w-full">
+            <span aria-hidden="true" className="text-base font-bold">G</span>
+            Google
+          </Button>
         </>
       )}
 
-      {message && <p className="mt-4 leading-7 text-[var(--accent)]">{message}</p>}
-      {error && <p className="mt-4 leading-7 text-red-700">{error}</p>}
-    </section>
+      {message && <p className="feedback-success mt-4">{message}</p>}
+      {error && <p role="alert" className="feedback-error mt-4">{error}</p>}
+    </Panel>
   )
 }
