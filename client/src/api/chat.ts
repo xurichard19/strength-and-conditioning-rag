@@ -1,24 +1,15 @@
-import type { ChatResponse } from '../types/chat'
-import { ApiRequestError } from './errors'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
-
-function apiPath(path: string) {
-  const baseUrl = API_BASE_URL.replace(/\/$/, '')
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`
-
-  return `${baseUrl}${normalizedPath}`
-}
+import type { Source } from '../types'
+import { apiFetch, responseError } from './client'
 
 type ChatStreamEvent =
   | { type: 'text'; delta: string }
-  | { type: 'sources'; sources: NonNullable<ChatResponse['sources']> }
+  | { type: 'sources'; sources: Source[] }
   | { type: 'done' }
   | { type: 'error'; message?: string }
 
 type StreamChatHandlers = {
   onText: (delta: string) => void
-  onSources?: (sources: NonNullable<ChatResponse['sources']>) => void
+  onSources?: (sources: Source[]) => void
 }
 
 function parseChatStreamEvent(line: string): ChatStreamEvent | null {
@@ -40,22 +31,14 @@ export async function submitChat(
   accessToken: string | undefined,
   handlers: StreamChatHandlers,
 ): Promise<void> {
-  const response = await fetch(apiPath('/chat/'), {
+  const response = await apiFetch('/chat/', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
+    accessToken,
     body: JSON.stringify({ text: question }),
   })
 
-  if (!response.ok) {
-    throw new ApiRequestError('Chat request failed', response.status)
-  }
-
-  if (!response.body) {
-    throw new ApiRequestError('Chat stream unavailable', response.status)
-  }
+  if (!response.ok) throw await responseError(response, 'Chat request failed')
+  if (!response.body) throw await responseError(response, 'Chat stream unavailable')
 
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
@@ -82,7 +65,7 @@ export async function submitChat(
       } else if (event.type === 'sources') {
         handlers.onSources?.(event.sources)
       } else if (event.type === 'error') {
-        throw new ApiRequestError(event.message ?? 'Chat stream failed', response.status)
+        throw await responseError(response, event.message ?? 'Chat stream failed')
       }
     }
   }

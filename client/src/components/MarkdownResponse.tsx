@@ -1,7 +1,13 @@
-import { InlineMarkdown } from './InlineMarkdown'
-
 type MarkdownResponseProps = {
   content: string
+}
+
+function InlineMarkdown({ text }: { text: string }) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, index) => (
+    part.startsWith('**') && part.endsWith('**')
+      ? <strong key={index}>{part.slice(2, -2)}</strong>
+      : <span key={index}>{part}</span>
+  ))
 }
 
 export function MarkdownResponse({ content }: MarkdownResponseProps) {

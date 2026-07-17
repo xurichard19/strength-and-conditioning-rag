@@ -1,12 +1,11 @@
-import type { Page } from "./types"
-
 export const infoPages = ["about", "terms", "privacy", "disclaimer", "accessibility"] as const
 
 export type InfoPageName = (typeof infoPages)[number]
 
-const pagePaths: Record<Page, string> = {
+const pagePaths = {
     home: "/home",
     onboarding: "/onboarding",
+    today: "/today",
     chat: "/chat",
     plan: "/plan",
     calendar: "/calendar",
@@ -19,7 +18,9 @@ const pagePaths: Record<Page, string> = {
     privacy: "/privacy",
     disclaimer: "/disclaimer",
     accessibility: "/accessibility",
-}
+} as const
+
+export type Page = keyof typeof pagePaths
 
 const pathPages = new Map<string, Page>(
     Object.entries(pagePaths).map(([page, path]) => [path, page as Page]),

@@ -1,4 +1,4 @@
-import { type FormEvent, useMemo, useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import { ArrowRight, Check, ChevronLeft, LogOut, Sparkles } from 'lucide-react'
 
 import { BrandMark } from '../components/BrandMark'
@@ -7,8 +7,8 @@ import {
   EQUIPMENT_OPTIONS,
   EXPERIENCE_LEVELS,
   PRIMARY_GOALS,
-  SESSION_DURATIONS,
-  TRAINING_DAYS,
+  SESSION_DURATION_OPTIONS,
+  TRAINING_DAY_OPTIONS,
   type OnboardingAnswers,
   type Profile,
   type ProfileUpdate,
@@ -57,17 +57,14 @@ const questions: readonly Question[] = [
     eyebrow: 'Build around real life',
     title: 'How many days can you normally train each week?',
     description: 'Choose a schedule you can sustain during a typical week.',
-    options: TRAINING_DAYS.map((day) => ({ value: day, label: `${day} days` })),
+    options: TRAINING_DAY_OPTIONS,
   },
   {
     field: 'session_duration_minutes',
     eyebrow: 'Make every session fit',
     title: 'How much time do you usually have per session?',
     description: 'We will keep the work focused enough to fit this window.',
-    options: SESSION_DURATIONS.map((minutes) => ({
-      value: minutes,
-      label: minutes === 90 ? '90+ minutes' : `${minutes} minutes`,
-    })),
+    options: SESSION_DURATION_OPTIONS,
   },
   {
     field: 'equipment_access',
@@ -78,9 +75,9 @@ const questions: readonly Question[] = [
   },
 ]
 
-const primaryGoalLabels = Object.fromEntries(PRIMARY_GOALS.map((option) => [option.value, option.label])) as Record<NonNullable<Profile['primary_goal']>, string>
-const experienceLabels = Object.fromEntries(EXPERIENCE_LEVELS.map((option) => [option.value, option.label])) as Record<NonNullable<Profile['experience_level']>, string>
-const equipmentLabels = Object.fromEntries(EQUIPMENT_OPTIONS.map((option) => [option.value, option.label])) as Record<NonNullable<Profile['equipment_access']>, string>
+const profileLabels = Object.fromEntries(
+  [...PRIMARY_GOALS, ...EXPERIENCE_LEVELS, ...EQUIPMENT_OPTIONS].map(({ value, label }) => [value, label]),
+) as Record<string, string>
 
 function hasAnswer(profile: Profile, field: AnswerField) {
   const value = profile[field]
@@ -105,16 +102,16 @@ export function OnboardingPage({ profile, onComplete, onSignOut, onUpdate }: Onb
   const selectedValue = currentQuestion ? answers[currentQuestion.field] : null
   const progress = isSummary ? 100 : currentStep >= 0 ? ((currentStep + 1) / questions.length) * 100 : 0
 
-  const summaryItems = useMemo(() => {
-    if (!answers.primary_goal || !answers.experience_level || !answers.training_days_per_week || !answers.session_duration_minutes || !answers.equipment_access) return []
-    return [
-      { label: 'Primary goal', value: primaryGoalLabels[answers.primary_goal] },
-      { label: 'Experience', value: experienceLabels[answers.experience_level] },
+  const summaryItems = answers.primary_goal && answers.experience_level && answers.training_days_per_week
+    && answers.session_duration_minutes && answers.equipment_access
+    ? [
+      { label: 'Primary goal', value: profileLabels[answers.primary_goal] },
+      { label: 'Experience', value: profileLabels[answers.experience_level] },
       { label: 'Training week', value: `${answers.training_days_per_week} days` },
       { label: 'Session length', value: answers.session_duration_minutes === 90 ? '90+ minutes' : `${answers.session_duration_minutes} minutes` },
-      { label: 'Equipment', value: equipmentLabels[answers.equipment_access] },
+      { label: 'Equipment', value: profileLabels[answers.equipment_access] },
     ]
-  }, [answers])
+    : []
 
   const selectAnswer = (field: AnswerField, value: string | number) => {
     setAnswers((current) => ({ ...current, [field]: value }) as Profile)

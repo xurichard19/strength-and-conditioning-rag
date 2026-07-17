@@ -20,9 +20,9 @@ import { InfoPage } from './pages/InfoPage'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { PlanPage } from './pages/PlanPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { TodayPage } from './pages/TodayPage'
 import { UserUtilityPage } from './pages/UserUtilityPage'
-import { getPageFromPath, getPathForPage, isInfoPage } from './routing'
-import type { Page } from './types'
+import { getPageFromPath, getPathForPage, isInfoPage, type Page } from './routing'
 import type { Profile, ProfileAccess, ProfileUpdate } from './types/profile'
 
 function AppContent() {
@@ -239,22 +239,29 @@ function AppContent() {
           />
           <div className="flex-1">
             {renderedPage === 'home' && <HomePage onNavigate={navigate} />}
+            {renderedPage === 'today' && <TodayPage />}
             {renderedPage === 'chat' && (
               <ChatPage
+                key={`chat-${auth.session.user.id}`}
                 accessToken={auth.session.access_token}
                 onUnauthorized={auth.handleUnauthorized}
+                userId={auth.session.user.id}
               />
             )}
             {renderedPage === 'plan' && (
               <PlanPage
+                key={`plan-${auth.session.user.id}`}
                 accessToken={auth.session.access_token}
                 onUnauthorized={auth.handleUnauthorized}
+                userId={auth.session.user.id}
               />
             )}
             {renderedPage === 'calendar' && (
               <CalendarPage
+                key={`calendar-${auth.session.user.id}`}
                 accessToken={auth.session.access_token}
                 onUnauthorized={auth.handleUnauthorized}
+                userId={auth.session.user.id}
               />
             )}
             {renderedPage === 'settings' && profile && (

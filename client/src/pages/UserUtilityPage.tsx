@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 
 import { Button, EmptyState, PageHeader, Panel } from '../components/ui'
-import type { Page } from '../types'
+import type { Page } from '../routing'
 
 type UtilityPage = Extract<Page, 'saved' | 'activity' | 'help'>
 
@@ -36,15 +36,28 @@ const pageDetails = {
     title: 'Help & support',
     description: 'Find answers and get assistance with your account or training workspace.',
   },
-} satisfies Record<UtilityPage, {
-  eyebrow: string
-  icon: typeof Bookmark
-  title: string
-  description: string
-}>
+} as const
+
+const emptyPageDetails = {
+  saved: {
+    actionIcon: Search,
+    actionLabel: 'Explore research',
+    actionPage: 'chat',
+    description: 'Saved research answers and source documents will appear here once bookmarking is available.',
+    title: 'Your library is ready',
+  },
+  activity: {
+    actionIcon: MessageSquareText,
+    actionLabel: 'Ask a question',
+    actionPage: 'chat',
+    description: 'Your research questions, generated plans, and important account events will be collected here.',
+    title: 'No recent activity',
+  },
+} as const
 
 export function UserUtilityPage({ page, onNavigate }: UserUtilityPageProps) {
   const details = pageDetails[page]
+  const emptyDetails = page === 'help' ? null : emptyPageDetails[page]
 
   return (
     <main className="app-page app-page-narrow">
@@ -55,33 +68,20 @@ export function UserUtilityPage({ page, onNavigate }: UserUtilityPageProps) {
         description={details.description}
       />
 
-      {page === 'saved' && (
+      {emptyDetails ? (
         <Panel>
           <EmptyState
-            icon={Bookmark}
-            title="Your library is ready"
-            description="Saved research answers and source documents will appear here once bookmarking is available."
+            icon={details.icon}
+            title={emptyDetails.title}
+            description={emptyDetails.description}
           />
           <div className="flex justify-center border-t border-[var(--border)] p-4">
-            <Button icon={Search} onClick={() => onNavigate('chat')}>Explore research</Button>
+            <Button icon={emptyDetails.actionIcon} onClick={() => onNavigate(emptyDetails.actionPage)}>
+              {emptyDetails.actionLabel}
+            </Button>
           </div>
         </Panel>
-      )}
-
-      {page === 'activity' && (
-        <Panel>
-          <EmptyState
-            icon={History}
-            title="No recent activity"
-            description="Your research questions, generated plans, and important account events will be collected here."
-          />
-          <div className="flex justify-center border-t border-[var(--border)] p-4">
-            <Button icon={MessageSquareText} onClick={() => onNavigate('chat')}>Ask a question</Button>
-          </div>
-        </Panel>
-      )}
-
-      {page === 'help' && (
+      ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           <button
             type="button"

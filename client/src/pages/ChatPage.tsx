@@ -6,12 +6,23 @@ import { ApiRequestError } from '../api/errors'
 import { MarkdownResponse } from '../components/MarkdownResponse'
 import { SourceList } from '../components/SourceList'
 import { Button, EmptyState, PageHeader, Panel } from '../components/ui'
+import { useSessionState } from '../lib/sessionState'
 import type { Source } from '../types'
 
 type ChatPageProps = {
   accessToken: string
   onUnauthorized: () => void
+  userId: string
 }
+
+type ChatState = {
+  question: string
+  response: string
+  sources: Source[]
+  submittedQuestion: string
+}
+
+const initialChat: ChatState = { question: '', response: '', sources: [], submittedQuestion: '' }
 
 const promptSuggestions = [
   'How should I place intervals around heavy lower-body lifting?',
@@ -19,14 +30,12 @@ const promptSuggestions = [
   'How can I improve recovery between concurrent training sessions?',
 ]
 
-export function ChatPage({ accessToken, onUnauthorized }: ChatPageProps) {
+export function ChatPage({ accessToken, onUnauthorized, userId }: ChatPageProps) {
   const answerViewportRef = useRef<HTMLDivElement | null>(null)
-  const [question, setQuestion] = useState('')
-  const [submittedQuestion, setSubmittedQuestion] = useState('')
-  const [response, setResponse] = useState('')
-  const [sources, setSources] = useState<Source[]>([])
+  const [chat, setChat] = useSessionState(userId, 'chat', initialChat)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const { question, response, sources, submittedQuestion } = chat
 
   useEffect(() => {
     const viewport = answerViewportRef.current
@@ -40,16 +49,19 @@ export function ChatPage({ accessToken, onUnauthorized }: ChatPageProps) {
     const trimmedQuestion = question.trim()
     if (!trimmedQuestion || isLoading) return
 
-    setSubmittedQuestion(trimmedQuestion)
+    setChat((current) => ({
+      ...current,
+      response: '',
+      sources: [],
+      submittedQuestion: trimmedQuestion,
+    }))
     setIsLoading(true)
     setError('')
-    setResponse('')
-    setSources([])
 
     try {
       await submitChat(trimmedQuestion, accessToken, {
-        onText: (delta) => setResponse((currentResponse) => currentResponse + delta),
-        onSources: setSources,
+        onText: (delta) => setChat((current) => ({ ...current, response: current.response + delta })),
+        onSources: (nextSources) => setChat((current) => ({ ...current, sources: nextSources })),
       })
     } catch (requestError) {
       if (requestError instanceof ApiRequestError && requestError.status === 401) {
@@ -125,7 +137,7 @@ export function ChatPage({ accessToken, onUnauthorized }: ChatPageProps) {
                 <button
                   key={suggestion}
                   type="button"
-                  onClick={() => setQuestion(suggestion)}
+                  onClick={() => setChat((current) => ({ ...current, question: suggestion }))}
                   className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-left text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent-border)] hover:text-[var(--text-h)]"
                 >
                   {suggestion}
@@ -138,7 +150,7 @@ export function ChatPage({ accessToken, onUnauthorized }: ChatPageProps) {
             <textarea
               id="research-question"
               value={question}
-              onChange={(event) => setQuestion(event.target.value)}
+              onChange={(event) => setChat((current) => ({ ...current, question: event.target.value }))}
               placeholder="Ask a focused question about training..."
               rows={2}
               className="field-control min-h-[3.25rem] flex-1 resize-none px-3.5 py-3 text-sm leading-6"

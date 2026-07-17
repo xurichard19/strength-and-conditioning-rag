@@ -7,19 +7,13 @@ import {
 } from 'lucide-react'
 
 import { PageHeader, Panel } from '../components/ui'
-import type { Page } from '../types'
+import type { Page } from '../routing'
 
 type HomePageProps = {
   onNavigate: (page: Page) => void
 }
 
-const workspaces: Array<{
-  description: string
-  icon: typeof MessageSquareText
-  label: string
-  page: Page
-  title: string
-}> = [
+const workspaces = [
   {
     description: 'Ask focused training questions and inspect the research passages behind every answer.',
     icon: MessageSquareText,
@@ -41,7 +35,7 @@ const workspaces: Array<{
     page: 'calendar',
     title: 'Review your schedule',
   },
-]
+] as const
 
 export function HomePage({ onNavigate }: HomePageProps) {
   return (
@@ -54,14 +48,12 @@ export function HomePage({ onNavigate }: HomePageProps) {
       />
 
       <section aria-label="Training tools" className="grid gap-4 lg:grid-cols-3">
-        {workspaces.map(({ description, icon: Icon, label, page, title }, index) => (
+        {workspaces.map(({ description, icon: Icon, label, page, title }) => (
           <button
             key={page}
             type="button"
             onClick={() => onNavigate(page)}
-            className={`panel panel-interactive group flex min-h-64 flex-col p-5 text-left sm:p-6 ${
-              index === 0 ? 'lg:col-span-1' : ''
-            }`}
+            className="panel panel-interactive group flex min-h-64 flex-col p-5 text-left sm:p-6"
           >
             <span className="grid h-10 w-10 place-items-center rounded-md border border-[var(--accent-border)] bg-[var(--accent-bg)] text-[var(--accent)]">
               <Icon aria-hidden="true" size={20} strokeWidth={1.9} />

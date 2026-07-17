@@ -49,8 +49,13 @@ export const EXPERIENCE_LEVELS = [
   },
 ] as const
 
-export const TRAINING_DAYS = [2, 3, 4, 5, 6, 7] as const
-export const SESSION_DURATIONS = [30, 45, 60, 75, 90] as const
+const TRAINING_DAYS = [2, 3, 4, 5, 6, 7] as const
+const SESSION_DURATIONS = [30, 45, 60, 75, 90] as const
+export const TRAINING_DAY_OPTIONS = TRAINING_DAYS.map((value) => ({ value, label: `${value} days` }))
+export const SESSION_DURATION_OPTIONS = SESSION_DURATIONS.map((value) => ({
+  value,
+  label: value === 90 ? '90+ minutes' : `${value} minutes`,
+}))
 
 export const EQUIPMENT_OPTIONS = [
   {

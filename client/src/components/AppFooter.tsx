@@ -1,16 +1,16 @@
-import type { Page } from '../types'
+import type { Page } from '../routing'
 
 type AppFooterProps = {
   onNavigate: (page: Page) => void
 }
 
-const footerLinks: Array<{ label: string; page: Page }> = [
+const footerLinks = [
   { label: 'About', page: 'about' },
   { label: 'Terms', page: 'terms' },
   { label: 'Privacy', page: 'privacy' },
   { label: 'Disclaimer', page: 'disclaimer' },
   { label: 'Accessibility', page: 'accessibility' },
-]
+] as const
 
 export function AppFooter({ onNavigate }: AppFooterProps) {
   return (

@@ -1,29 +1,8 @@
-export type Page =
-    | "home"
-    | "onboarding"
-    | "chat"
-    | "plan"
-    | "calendar"
-    | "settings"
-    | "saved"
-    | "activity"
-    | "help"
-    | "about"
-    | "terms"
-    | "privacy"
-    | "disclaimer"
-    | "accessibility"
-
 export type Source = {
     id?: string | number | null
     source?: string | null
     page?: string | number | null
     text: string
-}
-
-export type ChatResponse = {
-    text?: string
-    sources?: Source[]
 }
 
 export type Exercise = {

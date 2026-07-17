@@ -6,8 +6,8 @@ import {
   EQUIPMENT_OPTIONS,
   EXPERIENCE_LEVELS,
   PRIMARY_GOALS,
-  SESSION_DURATIONS,
-  TRAINING_DAYS,
+  SESSION_DURATION_OPTIONS,
+  TRAINING_DAY_OPTIONS,
   type OnboardingAnswers,
   type Profile,
   type ProfileUpdate,
@@ -218,7 +218,7 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
               id="training-days"
               label="Training days per week"
               value={draft.training_days_per_week}
-              options={TRAINING_DAYS.map((days) => ({ value: days, label: `${days} days` }))}
+              options={TRAINING_DAY_OPTIONS}
               placeholder="Select days per week"
               disabled={controlsDisabled}
               onChange={(value) => updateField('training_days_per_week', Number(value) as NonNullable<OnboardingAnswers['training_days_per_week']>)}
@@ -227,7 +227,7 @@ export function SettingsPage({ profile, userEmail, onUpdate }: SettingsPageProps
               id="session-duration"
               label="Session duration"
               value={draft.session_duration_minutes}
-              options={SESSION_DURATIONS.map((minutes) => ({ value: minutes, label: minutes === 90 ? '90+ minutes' : `${minutes} minutes` }))}
+              options={SESSION_DURATION_OPTIONS}
               placeholder="Select session duration"
               disabled={controlsDisabled}
               onChange={(value) => updateField('session_duration_minutes', Number(value) as NonNullable<OnboardingAnswers['session_duration_minutes']>)}

@@ -17,6 +17,14 @@ def select_rows(
     query_params: list[tuple[str, str]],
     access_token: str,
 ) -> list[dict[str, Any]]:
+    """
+    select rows from supabase table using supabase rest api
+
+    - **table**: table name
+    - **query_params**: tuples representing query parameters for the request
+    - **access_token**: user jwt
+    """
+
     settings = get_settings()
     supabase_url = settings.supabase_url.rstrip("/")
     query = urlencode(query_params, safe=",().")

@@ -81,30 +81,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setMessage('')
   }
 
-  const signIn = async (email: string, password: string) => {
+  const submit = async (action: () => Promise<void>, fallback: string) => {
     setIsSubmitting(true)
     resetFeedback()
-
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (signInError) throw signInError
+      await action()
     } catch (authError) {
-      setError(authError instanceof Error ? authError.message : 'Could not sign in.')
+      setError(authError instanceof Error ? authError.message : fallback)
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const signUp = async (email: string, password: string) => {
-    setIsSubmitting(true)
-    resetFeedback()
+  const signIn = (email: string, password: string) => submit(
+    async () => {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+      if (error) throw error
+    },
+    'Could not sign in.',
+  )
 
-    try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
+  const signUp = (email: string, password: string) => submit(
+    async () => {
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -112,23 +114,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
         },
       })
 
-      if (signUpError) throw signUpError
-
+      if (error) throw error
       if (data.session) {
         await createProfile(data.session.access_token)
-      }
-
-      if (!data.session) {
+      } else {
         setMessage(
           'If this email is eligible, a confirmation link will arrive shortly. If you already have an account, sign in.',
         )
       }
-    } catch (authError) {
-      setError(authError instanceof Error ? authError.message : 'Could not create your account.')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
+    },
+    'Could not create your account.',
+  )
 
   const signInWithGoogle = async () => {
     setIsSubmitting(true)
@@ -149,45 +145,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }
 
-  const requestPasswordReset = async (email: string) => {
-    setIsSubmitting(true)
-    resetFeedback()
-
-    try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+  const requestPasswordReset = (email: string) => submit(
+    async () => {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin,
       })
-
-      if (resetError) throw resetError
-
+      if (error) throw error
       setMessage('If this email has an account, a password reset link will arrive shortly.')
-    } catch (authError) {
-      setError(authError instanceof Error ? authError.message : 'Could not send reset instructions.')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
+    },
+    'Could not send reset instructions.',
+  )
 
-  const updatePassword = async (password: string) => {
-    setIsSubmitting(true)
-    resetFeedback()
-
-    try {
-      const { error: updateError } = await supabase.auth.updateUser({ password })
-
-      if (updateError) throw updateError
-
+  const updatePassword = (password: string) => submit(
+    async () => {
+      const { error } = await supabase.auth.updateUser({ password })
+      if (error) throw error
       window.sessionStorage.removeItem('arcel-password-recovery')
       setIsPasswordRecovery(false)
       setMessage('Password updated. Please sign in with your new password.')
       await supabase.auth.signOut()
       setSession(null)
-    } catch (authError) {
-      setError(authError instanceof Error ? authError.message : 'Could not update your password.')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
+    },
+    'Could not update your password.',
+  )
 
   const signOut = async () => {
     await supabase.auth.signOut()

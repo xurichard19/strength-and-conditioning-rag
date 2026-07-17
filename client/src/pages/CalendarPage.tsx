@@ -2,36 +2,24 @@ import { useEffect, useMemo, useState } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3, RotateCcw } from 'lucide-react'
 
 import { ApiRequestError } from '../api/errors'
-import { fetchSavedPlan } from '../api/plan'
+import { fetchCachedSavedPlan } from '../api/workoutQueries'
 import { Button, EmptyState, IconButton, PageHeader, Panel } from '../components/ui'
+import { formatDateKey, toDateKey } from '../lib/dates'
 import type { Exercise, Workout } from '../types'
 
 const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
-function toDateKey(date: Date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function parseDateKey(date: string) {
-  return new Date(`${date}T00:00:00`)
-}
 
 function formatMonth(date: Date) {
   return new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(date)
 }
 
 function formatSelectedDate(date: string) {
-  const parsedDate = parseDateKey(date)
-  if (Number.isNaN(parsedDate.getTime())) return date
-  return new Intl.DateTimeFormat(undefined, {
+  return formatDateKey(date, {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
     year: 'numeric',
-  }).format(parsedDate)
+  })
 }
 
 function buildCalendarDates(displayDate: Date) {
@@ -58,9 +46,10 @@ function groupExercisesByDate(workouts: Workout[]) {
 type CalendarPageProps = {
   accessToken: string
   onUnauthorized: () => void
+  userId: string
 }
 
-export function CalendarPage({ accessToken, onUnauthorized }: CalendarPageProps) {
+export function CalendarPage({ accessToken, onUnauthorized, userId }: CalendarPageProps) {
   const today = useMemo(() => new Date(), [])
   const todayKey = toDateKey(today)
   const [displayDate, setDisplayDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
@@ -79,7 +68,7 @@ export function CalendarPage({ accessToken, onUnauthorized }: CalendarPageProps)
       setIsLoading(true)
       setError('')
       try {
-        const data = await fetchSavedPlan(accessToken)
+        const data = await fetchCachedSavedPlan(userId, accessToken)
         if (isMounted) setWorkouts(data.workouts)
       } catch (requestError) {
         if (requestError instanceof ApiRequestError && requestError.status === 401) {
@@ -97,7 +86,7 @@ export function CalendarPage({ accessToken, onUnauthorized }: CalendarPageProps)
 
     void loadSavedPlan()
     return () => { isMounted = false }
-  }, [accessToken, onUnauthorized])
+  }, [accessToken, onUnauthorized, userId])
 
   const showCurrentMonth = () => {
     setDisplayDate(new Date(today.getFullYear(), today.getMonth(), 1))

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { BookOpenText, FileText, X } from 'lucide-react'
 
-import type { Source } from '../types/chat'
+import type { Source } from '../types'
 
 type SourceListProps = {
   sources: Source[]

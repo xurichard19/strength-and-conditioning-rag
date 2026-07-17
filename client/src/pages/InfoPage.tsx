@@ -1,4 +1,4 @@
-import type { Page } from "../types"
+import type { Page } from "../routing"
 import linkedinLogo from "../assets/linkedinlogo.png"
 import { ArrowDown, ArrowRight } from "lucide-react"
 
@@ -110,10 +110,10 @@ const teamIntroductions = [
         linkedinUrl: "https://www.linkedin.com/in/dimitrios-mahairas/",
     },
     {
-        name: "codex",
-        body: "goat",
-        linkedinUrl: "https://www.linkedin.com/company/openai/",
-    },
+        name: "aaron jiang",
+        body: "UI/UX/PM",
+        linkedinUrl: "https://www.linkedin.com/in/aaron-jiang-7a10242a2/",
+    }
 ]
 
 const architectureSteps = [
@@ -225,7 +225,7 @@ export function InfoPage({ page }: InfoPageProps) {
                                 <div className="grid items-stretch gap-2 lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr_auto_1fr]">
                                     {architectureSteps.map((step, index) => (
                                         <div key={step.label} className="contents">
-                                            <div className="flex min-h-24 flex-col justify-between border border-[var(--border)] bg-[var(--social-bg)] p-4">
+                                            <div className="flex min-h-24 flex-col justify-between border border-[var(--border)] bg-[var(--surface-muted)] p-4">
                                                 <span className="text-xs font-semibold uppercase text-[var(--accent)]">
                                                     {step.label}
                                                 </span>

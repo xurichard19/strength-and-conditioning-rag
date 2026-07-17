@@ -10,6 +10,7 @@ import {
   LogOut,
   Menu,
   MessageSquareText,
+  Sparkles,
   Settings,
   X,
   type LucideIcon,
@@ -17,7 +18,7 @@ import {
 
 import userIcon from '../assets/user-icon.png'
 import { classes } from '../lib/classes'
-import type { Page } from '../types'
+import type { Page } from '../routing'
 import { BrandMark } from './BrandMark'
 import { IconButton } from './ui'
 
@@ -37,9 +38,17 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { icon: Home, label: 'Home', page: 'home' },
+  { icon: Dumbbell, label: 'Today', page: 'today' },
   { icon: MessageSquareText, label: 'Research', page: 'chat' },
-  { icon: Dumbbell, label: 'Plan', page: 'plan' },
+  { icon: Sparkles, label: 'Plan', page: 'plan' },
   { icon: CalendarDays, label: 'Calendar', page: 'calendar' },
+]
+
+const userMenuItems: NavItem[] = [
+  { icon: Bookmark, label: 'Saved research', page: 'saved' },
+  { icon: History, label: 'Activity', page: 'activity' },
+  { icon: Settings, label: 'Settings', page: 'settings' },
+  { icon: CircleHelp, label: 'Help & support', page: 'help' },
 ]
 
 export function AppNav({ currentPage, userEmail, onNavigate, onLogin, onSignOut }: AppNavProps) {
@@ -140,38 +149,12 @@ export function AppNav({ currentPage, userEmail, onNavigate, onLogin, onSignOut 
                 )}
                 {isAuthenticated ? (
                   <div className="pt-2">
-                    <button
-                      type="button"
-                      onClick={() => navigate('saved')}
-                      className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
-                    >
-                      <Bookmark aria-hidden="true" size={17} />
-                      Saved research
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => navigate('activity')}
-                      className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
-                    >
-                      <History aria-hidden="true" size={17} />
-                      Activity
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => navigate('settings')}
-                      className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
-                    >
-                      <Settings aria-hidden="true" size={17} />
-                      Settings
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => navigate('help')}
-                      className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
-                    >
-                      <CircleHelp aria-hidden="true" size={17} />
-                      Help &amp; support
-                    </button>
+                    {userMenuItems.map(({ icon: Icon, label, page }) => (
+                      <button key={page} type="button" onClick={() => navigate(page)} className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]">
+                        <Icon aria-hidden="true" size={17} />
+                        {label}
+                      </button>
+                    ))}
                     <div className="my-2 border-t border-[var(--border)]" />
                     <button
                       type="button"

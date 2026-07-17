@@ -11,46 +11,50 @@ import {
 
 import { ApiRequestError } from '../api/errors'
 import { savePlan, submitPlan } from '../api/plan'
+import { invalidateWorkoutQueries } from '../api/workoutQueries'
 import { Button, EmptyState, IconButton, PageHeader, Panel } from '../components/ui'
+import { formatDateKey } from '../lib/dates'
+import { useSessionState } from '../lib/sessionState'
 import type { PlanResponse } from '../types'
 
 const workoutsPerPage = 3
 
-function parseWorkoutDate(date: string) {
-  return new Date(`${date}T00:00:00`)
-}
-
 function formatWorkoutDate(date: string) {
-  const parsedDate = parseWorkoutDate(date)
-  if (Number.isNaN(parsedDate.getTime())) return date
-  return new Intl.DateTimeFormat(undefined, {
+  return formatDateKey(date, {
     weekday: 'long',
     month: 'short',
     day: 'numeric',
-  }).format(parsedDate)
+  })
 }
 
 function formatShortDate(date: string) {
-  const parsedDate = parseWorkoutDate(date)
-  if (Number.isNaN(parsedDate.getTime())) return date
-  return new Intl.DateTimeFormat(undefined, { month: 'numeric', day: 'numeric' }).format(parsedDate)
+  return formatDateKey(date, { month: 'numeric', day: 'numeric' })
 }
 
 type PlanPageProps = {
   accessToken: string
   onUnauthorized: () => void
+  userId: string
 }
 
-export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
-  const [goal, setGoal] = useState('')
-  const [additionalContext, setAdditionalContext] = useState('')
-  const [plan, setPlan] = useState<PlanResponse | null>(null)
+type PlanState = {
+  additionalContext: string
+  goal: string
+  plan: PlanResponse | null
+  workoutPage: number
+}
+
+const initialPlan: PlanState = { additionalContext: '', goal: '', plan: null, workoutPage: 0 }
+
+export function PlanPage({ accessToken, onUnauthorized, userId }: PlanPageProps) {
+  const [state, setState] = useSessionState(userId, 'plan', initialPlan)
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
   const [saveError, setSaveError] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
-  const [workoutPage, setWorkoutPage] = useState(0)
+  const { additionalContext, goal, plan, workoutPage } = state
+  const updateState = (update: Partial<PlanState>) => setState((current) => ({ ...current, ...update }))
 
   const visibleWorkouts = plan?.workouts.slice(
     workoutPage * workoutsPerPage,
@@ -70,15 +74,14 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
     setError('')
     setSaveError('')
     setSaveMessage('')
-    setPlan(null)
-    setWorkoutPage(0)
+    updateState({ plan: null, workoutPage: 0 })
 
     try {
       const data = await submitPlan({
         goal: trimmedGoal,
         ...(trimmedAdditionalContext ? { additional_context: trimmedAdditionalContext } : {}),
       }, accessToken)
-      setPlan(data)
+      updateState({ plan: data })
     } catch (requestError) {
       if (requestError instanceof ApiRequestError && requestError.status === 401) {
         onUnauthorized()
@@ -98,6 +101,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
 
     try {
       await savePlan(plan, accessToken)
+      invalidateWorkoutQueries(userId)
       setSaveMessage('Plan saved to your calendar.')
     } catch (requestError) {
       if (requestError instanceof ApiRequestError && requestError.status === 401) {
@@ -137,7 +141,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
               <textarea
                 id="goal"
                 value={goal}
-                onChange={(event) => setGoal(event.target.value)}
+                onChange={(event) => updateState({ goal: event.target.value })}
                 placeholder="Improve 10K pace while maintaining lower-body strength."
                 rows={4}
                 className="field-control resize-y px-3.5 py-3 text-sm leading-6"
@@ -149,7 +153,7 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
               <textarea
                 id="additional-context"
                 value={additionalContext}
-                onChange={(event) => setAdditionalContext(event.target.value)}
+                onChange={(event) => updateState({ additionalContext: event.target.value })}
                 placeholder="Race in eight weeks, long run Sunday, avoid heavy legs before intervals..."
                 rows={6}
                 className="field-control resize-y px-3.5 py-3 text-sm leading-6"
@@ -177,13 +181,13 @@ export function PlanPage({ accessToken, onUnauthorized }: PlanPageProps) {
                 icon={ChevronLeft}
                 label="Show previous workout days"
                 disabled={!canShowPreviousWorkouts}
-                onClick={() => setWorkoutPage((page) => Math.max(page - 1, 0))}
+                onClick={() => updateState({ workoutPage: Math.max(workoutPage - 1, 0) })}
               />
               <IconButton
                 icon={ChevronRight}
                 label="Show next workout days"
                 disabled={!canShowNextWorkouts}
-                onClick={() => setWorkoutPage((page) => Math.min(page + 1, totalWorkoutPages - 1))}
+                onClick={() => updateState({ workoutPage: Math.min(workoutPage + 1, totalWorkoutPages - 1) })}
               />
             </div>
           </header>
