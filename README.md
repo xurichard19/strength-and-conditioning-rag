@@ -30,10 +30,6 @@ flowchart LR
 
 ---
 
-Working on RAG eval, test suites, and CI/CD tooling...
-
----
-
 ### Local development services
 
 build api image from /
