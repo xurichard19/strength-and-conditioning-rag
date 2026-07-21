@@ -1,40 +1,39 @@
-import type { Page } from "../types"
-
-type FooterLink = {
-    label: string
-    page: Page
-}
+import type { Page } from '../routing'
 
 type AppFooterProps = {
-    onNavigate: (page: Page) => void
+  onNavigate: (page: Page) => void
 }
 
-const footerLinks: FooterLink[] = [
-    { label: "About", page: "about" },
-    { label: "Terms", page: "terms" },
-    { label: "Privacy", page: "privacy" },
-    { label: "Disclaimer", page: "disclaimer" },
-    { label: "Accessibility", page: "accessibility" },
-]
+const footerLinks = [
+  { label: 'About', page: 'about' },
+  { label: 'Terms', page: 'terms' },
+  { label: 'Privacy', page: 'privacy' },
+  { label: 'Disclaimer', page: 'disclaimer' },
+  { label: 'Accessibility', page: 'accessibility' },
+] as const
 
 export function AppFooter({ onNavigate }: AppFooterProps) {
-    return (
-        <footer className="border-t border-[var(--border)] bg-[var(--bg)] px-4 py-6 text-sm text-[var(--text)] sm:px-6 lg:px-8">
-            <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="m-0">© {new Date().getFullYear()} Shingo</p>
-                <nav className="flex flex-wrap gap-x-4 gap-y-2">
-                    {footerLinks.map((link) => (
-                        <button
-                            key={link.page}
-                            type="button"
-                            onClick={() => onNavigate(link.page)}
-                            className="font-semibold text-[var(--text-h)] transition hover:text-[var(--accent)]"
-                        >
-                            {link.label}
-                        </button>
-                    ))}
-                </nav>
-            </div>
-        </footer>
-    )
+  return (
+    <footer className="border-t border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-7 text-sm text-[var(--text)] sm:px-6">
+      <div className="mx-auto flex max-w-7xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="font-semibold text-[var(--text-h)]">Arcel</p>
+          <p className="mt-1 text-xs text-[var(--text-muted)]">Evidence for the work that matters.</p>
+        </div>
+        <nav aria-label="Footer navigation" className="flex flex-wrap gap-x-5 gap-y-2">
+          {footerLinks.map((link) => (
+            <button
+              key={link.page}
+              type="button"
+              onClick={() => onNavigate(link.page)}
+              className="text-xs font-semibold text-[var(--text)] transition hover:text-[var(--accent)]"
+            >
+              {link.label}
+            </button>
+          ))}
+        </nav>
+        <p className="text-xs text-[var(--text-muted)]">© {new Date().getFullYear()} Arcel</p>
+      </div>
+    </footer>
+  )
 }

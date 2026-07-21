@@ -17,12 +17,12 @@ COPY pyproject.toml .
 COPY server ./server
 RUN pip install --no-cache-dir .
 
-RUN addgroup --system shingo \
-    && adduser --system --ingroup shingo --home /app shingo \
+RUN addgroup --system arcel \
+    && adduser --system --ingroup arcel --home /app arcel \
     && mkdir -p /app/.cache \
-    && chown -R shingo:shingo /app/.cache
+    && chown -R arcel:arcel /app/.cache
 
-USER shingo
+USER arcel
 
 EXPOSE 8000
 

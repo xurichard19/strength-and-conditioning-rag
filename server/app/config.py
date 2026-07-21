@@ -11,13 +11,13 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "shingo api"
+    app_name: str = "arcel api"
     environment: str = "development"
 
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",
-            "https://shingoassist.vercel.app",
+            "https://arcelassist.vercel.app",
         ]
     )
 

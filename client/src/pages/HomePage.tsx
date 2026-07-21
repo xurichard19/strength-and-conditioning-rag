@@ -1,68 +1,96 @@
-import type { Page } from "../types"
+import {
+  ArrowRight,
+  CalendarDays,
+  Dumbbell,
+  MessageSquareText,
+  Sparkles,
+} from 'lucide-react'
+
+import { PageHeader, Panel } from '../components/ui'
+import type { Page } from '../routing'
 
 type HomePageProps = {
-    onNavigate: (page: Page) => void
+  onNavigate: (page: Page) => void
 }
 
+const workspaces = [
+  {
+    description: 'Ask focused training questions and inspect the research passages behind every answer.',
+    icon: MessageSquareText,
+    label: 'Open research',
+    page: 'chat',
+    title: 'Research a decision',
+  },
+  {
+    description: 'Turn a performance goal and your training context into a coherent seven-day plan.',
+    icon: Dumbbell,
+    label: 'Build a week',
+    page: 'plan',
+    title: 'Create a training week',
+  },
+  {
+    description: 'Review your saved plan by day and keep the week visible as training unfolds.',
+    icon: CalendarDays,
+    label: 'View calendar',
+    page: 'calendar',
+    title: 'Review your schedule',
+  },
+] as const
+
 export function HomePage({ onNavigate }: HomePageProps) {
-    return (
-        <main className="mx-auto min-h-[calc(100vh-4.25rem)] max-w-5xl px-4 py-8 text-left text-[var(--text)] sm:px-6 lg:px-8">
-            <section className="grid min-h-[calc(100vh-10rem)] items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
-                <div>
-                    <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--text-h)]">
-                        Hybrid athlete research workspace
-                    </p>
-                    <h1 className="m-0 text-5xl font-semibold tracking-normal text-[var(--text-h)] sm:text-6xl">
-                        Shingo
-                    </h1>
-                    <p className="mt-5 max-w-2xl text-lg leading-8 text-[var(--text-h)]">
-                        Turn strength, endurance, and recovery questions into research-backed training decisions for concurrent performance.
-                    </p>
+  return (
+    <main className="app-page">
+      <PageHeader
+        eyebrow="Arcel workspace"
+        icon={Sparkles}
+        title="Make the next training decision."
+        description="Research a question, shape a balanced week, or review the plan you already saved."
+      />
 
-                    <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                        <button
-                            type="button"
-                            onClick={() => onNavigate("chat")}
-                            className="rounded-md bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white transition hover:opacity-90"
-                        >
-                            Ask research
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => onNavigate("plan")}
-                            className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-5 py-3 text-sm font-semibold text-[var(--text-h)] transition hover:border-[var(--accent-border)] hover:text-[var(--accent)]"
-                        >
-                            Build week
-                        </button>
-                    </div>
-                </div>
+      <section aria-label="Training tools" className="grid gap-4 lg:grid-cols-3">
+        {workspaces.map(({ description, icon: Icon, label, page, title }) => (
+          <button
+            key={page}
+            type="button"
+            onClick={() => onNavigate(page)}
+            className="panel panel-interactive group flex min-h-64 flex-col p-5 text-left sm:p-6"
+          >
+            <span className="grid h-10 w-10 place-items-center rounded-md border border-[var(--accent-border)] bg-[var(--accent-bg)] text-[var(--accent)]">
+              <Icon aria-hidden="true" size={20} strokeWidth={1.9} />
+            </span>
+            <div className="mt-auto pt-10">
+              <h2 className="text-xl font-semibold text-[var(--text-h)]">{title}</h2>
+              <p className="mt-3 text-sm leading-6 text-[var(--text)]">{description}</p>
+              <span className="mt-5 flex items-center gap-2 text-sm font-semibold text-[var(--accent)]">
+                {label}
+                <ArrowRight aria-hidden="true" size={16} className="transition group-hover:translate-x-1" />
+              </span>
+            </div>
+          </button>
+        ))}
+      </section>
 
-                <div className="rounded-lg border border-[var(--border)] bg-[var(--social-bg)] p-5 shadow-[var(--shadow)]">
-                    <div className="grid gap-4">
-                        <button
-                            type="button"
-                            onClick={() => onNavigate("chat")}
-                            className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-4 text-left transition hover:border-[var(--accent-border)]"
-                        >
-                            <h2 className="m-0 text-lg font-semibold text-[var(--text-h)]">Evidence insights</h2>
-                            <p className="mt-2 text-sm leading-6 text-[var(--text)]">
-                                Search the training literature library and review the source excerpts behind each answer.
-                            </p>
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => onNavigate("plan")}
-                            className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-4 text-left transition hover:border-[var(--accent-border)]"
-                        >
-                            <h2 className="m-0 text-lg font-semibold text-[var(--text-h)]">Hybrid training week</h2>
-                            <p className="mt-2 text-sm leading-6 text-[var(--text)]">
-                                Balance lifting, conditioning, sport work, and recovery around your goals and constraints.
-                            </p>
-                        </button>
-                    </div>
-                </div>
-            </section>
-        </main>
-    )
+      <Panel className="mt-5 overflow-hidden">
+        <div className="grid md:grid-cols-[13rem_1fr]">
+          <div className="border-b border-[var(--border)] bg-[var(--surface-muted)] p-5 md:border-b-0 md:border-r sm:p-6">
+            <p className="page-eyebrow">The Arcel loop</p>
+            <h2 className="text-lg font-semibold">Evidence into action</h2>
+          </div>
+          <ol className="grid list-none p-0 sm:grid-cols-3">
+            {[
+              ['01', 'Ask', 'Start with the decision that needs clarity.'],
+              ['02', 'Build', 'Turn the evidence and your profile into a week.'],
+              ['03', 'Review', 'Use the calendar to keep training in context.'],
+            ].map(([number, title, description]) => (
+              <li key={number} className="border-b border-[var(--border)] p-5 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0 sm:p-6">
+                <span className="font-mono text-xs font-semibold text-[var(--accent)]">{number}</span>
+                <h3 className="mt-5 text-base font-semibold">{title}</h3>
+                <p className="mt-2 text-sm leading-6">{description}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </Panel>
+    </main>
+  )
 }

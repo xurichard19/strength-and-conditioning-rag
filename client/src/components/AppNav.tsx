@@ -1,234 +1,203 @@
-import { useEffect, useRef, useState } from "react"
-import type { Page } from "../types"
+import { useEffect, useRef, useState } from 'react'
+import {
+  Bookmark,
+  CalendarDays,
+  CircleHelp,
+  Dumbbell,
+  Home,
+  History,
+  LogIn,
+  LogOut,
+  Menu,
+  MessageSquareText,
+  Sparkles,
+  Settings,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
+
+import userIcon from '../assets/user-icon.png'
+import { classes } from '../lib/classes'
+import type { Page } from '../routing'
+import { BrandMark } from './BrandMark'
+import { IconButton } from './ui'
 
 type AppNavProps = {
-    currentPage: Page
-    userEmail?: string | null
-    onNavigate: (page: Page) => void
-    onLogin?: () => void
-    onSignOut?: () => void
+  currentPage: Page
+  userEmail?: string | null
+  onNavigate: (page: Page) => void
+  onLogin?: () => void
+  onSignOut?: () => void
 }
 
+type NavItem = {
+  icon: LucideIcon
+  label: string
+  page: Page
+}
+
+const navItems: NavItem[] = [
+  { icon: Home, label: 'Home', page: 'home' },
+  { icon: Dumbbell, label: 'Today', page: 'today' },
+  { icon: MessageSquareText, label: 'Research', page: 'chat' },
+  { icon: Sparkles, label: 'Plan', page: 'plan' },
+  { icon: CalendarDays, label: 'Calendar', page: 'calendar' },
+]
+
+const userMenuItems: NavItem[] = [
+  { icon: Bookmark, label: 'Saved research', page: 'saved' },
+  { icon: History, label: 'Activity', page: 'activity' },
+  { icon: Settings, label: 'Settings', page: 'settings' },
+  { icon: CircleHelp, label: 'Help & support', page: 'help' },
+]
+
 export function AppNav({ currentPage, userEmail, onNavigate, onLogin, onSignOut }: AppNavProps) {
-    const [isOpen, setIsOpen] = useState(false)
-    const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
-    const userMenuRef = useRef<HTMLDivElement | null>(null)
-    const isAuthenticated = Boolean(onSignOut)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const userMenuRef = useRef<HTMLDivElement | null>(null)
+  const isAuthenticated = Boolean(onSignOut)
 
-    useEffect(() => {
-        if (!isUserMenuOpen) return
+  useEffect(() => {
+    if (!isUserMenuOpen) return
 
-        const handlePointerDown = (event: PointerEvent) => {
-            if (!userMenuRef.current?.contains(event.target as Node)) {
-                setIsUserMenuOpen(false)
-            }
-        }
-
-        document.addEventListener("pointerdown", handlePointerDown)
-        return () => document.removeEventListener("pointerdown", handlePointerDown)
-    }, [isUserMenuOpen])
-
-    const navigate = (page: Page) => {
-        onNavigate(page)
-        setIsOpen(false)
-        setIsUserMenuOpen(false)
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!userMenuRef.current?.contains(event.target as Node)) setIsUserMenuOpen(false)
     }
 
-    const handleSignOut = () => {
-        setIsOpen(false)
-        setIsUserMenuOpen(false)
-        onSignOut?.()
-    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [isUserMenuOpen])
 
-    const handleLogin = () => {
-        setIsOpen(false)
-        setIsUserMenuOpen(false)
-        onLogin?.()
-    }
+  const navigate = (page: Page) => {
+    onNavigate(page)
+    setIsMobileMenuOpen(false)
+    setIsUserMenuOpen(false)
+  }
+
+  const handleSignOut = () => {
+    setIsMobileMenuOpen(false)
+    setIsUserMenuOpen(false)
+    onSignOut?.()
+  }
+
+  const renderNavItem = ({ icon: Icon, label, page }: NavItem, mobile = false) => {
+    const isActive = currentPage === page
 
     return (
-        <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg)]/95 px-4 py-3 backdrop-blur sm:px-6 lg:px-8">
-            <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
-                <button
-                    type="button"
-                    onClick={() => navigate("home")}
-                    className="text-left text-lg font-semibold text-[var(--text-h)]"
-                >
-                    Shingo
-                </button>
-
-                <div className="flex items-center gap-2">
-                    {isAuthenticated && (
-                        <nav className="hidden items-center gap-2 sm:flex">
-                            <button
-                                type="button"
-                                onClick={() => navigate("home")}
-                                className={`rounded-md px-3 py-2 text-sm font-semibold transition ${currentPage === "home"
-                                    ? "bg-[var(--accent-bg)] text-[var(--accent)]"
-                                    : "text-[var(--text)] hover:text-[var(--text-h)]"
-                                    }`}
-                            >
-                                Home
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => navigate("chat")}
-                                className={`rounded-md px-3 py-2 text-sm font-semibold transition ${currentPage === "chat"
-                                    ? "bg-[var(--accent-bg)] text-[var(--accent)]"
-                                    : "text-[var(--text)] hover:text-[var(--text-h)]"
-                                    }`}
-                            >
-                                Chat
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => navigate("plan")}
-                                className={`rounded-md px-3 py-2 text-sm font-semibold transition ${currentPage === "plan"
-                                    ? "bg-[var(--accent-bg)] text-[var(--accent)]"
-                                    : "text-[var(--text)] hover:text-[var(--text-h)]"
-                                    }`}
-                            >
-                                Plan
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => navigate("calendar")}
-                                className={`rounded-md px-3 py-2 text-sm font-semibold transition ${currentPage === "calendar"
-                                    ? "bg-[var(--accent-bg)] text-[var(--accent)]"
-                                    : "text-[var(--text)] hover:text-[var(--text-h)]"
-                                    }`}
-                            >
-                                Calendar
-                            </button>
-                        </nav>
-                    )}
-
-                    <div ref={userMenuRef} className="relative">
-                        <button
-                            type="button"
-                            aria-label="Open user menu"
-                            aria-expanded={isUserMenuOpen}
-                            onClick={() => setIsUserMenuOpen((open) => !open)}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--social-bg)] text-[var(--text-h)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
-                        >
-                            <span className="relative block h-5 w-5">
-                                <span className="absolute left-1/2 top-0 h-2.5 w-2.5 -translate-x-1/2 rounded-full border-2 border-current" />
-                                <span className="absolute bottom-0 left-1/2 h-2.5 w-4 -translate-x-1/2 rounded-t-full border-2 border-current border-b-0" />
-                            </span>
-                        </button>
-
-                        {isUserMenuOpen && (
-                            <div className="absolute right-0 mt-2 w-56 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg)] shadow-[var(--shadow)]">
-                                {userEmail && (
-                                    <div className="border-b border-[var(--border)] px-4 py-3 text-sm text-[var(--text)]">
-                                        <span className="block truncate">{userEmail}</span>
-                                    </div>
-                                )}
-                                {isAuthenticated ? (
-                                    <>
-                                        <button
-                                            type="button"
-                                            onClick={() => navigate("settings")}
-                                            className={`block w-full px-4 py-3 text-left text-sm font-semibold transition ${currentPage === "settings"
-                                                ? "bg-[var(--accent-bg)] text-[var(--accent)]"
-                                                : "text-[var(--text-h)] hover:bg-[var(--social-bg)]"
-                                                }`}
-                                        >
-                                            Settings
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={handleSignOut}
-                                            className="block w-full px-4 py-3 text-left text-sm font-semibold text-[var(--text-h)] transition hover:bg-[var(--social-bg)]"
-                                        >
-                                            Sign out
-                                        </button>
-                                    </>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        onClick={handleLogin}
-                                        className="block w-full px-4 py-3 text-left text-sm font-semibold text-[var(--text-h)] transition hover:bg-[var(--social-bg)]"
-                                    >
-                                        Log in
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    {isAuthenticated && (
-                        <button
-                            type="button"
-                            aria-label="Open navigation menu"
-                            aria-expanded={isOpen}
-                            onClick={() => setIsOpen((open) => !open)}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[var(--border)] text-[var(--text-h)] sm:hidden"
-                        >
-                            <span className="flex w-5 flex-col gap-1.5">
-                                <span className="h-0.5 rounded bg-current" />
-                                <span className="h-0.5 rounded bg-current" />
-                                <span className="h-0.5 rounded bg-current" />
-                            </span>
-                        </button>
-                    )}
-                </div>
-            </div>
-
-            {isAuthenticated && isOpen && (
-                <nav className="mx-auto mt-3 grid max-w-5xl gap-2 sm:hidden">
-                    <button
-                        type="button"
-                        onClick={() => navigate("home")}
-                        className={`rounded-md px-3 py-2 text-left text-sm font-semibold ${currentPage === "home"
-                            ? "bg-[var(--accent-bg)] text-[var(--accent)]"
-                            : "text-[var(--text-h)]"
-                            }`}
-                    >
-                        Home
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => navigate("chat")}
-                        className={`rounded-md px-3 py-2 text-left text-sm font-semibold ${currentPage === "chat"
-                            ? "bg-[var(--accent-bg)] text-[var(--accent)]"
-                            : "text-[var(--text-h)]"
-                            }`}
-                    >
-                        Chat
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => navigate("plan")}
-                        className={`rounded-md px-3 py-2 text-left text-sm font-semibold ${currentPage === "plan"
-                            ? "bg-[var(--accent-bg)] text-[var(--accent)]"
-                            : "text-[var(--text-h)]"
-                            }`}
-                    >
-                        Plan
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => navigate("calendar")}
-                        className={`rounded-md px-3 py-2 text-left text-sm font-semibold ${currentPage === "calendar"
-                            ? "bg-[var(--accent-bg)] text-[var(--accent)]"
-                            : "text-[var(--text-h)]"
-                            }`}
-                    >
-                        Calendar
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => navigate("settings")}
-                        className={`rounded-md px-3 py-2 text-left text-sm font-semibold ${currentPage === "settings"
-                            ? "bg-[var(--accent-bg)] text-[var(--accent)]"
-                            : "text-[var(--text-h)]"
-                            }`}
-                    >
-                        Settings
-                    </button>
-                </nav>
-            )}
-        </header>
+      <button
+        key={page}
+        type="button"
+        onClick={() => navigate(page)}
+        aria-current={isActive ? 'page' : undefined}
+        className={classes(
+          'flex items-center gap-2 rounded-md text-sm font-semibold transition',
+          mobile ? 'w-full px-3 py-3 text-left' : 'px-3 py-2',
+          isActive
+            ? 'bg-[var(--accent-bg)] text-[var(--accent)]'
+            : 'text-[var(--text)] hover:bg-[var(--surface)] hover:text-[var(--text-h)]',
+        )}
+      >
+        <Icon aria-hidden="true" size={17} strokeWidth={2} />
+        {label}
+      </button>
     )
+  }
+
+  return (
+    <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[color:rgba(13,14,18,0.92)] px-4 backdrop-blur-xl sm:px-6">
+      <div className="mx-auto flex h-[4.5rem] max-w-7xl items-center justify-between gap-5">
+        <button
+          type="button"
+          onClick={() => navigate('home')}
+          className="group flex items-center gap-2.5 text-left"
+          aria-label="Go to Arcel home"
+        >
+          <BrandMark />
+          <span className="text-base font-semibold text-[var(--text-h)]">Arcel</span>
+        </button>
+
+        {isAuthenticated && (
+          <nav aria-label="Primary navigation" className="hidden items-center gap-1 md:flex">
+            {navItems.map((item) => renderNavItem(item))}
+          </nav>
+        )}
+
+        <div className="flex items-center gap-2">
+          <div ref={userMenuRef} className="relative">
+            <button
+              type="button"
+              aria-label="Open user menu"
+              aria-expanded={isUserMenuOpen}
+              onClick={() => setIsUserMenuOpen((open) => !open)}
+              className={classes(
+                'grid h-10 w-10 place-items-center overflow-hidden rounded-md border bg-[var(--surface)] transition',
+                isUserMenuOpen
+                  ? 'border-[var(--accent-border)] ring-4 ring-[var(--accent-bg)]'
+                  : 'border-[var(--border)] hover:border-[var(--border-strong)]',
+              )}
+            >
+              <img src={userIcon} alt="" className="user-icon-image h-7 w-7 object-cover" />
+            </button>
+
+            {isUserMenuOpen && (
+              <div className="absolute right-0 mt-2 w-64 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-2 text-left shadow-[var(--shadow)]">
+                {userEmail && (
+                  <div className="border-b border-[var(--border)] px-3 py-3">
+                    <p className="text-xs font-semibold text-[var(--text-muted)]">Signed in as</p>
+                    <p className="mt-1 truncate text-sm font-medium text-[var(--text-h)]">{userEmail}</p>
+                  </div>
+                )}
+                {isAuthenticated ? (
+                  <div className="pt-2">
+                    {userMenuItems.map(({ icon: Icon, label, page }) => (
+                      <button key={page} type="button" onClick={() => navigate(page)} className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]">
+                        <Icon aria-hidden="true" size={17} />
+                        {label}
+                      </button>
+                    ))}
+                    <div className="my-2 border-t border-[var(--border)]" />
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--text)] transition hover:bg-[var(--danger-bg)] hover:text-[var(--danger)]"
+                    >
+                      <LogOut aria-hidden="true" size={17} />
+                      Sign out
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onLogin?.()}
+                    className="mt-2 flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--text-h)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
+                  >
+                    <LogIn aria-hidden="true" size={17} />
+                    Log in
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {isAuthenticated && (
+            <div className="md:hidden">
+              <IconButton
+                icon={isMobileMenuOpen ? X : Menu}
+                label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+                aria-expanded={isMobileMenuOpen}
+                onClick={() => setIsMobileMenuOpen((open) => !open)}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {isAuthenticated && isMobileMenuOpen && (
+        <nav aria-label="Mobile navigation" className="mx-auto grid max-w-7xl gap-1 border-t border-[var(--border)] py-3 md:hidden">
+          {navItems.map((item) => renderNavItem(item, true))}
+          {renderNavItem({ icon: Settings, label: 'Settings', page: 'settings' }, true)}
+        </nav>
+      )}
+    </header>
+  )
 }

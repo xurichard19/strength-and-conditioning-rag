@@ -1,4 +1,7 @@
 import { type BaseSyntheticEvent, useState } from 'react'
+import { KeyRound } from 'lucide-react'
+
+import { Button, Panel } from './ui'
 
 type UpdatePasswordFormProps = {
   error: string
@@ -7,75 +10,60 @@ type UpdatePasswordFormProps = {
   onSubmit: (password: string) => Promise<void>
 }
 
-export function UpdatePasswordForm({
-  error,
-  isLoading,
-  message,
-  onSubmit,
-}: UpdatePasswordFormProps) {
+export function UpdatePasswordForm({ error, isLoading, message, onSubmit }: UpdatePasswordFormProps) {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [localError, setLocalError] = useState('')
 
   const handleSubmit = async (event: BaseSyntheticEvent<SubmitEvent, HTMLFormElement>) => {
     event.preventDefault()
-
     if (isLoading) return
-
     if (password !== confirmPassword) {
       setLocalError('Passwords must match.')
       return
     }
-
     setLocalError('')
     await onSubmit(password)
   }
 
   return (
-    <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-4 shadow-[var(--shadow)] sm:p-5">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <label htmlFor="new-password" className="text-sm font-medium text-[var(--text-h)]">
-          New password
-        </label>
-        <input
-          id="new-password"
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-          minLength={6}
-          autoComplete="new-password"
-          className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 text-base leading-6 text-[var(--text-h)] outline-none transition placeholder:text-[var(--text)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)]"
-        />
+    <Panel raised className="p-5 sm:p-6">
+      <p className="page-eyebrow">Account security</p>
+      <h2 className="text-2xl font-semibold">Choose a new password</h2>
+      <p className="mt-2 text-sm leading-6">Use at least 6 characters and confirm it below.</p>
 
-        <label htmlFor="confirm-password" className="text-sm font-medium text-[var(--text-h)]">
-          Confirm password
+      <form onSubmit={handleSubmit} className="mt-6 grid gap-4">
+        <label>
+          <span className="field-label">New password</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+            minLength={6}
+            autoComplete="new-password"
+            className="field-control px-3.5 py-3"
+          />
         </label>
-        <input
-          id="confirm-password"
-          type="password"
-          value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          required
-          minLength={6}
-          autoComplete="new-password"
-          className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 text-base leading-6 text-[var(--text-h)] outline-none transition placeholder:text-[var(--text)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-bg)]"
-        />
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-[var(--text)]">Use at least 6 characters.</p>
-          <button
-            type="submit"
-            disabled={!password || !confirmPassword || isLoading}
-            className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:border disabled:border-[var(--border)] disabled:bg-[var(--social-bg)] disabled:text-[var(--text)]"
-          >
-            {isLoading ? 'Updating...' : 'Update password'}
-          </button>
-        </div>
+        <label>
+          <span className="field-label">Confirm password</span>
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            required
+            minLength={6}
+            autoComplete="new-password"
+            className="field-control px-3.5 py-3"
+          />
+        </label>
+        <Button type="submit" icon={KeyRound} disabled={!password || !confirmPassword || isLoading} className="mt-1 w-full">
+          {isLoading ? 'Updating...' : 'Update password'}
+        </Button>
       </form>
 
-      {(localError || error) && <p className="mt-4 leading-7 text-red-700">{localError || error}</p>}
-      {message && <p className="mt-4 leading-7 text-[var(--accent)]">{message}</p>}
-    </section>
+      {(localError || error) && <p role="alert" className="feedback-error mt-4">{localError || error}</p>}
+      {message && <p className="feedback-success mt-4">{message}</p>}
+    </Panel>
   )
 }

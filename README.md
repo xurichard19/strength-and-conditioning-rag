@@ -1,6 +1,6 @@
-# Shingo: Strength & Conditioning RAG-based Assistant
+# Arcel: Strength & Conditioning RAG-based Assistant
 
-Full-stack RAG assistant built for hybrid athletes who want to design strength and conditioning programs around sport-specific training demands while also having a consolidated source of research-backed performance information, servicing 300+ CC BY 4.0 research PDFs. The app supports natural-language training questions and structured workout planning, using a two-stage retrieval pipeline with Chroma vector search and Cohere cross-encoder reranking to surface more relevant source material before generating grounded responses. It combines a React/Vite frontend, FastAPI backend, OpenAI generation, Supabase auth/data services, Google Cloud Storage document ingestion, and Sentry observability, with Docker/Nginx infrastructure for production-oriented deployment.
+Full-stack RAG assistant built for hybrid athletes who want to design strength and conditioning programs around sport-specific training demands while also having a consolidated source of research-backed performance information, servicing 300+ CC BY 4.0 research PDFs. The app supports natural-language training questions and structured workout planning, using a two-stage retrieval pipeline with Chroma vector search and Cohere cross-encoder reranking to surface more relevant source material before generating grounded responses. It combines a React/Vite frontend deployed on Vercel, a containerized FastAPI backend deployed on Google Cloud Run, OpenAI generation, Supabase auth/data services, Google Cloud Storage document ingestion, and Sentry observability. Production API traffic passes through Google Cloud's load-balancing edge with Cloud Armor protection before reaching Cloud Run.
 
 ---
 
@@ -8,8 +8,8 @@ Full-stack RAG assistant built for hybrid athletes who want to design strength a
 %%{init: {'flowchart': {'nodeSpacing': 25, 'rankSpacing': 40, 'curve': 'basis', 'subGraphTitleMargin': {'top': 8, 'bottom': 8}}}}%%
 flowchart LR
     User(["User"]) --> FE["React frontend<br/>(Vite, Vercel)"]
-    FE --> Nginx["Nginx<br/>reverse proxy"]
-    Nginx --> API["FastAPI backend<br/>RAG orchestration"]
+    FE --> Edge["Google Cloud edge<br/>load balancer + Cloud Armor"]
+    Edge --> API["FastAPI backend<br/>(Cloud Run)"]
 
     API --> Retrieve["Vector search<br/>(Chroma Cloud)"]
     Retrieve --> Rerank["Rerank<br/>(Cohere cross-encoder)"]
@@ -30,16 +30,12 @@ flowchart LR
 
 ---
 
-Working on RAG eval, test suites, and CI/CD tooling...
-
----
-
-### some dev services...
+### Local development services
 
 build api image from /
->> docker build -f server/Dockerfile -t shingo-backend .
+>> docker build -f server/Dockerfile -t arcel-backend .
 
-run api behind nginx proxy from /
+run api behind the local Nginx proxy from /
 >> docker compose up --build proxy
 
 run api server w/o proxy from /

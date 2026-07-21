@@ -1,25 +1,63 @@
-import { ApiRequestError } from './errors'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
-
-function apiPath(path: string) {
-  const baseUrl = API_BASE_URL.replace(/\/$/, '')
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`
-
-  return `${baseUrl}${normalizedPath}`
-}
+import type { Profile, ProfileAccess, ProfileUpdate } from '../types/profile'
+import { apiJson } from './client'
 
 export async function createProfile(accessToken: string): Promise<boolean> {
-  const response = await fetch(apiPath('/profile/'), {
+  return apiJson('/profile/', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  })
+    accessToken,
+  }, 'Profile creation failed')
+}
 
-  if (!response.ok) {
-    throw new ApiRequestError('Profile creation failed', response.status)
+async function profileRequest(
+  access: ProfileAccess,
+  path: string,
+  method: 'GET' | 'PATCH' | 'POST',
+  fallbackMessage: string,
+  body?: ProfileUpdate,
+): Promise<Profile> {
+  return apiJson(path, {
+    method,
+    cache: 'no-store',
+    accessToken: access.accessToken,
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  }, fallbackMessage)
+}
+
+export async function getProfile(access: ProfileAccess): Promise<Profile> {
+  const profile = await profileRequest(
+    access,
+    '/profile/',
+    'GET',
+    'Could not load your profile. Please try again.',
+  )
+
+  try {
+    window.localStorage.removeItem(`arcel:onboarding-profile:${access.userId}`)
+  } catch {
+    // Legacy cleanup should never prevent a successful server profile load.
   }
 
-  return response.json() as Promise<boolean>
+  return profile
+}
+
+export async function updateProfile(
+  access: ProfileAccess,
+  update: ProfileUpdate,
+): Promise<Profile> {
+  return profileRequest(
+    access,
+    '/profile/',
+    'PATCH',
+    'Could not save that answer. Please try again.',
+    update,
+  )
+}
+
+export async function completeOnboarding(access: ProfileAccess): Promise<Profile> {
+  return profileRequest(
+    access,
+    '/profile/onboarding/complete',
+    'POST',
+    'Could not finish onboarding. Please try again.',
+  )
 }

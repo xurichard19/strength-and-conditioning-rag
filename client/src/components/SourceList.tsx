@@ -1,33 +1,110 @@
-import type { Source } from '../types/chat'
+import { useEffect, useId, useRef, useState } from 'react'
+import { BookOpenText, FileText, X } from 'lucide-react'
+
+import type { Source } from '../types'
 
 type SourceListProps = {
   sources: Source[]
 }
 
 export function SourceList({ sources }: SourceListProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const panelId = useId()
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    const previousOverflow = document.body.style.overflow
+    const trigger = triggerRef.current
+    document.body.style.overflow = 'hidden'
+    closeButtonRef.current?.focus()
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsOpen(false)
+    }
+
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', closeOnEscape)
+      trigger?.focus()
+    }
+  }, [isOpen])
+
   if (!sources.length) return null
 
   return (
-    <div className="mt-8 border-t border-[var(--border)] pt-5">
-      <h3 className="m-0 text-base font-semibold text-[var(--text-h)]">Sources</h3>
-      <div className="mt-4 space-y-4">
-        {sources.map((source, index) => (
-          <article
-            key={source.id ?? index}
-            className="rounded-md border border-[var(--border)] bg-[var(--social-bg)] p-4"
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-label={`View ${sources.length} cited ${sources.length === 1 ? 'document' : 'documents'}`}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        aria-controls={panelId}
+        title="View cited documents"
+        onClick={() => setIsOpen(true)}
+        className="icon-button relative"
+      >
+        <FileText aria-hidden="true" size={18} />
+        <span aria-hidden="true" className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded bg-[var(--accent)] px-1 text-[0.625rem] font-bold leading-none text-[#160a20]">
+          {sources.length > 9 ? '9+' : sources.length}
+        </span>
+      </button>
+
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setIsOpen(false)
+          }}
+        >
+          <section
+            id={panelId}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`${panelId}-title`}
+            className="panel panel-raised flex max-h-[min(44rem,calc(100vh-3rem))] w-full max-w-3xl flex-col overflow-hidden text-left"
           >
-            <div className="mb-3 flex flex-wrap items-center gap-2 text-sm font-medium text-[var(--text-h)]">
-              <span>Chunk {index + 1}</span>
-              {source.source && <span>• {source.source}</span>}
-              {source.page !== null && source.page !== undefined && <span>• page {source.page}</span>}
-              {source.id && <span>• id {source.id}</span>}
+            <header className="flex shrink-0 items-center justify-between gap-5 border-b border-[var(--border)] px-5 py-4 sm:px-6">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[var(--accent-bg)] text-[var(--accent)]">
+                  <BookOpenText aria-hidden="true" size={18} />
+                </span>
+                <div className="min-w-0">
+                  <p className="page-eyebrow mb-0">Answer evidence</p>
+                  <h3 id={`${panelId}-title`} className="mt-1 text-lg font-semibold">Research sources</h3>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                <span className="hidden text-xs font-medium text-[var(--text-muted)] sm:inline">
+                  {sources.length} {sources.length === 1 ? 'passage' : 'passages'}
+                </span>
+                <button ref={closeButtonRef} type="button" aria-label="Close research sources" title="Close research sources" onClick={() => setIsOpen(false)} className="icon-button">
+                  <X aria-hidden="true" size={18} />
+                </button>
+              </div>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 sm:px-6">
+              {sources.map((source, index) => (
+                <article key={source.id ?? index} className="grid gap-3 border-b border-[var(--border)] py-5 last:border-b-0 sm:grid-cols-[2.25rem_minmax(0,1fr)]">
+                  <span className="font-mono text-xs font-bold text-[var(--accent)]">{String(index + 1).padStart(2, '0')}</span>
+                  <div className="min-w-0">
+                    <h4 className="break-words text-sm font-semibold leading-5">{source.source ?? `Research excerpt ${index + 1}`}</h4>
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-[var(--text-muted)]">
+                      {source.page !== null && source.page !== undefined && <span>Page {source.page}</span>}
+                      {source.id !== null && source.id !== undefined && <span>Document ID {source.id}</span>}
+                    </div>
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]">{source.text}</p>
+                  </div>
+                </article>
+              ))}
             </div>
-            <p className="m-0 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]">
-              {source.text}
-            </p>
-          </article>
-        ))}
-      </div>
-    </div>
+          </section>
+        </div>
+      )}
+    </>
   )
 }

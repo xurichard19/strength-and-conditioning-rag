@@ -10,16 +10,16 @@ from app.config import get_settings
 settings = get_settings()
 client = OpenAI(api_key=settings.openai_api_key)
 logger = logging.getLogger(__name__)
+MODEL = "gpt-5-mini"
 
 StructuredResponse = TypeVar("StructuredResponse", bound=BaseModel)
 
 
-def generate_response(messages: list[dict], temperature: float = 0.4) -> str:
+def generate_response(messages: list[dict]) -> str:
     try:
         response = client.responses.create(
-            model="gpt-4o-mini",
+            model=MODEL,
             input=messages,
-            temperature=temperature,
         )
         return response.output_text
     except Exception:
@@ -27,12 +27,11 @@ def generate_response(messages: list[dict], temperature: float = 0.4) -> str:
         return "Sorry, something went wrong while generating a response."
 
 
-def generate_streamed_response(messages: list[dict], temperature: float = 0.4):
+def generate_streamed_response(messages: list[dict]):
     try:
         stream_manager = client.responses.stream(
-            model="gpt-4o-mini",
+            model=MODEL,
             input=messages,
-            temperature=temperature,
         )
 
         with stream_manager as stream:
@@ -47,25 +46,23 @@ def generate_streamed_response(messages: list[dict], temperature: float = 0.4):
 def generate_structured_response(
     messages: list[dict],
     response_model: type[StructuredResponse],
-    temperature: float = 0.4,
 ) -> StructuredResponse:
     try:
         response = client.responses.parse(
-            model="gpt-4o-mini",
+            model=MODEL,
             input=messages,
-            temperature=temperature,
             text_format=response_model,
         )
     except Exception as exc:
         logger.exception("llm structured generation failed model=%s", response_model.__name__)
-        raise LLMGenerationError("structured llm generation failed") from exc
+        raise RuntimeError("structured llm generation failed") from exc
 
     if response.output_parsed is None:
         logger.warning(
             "llm structured generation returned empty parsed output model=%s",
             response_model.__name__,
         )
-        raise LLMGenerationError("structured llm output was empty")
+        raise RuntimeError("structured llm output was empty")
 
     return response.output_parsed
 
