@@ -111,7 +111,7 @@ const teamIntroductions = [
     },
     {
         name: "aaron jiang",
-        body: "UI/UX/PM",
+        body: "PM/UI/UX",
         linkedinUrl: "https://www.linkedin.com/in/aaron-jiang-7a10242a2/",
     }
 ]
