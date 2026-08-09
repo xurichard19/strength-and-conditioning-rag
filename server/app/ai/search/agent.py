@@ -35,6 +35,7 @@ Evidence policy:
 
 Output policy:
 - Return only the structured SearchResponse requested by the response schema.
+- Return no more than 25 sources, selecting the strongest and most relevant evidence.
 - Preserve titles, identifiers, scores, and source types from tool results when present.
 - Never invent or repair a missing DOI, URL, title, score, or source attribution.
 - Vector-database results must use source_type "research", include their DOI, and omit URL.
@@ -51,14 +52,14 @@ search_agent = create_agent(
 )
 
 
-def search_sources(query: str) -> SearchResponse:
+async def search_sources(query: str) -> SearchResponse:
     """
     search sources using langchain agent, access to vector db and web
 
     - **query**: query string
     """
 
-    result = search_agent.invoke({
+    result = await search_agent.ainvoke({
         'messages': [{'role': 'user', 'content': query}]
     })
     return result["structured_response"]

@@ -26,4 +26,4 @@ class Source(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    results: list[Source] = Field(default_factory=list)
+    results: list[Source] = Field(default_factory=list, max_length=25)
