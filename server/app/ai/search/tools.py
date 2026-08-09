@@ -2,7 +2,6 @@ from chromadb import Search, K, Knn, Rrf
 import cohere
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
 from langchain_tavily import TavilySearch
 from langchain_core.tools import tool
 
@@ -65,6 +64,10 @@ def hybrid_search_research_docs(query: str, top_k: int = 15) -> list[Document]:
     search = Search().rank(hybrid_rank).limit(top_k).select(K.DOCUMENT, K.SCORE)
 
     results = research_vector_store.hybrid_search(search)
+
+    for result in results:
+        result.metadata['source_type'] = 'research'
+
     return results
 
 
@@ -86,7 +89,7 @@ def search_online(query: str) -> list[Document]:
                 'title': result['title'],
                 'url': result['url'],
                 'score': result['score'],
-                'source_type': 'tavily'
+                'source_type': 'web'
             }
         ))
 
