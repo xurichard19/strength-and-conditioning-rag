@@ -129,23 +129,28 @@ def search_online(query: str) -> list[Document]:
 
 
 @tool
-def rerank_results(query: str, documents: list[str], top_n=10) -> list[str]:
+def rerank_research_results(
+    query: str,
+    research_documents: list[str],
+    top_n: int = 10,
+) -> list[str]:
     """
-    reranking for two stage retrieval
-    
+    rerank research vector database results only
+    never pass web search results or a mixed research and web result set to this tool
+
     - **query**: query string
-    - **documents**: langchain documents
+    - **research_documents**: content from research vector database results only
     - **top_n**: number of top results to return
     """
 
     rerank_response = cohere_client.rerank(
         model="rerank-v4.0-fast",
         query=query,
-        documents=documents,
+        documents=research_documents,
         top_n=top_n
     )
     
-    return [documents[result.index] for result in rerank_response.results]
+    return [research_documents[result.index] for result in rerank_response.results]
 
 
 system_prompt = """
@@ -154,15 +159,18 @@ Your only job is to gather and return relevant evidence for the user's query.
 Do not answer the query, create a workout plan, or provide coaching advice.
 
 Search procedure:
-1. Your first action must issue both available search tools in the same turn:
+1. Your first action must issue both retrieval tools in the same turn:
    - Search the research vector database for scientific and technical evidence.
    - Search the web for current, practical, or supplementary information.
    Use source-appropriate versions of the user's query when that improves retrieval.
 2. Review both result sets for relevance, coverage, authority, and consistency.
-3. If the results do not adequately address the query, perform up to two additional
+3. You may use rerank_research_results only on results returned by the research vector
+   database tool. Never pass web results or a mixed research and web list to the
+   reranker. Web results must remain outside every reranker call.
+4. If the results do not adequately address the query, perform up to two additional
    search rounds. Use materially different queries that target the missing concepts;
    do not repeat an unsuccessful query with superficial wording changes.
-4. Stop searching once the evidence adequately covers the request or the additional
+5. Stop searching once the evidence adequately covers the request or the additional
    search rounds are exhausted.
 
 Evidence policy:
@@ -190,7 +198,7 @@ Output policy:
 
 search_agent = create_agent(
     model="gpt-5-mini",
-    tools=[similarity_search_research_docs, search_online, rerank_results],
+    tools=[similarity_search_research_docs, search_online, rerank_research_results],
     system_prompt=system_prompt,
     response_format=SearchResponse,
 )
