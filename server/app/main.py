@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app.config import get_settings
+from app.ai.workflows.chat.graph import build_chat_workflow
 from app.rag.vector_store import VectorDB
 
 # import routers
@@ -46,8 +47,11 @@ if settings.sentry_dsn:
 async def lifespan(app: FastAPI):
     logger.info("app startup...")
 
-    app.state.db = VectorDB()
+    app.state.db = VectorDB() # legacy db instance
     logger.info("vector store successfully connected")
+
+    app.state.chat_graph = build_chat_workflow()
+    logger.info("chat workflow successfully initialized")
     yield
 
     logger.info("app shutdown...")
