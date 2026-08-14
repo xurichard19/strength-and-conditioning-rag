@@ -20,10 +20,12 @@ EquipmentAccess = Literal["full_gym", "home_gym", "minimal_equipment", "bodyweig
 
 
 class Source(BaseModel):
-    id: str
-    text: str
-    source: str | None = None
-    page: int | None = None
+    title: str | None = None
+    doi: str | None = None
+    url: str | None = None
+    source_type: Literal["research", "web"]
+    content: str
+    score: float | None = None
 
 
 class ChatRequest(BaseModel):

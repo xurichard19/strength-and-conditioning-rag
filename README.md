@@ -35,11 +35,8 @@ flowchart LR
 build api image from /
 >> docker build -f server/Dockerfile -t arcel-backend .
 
-run api behind the local Nginx proxy from /
->> docker compose up --build proxy
-
-run api server w/o proxy from /
->> docker compose up --build api-local
+run api server from /
+>> docker compose up --build api
 
 reindex with compose service
 >> docker compose run --rm index

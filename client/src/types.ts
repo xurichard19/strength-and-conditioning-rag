@@ -1,8 +1,10 @@
 export type Source = {
-    id?: string | number | null
-    source?: string | null
-    page?: string | number | null
-    text: string
+    title?: string | null
+    doi?: string | null
+    url?: string | null
+    source_type: 'research' | 'web'
+    content: string
+    score?: number | null
 }
 
 export type Exercise = {
