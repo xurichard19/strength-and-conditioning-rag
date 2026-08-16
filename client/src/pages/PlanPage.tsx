@@ -15,7 +15,7 @@ import { invalidateWorkoutQueries } from '../api/workoutQueries'
 import { Button, EmptyState, IconButton, PageHeader, Panel } from '../components/ui'
 import { formatDateKey } from '../lib/dates'
 import { useSessionState } from '../lib/sessionState'
-import type { PlanResponse } from '../types'
+import type { PlannedExercise, WorkoutPlan } from '../types'
 
 const workoutsPerPage = 3
 
@@ -31,6 +31,26 @@ function formatShortDate(date: string) {
   return formatDateKey(date, { month: 'numeric', day: 'numeric' })
 }
 
+function formatExercisePrescription(exercise: PlannedExercise) {
+  const details: string[] = []
+
+  if (exercise.sets != null && exercise.reps != null) {
+    details.push(`${exercise.sets} x ${exercise.reps}${exercise.reps_per_side ? ' / side' : ''}`)
+  } else if (exercise.sets != null) {
+    details.push(`${exercise.sets} sets`)
+  } else if (exercise.reps != null) {
+    details.push(`${exercise.reps} reps${exercise.reps_per_side ? ' / side' : ''}`)
+  }
+
+  if (exercise.weight != null) details.push(`${exercise.weight} ${exercise.weight_unit ?? ''}`.trim())
+  if (exercise.distance != null) details.push(`${exercise.distance} ${exercise.distance_unit ?? ''}`.trim())
+  if (exercise.duration_minutes != null) details.push(`${exercise.duration_minutes} min`)
+  if (exercise.target_rpe != null) details.push(`RPE ${exercise.target_rpe}`)
+  if (exercise.rest_seconds != null) details.push(`${exercise.rest_seconds}s rest`)
+
+  return details
+}
+
 type PlanPageProps = {
   accessToken: string
   onUnauthorized: () => void
@@ -40,7 +60,7 @@ type PlanPageProps = {
 type PlanState = {
   additionalContext: string
   goal: string
-  plan: PlanResponse | null
+  plan: WorkoutPlan | null
   workoutPage: number
 }
 
@@ -216,19 +236,21 @@ export function PlanPage({ accessToken, onUnauthorized, userId }: PlanPageProps)
           <div className="p-4 sm:p-5">
             {saveMessage && <p className="feedback-success mb-4">{saveMessage}</p>}
             {saveError && <p role="alert" className="feedback-error mb-4">{saveError}</p>}
+            {plan?.notes && <p className="mb-4 text-sm leading-6 text-[var(--text-muted)]">{plan.notes}</p>}
             {error ? (
               <p role="alert" className="feedback-error">{error}</p>
             ) : plan ? (
               <div className="grid gap-4 xl:grid-cols-3">
                 {visibleWorkouts.map((workout, dayIndex) => {
-                  const date = workout.exercises[0]?.date ?? ''
+                  const date = workout.scheduled_date
                   return (
                     <article key={`${date}-${dayIndex}`} className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-muted)]">
                       <div className="border-b border-[var(--border)] bg-[var(--surface)] p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-xs font-semibold text-[var(--accent)]">Day {workoutPage * workoutsPerPage + dayIndex + 1}</p>
-                            <h3 className="mt-1 text-base font-semibold">{formatWorkoutDate(date)}</h3>
+                            <h3 className="mt-1 text-base font-semibold">{workout.name}</h3>
+                            <p className="mt-1 text-xs text-[var(--text-muted)]">{formatWorkoutDate(date)}</p>
                           </div>
                           <span className="rounded border border-[var(--border)] px-2 py-1 text-xs font-semibold text-[var(--text)]">
                             {formatShortDate(date)}
@@ -236,23 +258,25 @@ export function PlanPage({ accessToken, onUnauthorized, userId }: PlanPageProps)
                         </div>
                       </div>
                       <ol className="list-none divide-y divide-[var(--border)] p-0">
-                        {workout.exercises.map((exercise, index) => (
-                          <li key={`${exercise.name}-${index}`} className="p-3.5">
-                            <div className="flex items-start gap-3">
-                              <span className="font-mono text-xs font-semibold text-[var(--accent)]">{String(index + 1).padStart(2, '0')}</span>
-                              <div className="min-w-0 flex-1">
-                                <h4 className="break-words text-sm font-semibold leading-5">{exercise.name}</h4>
-                                {(exercise.sets != null || exercise.reps != null) && (
-                                  <div className="mt-2 flex flex-wrap gap-2 text-xs font-medium text-[var(--text)]">
-                                    {exercise.sets != null && <span>{exercise.sets} sets</span>}
-                                    {exercise.reps != null && <span>{exercise.reps} reps</span>}
-                                  </div>
-                                )}
-                                {exercise.notes && <p className="mt-2 text-xs leading-5 text-[var(--text-muted)]">{exercise.notes}</p>}
+                        {workout.exercises.map((exercise, index) => {
+                          const prescription = formatExercisePrescription(exercise)
+                          return (
+                            <li key={`${exercise.name}-${index}`} className="p-3.5">
+                              <div className="flex items-start gap-3">
+                                <span className="font-mono text-xs font-semibold text-[var(--accent)]">{String(index + 1).padStart(2, '0')}</span>
+                                <div className="min-w-0 flex-1">
+                                  <h4 className="break-words text-sm font-semibold leading-5">{exercise.name}</h4>
+                                  {prescription.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap gap-2 text-xs font-medium text-[var(--text)]">
+                                      {prescription.map((detail) => <span key={detail}>{detail}</span>)}
+                                    </div>
+                                  )}
+                                  {exercise.notes && <p className="mt-2 text-xs leading-5 text-[var(--text-muted)]">{exercise.notes}</p>}
+                                </div>
                               </div>
-                            </div>
-                          </li>
-                        ))}
+                            </li>
+                          )
+                        })}
                       </ol>
                     </article>
                   )

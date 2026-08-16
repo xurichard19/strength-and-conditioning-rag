@@ -1,8 +1,8 @@
 import chromadb
 from chromadb.api.models.Collection import Collection
 from chromadb.errors import NotFoundError
-from app.core.config import get_settings
-from app.rag.ingestion import load_system_docs, split_docs
+from app.config import get_settings
+from app.db.vector.ingestion import load_system_docs, split_docs
 from tqdm import tqdm
 
 class VectorDB:

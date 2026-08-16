@@ -1,4 +1,4 @@
-from app.rag.vector_store import VectorDB
+from app.db.vector.vector_store import VectorDB
 
 
 def main() -> None:

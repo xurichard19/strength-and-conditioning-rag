@@ -15,7 +15,7 @@ from tqdm import tqdm
 import tempfile
 from pathlib import Path
 from google.cloud import storage
-from app.core.config import get_settings
+from app.config import get_settings
 
 ALLOWED_EXTENSIONS = {".pdf", ".txt"}
 

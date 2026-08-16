@@ -5,7 +5,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 
-from app.core.config import get_settings
+from app.config import get_settings
 
 
 class SupabaseDataError(Exception):
