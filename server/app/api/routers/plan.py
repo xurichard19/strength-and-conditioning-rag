@@ -1,13 +1,16 @@
+import asyncio
+import json
 import logging
 from datetime import date
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from app.ai.workflows.plan.state import WorkflowContext
 from app.api.schemas import Exercise, PlanRequest, PlanResponse, Workout
 from app.auth.supabase import AuthUser, require_user
+from app.contracts import WorkoutPlan
 from app.db.supabase import SupabaseDataError, insert_rows, select_rows
-from app.rag.pipeline import generate_plan
 
 
 router = APIRouter(prefix='/plan')
@@ -66,18 +69,17 @@ def list_saved_workout_plan(
 
 
 @router.post('/generate')
-def generate_workout_plan(
+async def generate_workout_plan(
     query: PlanRequest,
     request: Request,
     user: AuthUser = Depends(require_user),
-) -> PlanResponse:
+) -> WorkoutPlan:
     logger.info("authenticated plan requested user_id=%s", user.id)
-
-    db = request.app.state.db
 
     try:
         # get string ver. of user profile
-        profile = select_rows(
+        profile = await asyncio.to_thread(
+            select_rows,
             "profiles",
             [
                 ("select", PLAN_PROFILE_COLUMNS),
@@ -100,8 +102,18 @@ def generate_workout_plan(
         )
 
     try:
-        plan_context = {"specific_goal": query.goal, "additional_context": query.additional_context, **profile[0]}
-        plan = generate_plan(date.today(), plan_context, db)
+        plan_prompt = json.dumps({"start_date": date.today().isoformat(), "plan_requirements": query.model_dump(exclude_none=True), "user_profile": profile[0]}, default=str)
+        result = await request.app.state.plan_graph.ainvoke(
+            {"messages": [{"role": "user", "content": plan_prompt}]},
+            context=WorkflowContext(
+                user_id=user.id,
+                access_token=user.access_token,
+                conversation_id=str(uuid4()),
+            ),
+        )
+        plan = result.get("answer")
+        if not isinstance(plan, WorkoutPlan):
+            raise ValueError("plan generation failed to return a valid workout plan")
         # this gets server date, careful to use helper function in frontend in the future for user date
     except ValueError as exc:
         raise HTTPException(
