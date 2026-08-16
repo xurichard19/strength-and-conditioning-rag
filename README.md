@@ -1,31 +1,56 @@
-# Arcel: Strength & Conditioning RAG-based Assistant
+# Arcel: Strength & Conditioning Assistant
 
-Full-stack RAG assistant built for hybrid athletes who want to design strength and conditioning programs around sport-specific training demands while also having a consolidated source of research-backed performance information, servicing 300+ CC BY 4.0 research PDFs. The app supports natural-language training questions and structured workout planning, using a two-stage retrieval pipeline with Chroma vector search and Cohere cross-encoder reranking to surface more relevant source material before generating grounded responses. It combines a React/Vite frontend deployed on Vercel, a containerized FastAPI backend deployed on Google Cloud Run, OpenAI generation, Supabase auth/data services, Google Cloud Storage document ingestion, and Sentry observability. Production API traffic passes through Google Cloud's load-balancing edge with Cloud Armor protection before reaching Cloud Run.
+Arcel is a full-stack assistant for hybrid athletes building strength and conditioning programs around sport-specific demands. It answers conversational and research-backed training questions using more than 300 CC BY 4.0 research papers, live web search, and streamed LLM generation.
+
+The React/Vite frontend is deployed on Vercel, while the containerized FastAPI backend runs on Google Cloud Run behind Google Cloud Load Balancing and Cloud Armor. The backend uses LangGraph for request-level workflow orchestration, a LangChain search agent for evidence gathering, OpenAI for model inference, Chroma Cloud for research retrieval, Tavily for web search, Cohere for optional research-only reranking, and Supabase for authentication and application data.
 
 ---
-
+#### App Infrastructure
 ```mermaid
-%%{init: {'flowchart': {'nodeSpacing': 25, 'rankSpacing': 40, 'curve': 'basis', 'subGraphTitleMargin': {'top': 8, 'bottom': 8}}}}%%
 flowchart LR
     User(["User"]) --> FE["React frontend<br/>(Vite, Vercel)"]
     FE --> Edge["Google Cloud edge<br/>load balancer + Cloud Armor"]
     Edge --> API["FastAPI backend<br/>(Cloud Run)"]
 
-    API --> Retrieve["Vector search<br/>(Chroma Cloud)"]
-    Retrieve --> Rerank["Rerank<br/>(Cohere cross-encoder)"]
-    Rerank --> Gen["LLM generation<br/>grounded answer"]
-    Gen --> API
-    API --> FE
-
-    API -.-> Auth[("Supabase<br/>auth & data")]
-    API -.-> Log[("Sentry<br/>error/perf logging")]
+    API --> Workflows["LangGraph workflows<br/>chat + plan"]
+    Workflows --> AI["AI and search services<br/>OpenAI + Chroma + Tavily + Cohere"]
+    API -.-> Supabase[("Supabase<br/>auth and data")]
+    API -.-> Sentry["Sentry<br/>errors and API performance"]
+    Workflows -.-> LangSmith["LangSmith<br/>LLM and workflow traces"]
 
     subgraph Ingestion["Offline indexing"]
-        Docs[("GCS bucket<br/>source docs")] --> Index["index_system_docs.py"]
+        Docs[("GCS bucket<br/>source documents")] --> Index["index_system_docs.py"]
     end
-    Index --> Retrieve
+    Index --> AI
+```
 
-    style Ingestion fill:none,stroke-dasharray: 5 5
+#### Chat LangGraph Workflow
+
+```mermaid
+flowchart LR
+    Request["Chat request"] --> Search["Search node"]
+    Search --> Agent["LangChain search agent<br/>(OpenAI)"]
+    Agent --> Chroma[("Chroma Cloud<br/>research index")]
+    Agent --> Tavily["Tavily web search"]
+    Agent -. "research only" .-> Cohere["Cohere reranker"]
+    Agent --> Evidence["Selected evidence"]
+    Evidence --> Generate["Generation node<br/>(OpenAI)"]
+    Generate --> Stream["NDJSON response stream"]
+```
+
+#### Workout Programming LangGraph Workflow
+
+```mermaid
+flowchart LR
+    Request["Plan request + user profile"] --> Rewrite["Rewrite node<br/>(OpenAI)"]
+    Rewrite --> Search["Search node"]
+    Search --> Agent["LangChain search agent<br/>(OpenAI)"]
+    Agent --> Chroma[("Chroma Cloud<br/>research index")]
+    Agent --> Tavily["Tavily web search"]
+    Agent -. "research only" .-> Cohere["Cohere reranker"]
+    Agent --> Evidence["Selected evidence"]
+    Evidence --> Generate["Plan generation node<br/>(OpenAI)"]
+    Generate --> Plan["Structured WorkoutPlan"]
 ```
 
 ---
@@ -35,11 +60,8 @@ flowchart LR
 build api image from /
 >> docker build -f server/Dockerfile -t arcel-backend .
 
-run api behind the local Nginx proxy from /
->> docker compose up --build proxy
-
-run api server w/o proxy from /
->> docker compose up --build api-local
+run api server from /
+>> docker compose up --build api
 
 reindex with compose service
 >> docker compose run --rm index

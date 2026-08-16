@@ -37,6 +37,7 @@ def get_workout_by_date(date: date, user: AuthUser = Depends(require_user)) -> l
 
     return workout
 
+# get workout by date range
 
 @router.patch('/{workout_id}/{exercise_id}')
 def update_exercise(workout_id: str, exercise_id: str, user: AuthUser = Depends(require_user)):

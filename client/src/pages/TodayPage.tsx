@@ -14,7 +14,7 @@ import { FocusedWorkoutMode, type FocusedExercise } from '../components/FocusedW
 import { Button, PageHeader, Panel } from '../components/ui'
 
 // TODO: Remove this feature gate when the Today workout experience is ready for users.
-const TODAY_PAGE_UNDER_DEVELOPMENT = true
+const TODAY_PAGE_UNDER_DEVELOPMENT = false
 
 const previewExercises: FocusedExercise[] = [
   {

@@ -74,7 +74,7 @@ export function SourceList({ sources }: SourceListProps) {
                 </span>
                 <div className="min-w-0">
                   <p className="page-eyebrow mb-0">Answer evidence</p>
-                  <h3 id={`${panelId}-title`} className="mt-1 text-lg font-semibold">Research sources</h3>
+                  <h3 id={`${panelId}-title`} className="mt-1 text-lg font-semibold">Sources</h3>
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-3">
@@ -89,15 +89,24 @@ export function SourceList({ sources }: SourceListProps) {
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 sm:px-6">
               {sources.map((source, index) => (
-                <article key={source.id ?? index} className="grid gap-3 border-b border-[var(--border)] py-5 last:border-b-0 sm:grid-cols-[2.25rem_minmax(0,1fr)]">
+                <article key={source.doi ?? source.url ?? index} className="grid gap-3 border-b border-[var(--border)] py-5 last:border-b-0 sm:grid-cols-[2.25rem_minmax(0,1fr)]">
                   <span className="font-mono text-xs font-bold text-[var(--accent)]">{String(index + 1).padStart(2, '0')}</span>
                   <div className="min-w-0">
-                    <h4 className="break-words text-sm font-semibold leading-5">{source.source ?? `Research excerpt ${index + 1}`}</h4>
+                    <h4 className="break-words text-sm font-semibold leading-5">{source.title ?? `${source.source_type === 'research' ? 'Research' : 'Web'} source ${index + 1}`}</h4>
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-[var(--text-muted)]">
-                      {source.page !== null && source.page !== undefined && <span>Page {source.page}</span>}
-                      {source.id !== null && source.id !== undefined && <span>Document ID {source.id}</span>}
+                      <span className="capitalize">{source.source_type}</span>
+                      {source.doi && (
+                        <a href={`https://doi.org/${source.doi}`} target="_blank" rel="noreferrer" className="break-all text-[var(--accent)] hover:underline">
+                          DOI {source.doi}
+                        </a>
+                      )}
+                      {source.url && (
+                        <a href={source.url} target="_blank" rel="noreferrer" className="break-all text-[var(--accent)] hover:underline">
+                          Open source
+                        </a>
+                      )}
                     </div>
-                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]">{source.text}</p>
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[var(--text)]">{source.content}</p>
                   </div>
                 </article>
               ))}

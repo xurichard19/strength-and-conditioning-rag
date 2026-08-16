@@ -24,7 +24,7 @@ const pageContent: Record<InfoPageProps["page"], {
             },
             {
                 heading: "How it works",
-                body: "The app retrieves relevant training references, reranks them for fit, and uses them to generate practical educational guidance.",
+                body: "A LangGraph workflow coordinates research and response generation. Its search agent gathers evidence from scientific papers and current web sources, then uses that evidence to generate practical educational guidance.",
             },
         ],
     },
@@ -111,7 +111,7 @@ const teamIntroductions = [
     },
     {
         name: "aaron jiang",
-        body: "UI/UX/PM",
+        body: "PM/UI/UX",
         linkedinUrl: "https://www.linkedin.com/in/aaron-jiang-7a10242a2/",
     }
 ]
@@ -120,22 +120,22 @@ const architectureSteps = [
     { label: "Client", detail: "React + Vite on Vercel" },
     { label: "Edge", detail: "Cloud Load Balancing + Cloud Armor" },
     { label: "API", detail: "FastAPI on Cloud Run" },
-    { label: "Retrieval", detail: "Chroma search + Cohere reranking" },
-    { label: "Generation", detail: "OpenAI grounded response" },
+    { label: "Workflow", detail: "LangGraph orchestration" },
+    { label: "Search", detail: "LangChain + source tools (Chroma/Tavily/Cohere)" },
 ]
 
 const technologyGroups = [
     {
         heading: "Application",
-        body: "React, TypeScript, Vite, Tailwind CSS, and FastAPI",
+        body: "React, TypeScript, Vite, Tailwind CSS, FastAPI, and LangGraph",
     },
     {
         heading: "AI and data",
-        body: "OpenAI, Chroma Cloud, Cohere, Supabase, and Google Cloud Storage",
+        body: "LangChain, OpenAI, Chroma Cloud, Tavily, Cohere, Supabase, and Google Cloud Storage",
     },
     {
         heading: "Infrastructure",
-        body: "Vercel, Google Cloud Run, Cloud Load Balancing, Cloud Armor, and Sentry",
+        body: "Vercel, Google Cloud Run, Cloud Load Balancing, Cloud Armor, LangSmith, and Sentry",
     },
 ]
 
@@ -217,7 +217,7 @@ export function InfoPage({ page }: InfoPageProps) {
                                     From question to evidence-backed answer
                                 </h2>
                                 <p className="m-0 mt-3 leading-7">
-                                    Arcel uses a two-stage retrieval pipeline to find and rerank relevant research before generating a practical response.
+                                    Arcel uses LangGraph to coordinate evidence gathering and response generation while keeping each step observable and independently maintainable.
                                 </p>
                             </div>
 
@@ -244,7 +244,7 @@ export function InfoPage({ page }: InfoPageProps) {
                                 </div>
 
                                 <figcaption className="mt-4 border-l-2 border-[var(--accent)] pl-4 text-sm leading-6">
-                                    Supabase provides authentication and application data, Google Cloud Storage supplies source documents for offline indexing, and Sentry monitors errors and performance.
+                                    The search agent combines research from Chroma Cloud with current web results from Tavily and can use Cohere to rerank research when helpful. LangSmith traces workflow, model, and tool activity, while Sentry monitors application errors and API performance.
                                 </figcaption>
                             </figure>
 

@@ -8,7 +8,7 @@ from urllib.request import urlopen
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.core.config import get_settings
+from app.config import get_settings
 
 bearer_scheme = HTTPBearer(auto_error=False)
 AUTH_CHALLENGE = {"WWW-Authenticate": "Bearer"}

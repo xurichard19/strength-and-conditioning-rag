@@ -15,8 +15,9 @@ from sentry_sdk.integrations.stdlib import StdlibIntegration
 from dotenv import load_dotenv
 load_dotenv()
 
-from app.core.config import get_settings
-from app.rag.vector_store import VectorDB
+from app.config import get_settings
+from app.ai.workflows.chat.graph import build_chat_workflow
+from app.ai.workflows.plan.graph import build_plan_workflow
 
 # import routers
 from app.api.routers import chat, plan, profile
@@ -46,8 +47,10 @@ if settings.sentry_dsn:
 async def lifespan(app: FastAPI):
     logger.info("app startup...")
 
-    app.state.db = VectorDB()
-    logger.info("vector store successfully connected")
+    app.state.chat_graph = build_chat_workflow()
+    logger.info("chat workflow successfully initialized")
+    app.state.plan_graph = build_plan_workflow()
+    logger.info("plan workflow successfully initialized")
     yield
 
     logger.info("app shutdown...")
@@ -76,37 +79,6 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-
-@app.get("/ready")
-async def ready(request: Request):
-    db = getattr(request.app.state, "db", None)
-    if db is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Vector store is not initialized",
-        )
-
-    try:
-        is_ready, chunk_count = db.system_docs_ready()
-    except Exception as exc:
-        logger.exception("readiness check failed")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Vector store is unavailable",
-        ) from exc
-
-    if not is_ready:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="System document collection is not indexed",
-        )
-
-    return {
-        "status": "ready",
-        "system_collection_name": settings.system_collection_name,
-        "system_document_chunks": chunk_count,
-    }
 
 
 if settings.environment == "development":
