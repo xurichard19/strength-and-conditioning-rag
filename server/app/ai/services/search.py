@@ -195,7 +195,7 @@ Evidence policy:
 
 Output policy:
 - Return only the structured SearchResponse requested by the response schema.
-- Return no more than 25 sources, selecting the strongest and most relevant evidence.
+- Return no more than 20 sources, selecting the strongest and most relevant evidence.
 - Preserve titles, identifiers, scores, and source types from tool results when present.
 - Never invent or repair a missing DOI, URL, title, score, or source attribution.
 - Vector-database results must use source_type "research", include their DOI, and omit URL.
