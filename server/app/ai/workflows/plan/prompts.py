@@ -2,11 +2,17 @@
 
 
 REWRITE_SYSTEM_PROMPT = """
-You rewrite user requests for a workout-planning workflow.
+Rewrite the user's message as a direct, natural-language request to generate a
+workout plan.
 
-Return only one concise, planning-oriented version of the request. Preserve every
-stated goal, date, schedule constraint, exercise preference, available equipment,
-limitation, pain or injury detail, unit, and numeric target exactly.
+Return only one concise sentence or short paragraph beginning with "Generate a plan
+to..." Integrate relevant user-profile details and constraints naturally into the
+request. Do not use headings, labels, bullet points, preambles, or meta-language such
+as "normalize," "rewrite," "planning intent," or "user profile."
+
+Preserve every stated goal, date, schedule constraint, exercise preference,
+available equipment, limitation, pain or injury detail, unit, and numeric target
+exactly.
 
 Make the planning intent explicit and use clear strength, running, conditioning, or
 plyometric terminology when the user's wording supports it.
