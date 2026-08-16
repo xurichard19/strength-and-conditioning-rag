@@ -7,49 +7,47 @@ The React/Vite frontend is deployed on Vercel, while the containerized FastAPI b
 ---
 #### App Infrastructure
 ```mermaid
-flowchart LR
-    User(["User"]) --> FE["React frontend<br/>(Vite, Vercel)"]
-    FE --> Edge["Google Cloud edge<br/>load balancer + Cloud Armor"]
-    Edge --> API["FastAPI backend<br/>(Cloud Run)"]
-
-    API --> Workflows["LangGraph workflows<br/>chat + plan"]
-    Workflows --> AI["AI and search services<br/>OpenAI + Chroma + Tavily + Cohere"]
-    API -.-> Supabase[("Supabase<br/>auth and data")]
-    API -.-> Sentry["Sentry<br/>errors and API performance"]
-    Workflows -.-> LangSmith["LangSmith<br/>LLM and workflow traces"]
-
-    subgraph Ingestion["Offline indexing"]
-        Docs[("GCS bucket<br/>source documents")] --> Index["index_system_docs.py"]
-    end
-    Index --> AI
+flowchart TB
+    User(["User"]) --> FE["React frontend on Vercel"]
+    FE --> Edge["Google Cloud load balancer and Cloud Armor"]
+    Edge --> API["FastAPI backend on Cloud Run"]
+    API --> Workflows["LangGraph chat and plan workflows"]
+    API --> Supabase[("Supabase authentication and data")]
+    API --> Sentry["Sentry monitoring"]
+    Workflows --> OpenAI["OpenAI"]
+    Workflows --> Chroma[("Chroma Cloud research index")]
+    Workflows --> SearchServices["Tavily and Cohere"]
+    Workflows --> LangSmith["LangSmith tracing"]
+    Docs[("GCS source documents")] --> Index["Offline indexing"]
+    Index --> Chroma
 ```
 
 #### Chat LangGraph Workflow
 
 ```mermaid
-flowchart LR
+flowchart TB
     Request["Chat request"] --> Search["Search node"]
-    Search --> Agent["LangChain search agent<br/>(OpenAI)"]
-    Agent --> Chroma[("Chroma Cloud<br/>research index")]
+    Search --> Agent["LangChain search agent using OpenAI"]
+    Agent --> Chroma[("Chroma Cloud research index")]
     Agent --> Tavily["Tavily web search"]
-    Agent -. "research only" .-> Cohere["Cohere reranker"]
+    Agent --> Cohere["Cohere research reranker"]
     Agent --> Evidence["Selected evidence"]
-    Evidence --> Generate["Generation node<br/>(OpenAI)"]
+    Evidence --> Generate["OpenAI generation node"]
     Generate --> Stream["NDJSON response stream"]
 ```
 
 #### Workout Programming LangGraph Workflow
 
 ```mermaid
-flowchart LR
-    Request["Plan request + user profile"] --> Rewrite["Rewrite node<br/>(OpenAI)"]
+flowchart TB
+    Request["Plan request and user profile"] --> Rewrite["OpenAI rewrite node"]
     Rewrite --> Search["Search node"]
-    Search --> Agent["LangChain search agent<br/>(OpenAI)"]
-    Agent --> Chroma[("Chroma Cloud<br/>research index")]
+    Search --> Agent["LangChain search agent using OpenAI"]
+    Agent --> Chroma[("Chroma Cloud research index")]
     Agent --> Tavily["Tavily web search"]
-    Agent -. "research only" .-> Cohere["Cohere reranker"]
+    Agent --> Cohere["Cohere research reranker"]
     Agent --> Evidence["Selected evidence"]
-    Evidence --> Generate["Plan generation node<br/>(OpenAI)"]
+    Evidence --> Generate["OpenAI plan generation node"]
     Generate --> Plan["Structured WorkoutPlan"]
 ```
 
