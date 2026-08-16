@@ -10,14 +10,14 @@ from app.config import get_settings
 settings = get_settings()
 
 generation_model = init_chat_model(
-    "gpt-5-mini",
+    "gpt-5.6-luna",
     api_key=settings.openai_api_key,
-).with_config({"tags": ["chat_generation"]})
+)
 
 
 def _format_source(source: Source, index: int) -> str:
     identifier = source.doi if source.source_type == "research" else source.url
-    title = source.title or "untitled source"
+    title = source.title or "untitled"
     return (
         f"[{index}] type={source.source_type}; title={title}; "
         f"identifier={identifier}\n{source.content}"
@@ -30,12 +30,11 @@ async def generate_node(state: ChatState) -> dict:
     evidence = "\n\n".join(
         _format_source(source, index)
         for index, source in enumerate(state.get("sources", []), start=1)
-    )
-    evidence_prompt = evidence or "no relevant evidence was retrieved"
+    ) or "no relevant evidence was retrieved"
 
     response = await generation_model.ainvoke([
         SystemMessage(content=CHAT_SYSTEM_PROMPT),
-        SystemMessage(content=f"retrieved evidence:\n\n{evidence_prompt}"),
+        SystemMessage(content=f"retrieved evidence:\n\n{evidence}"),
         *state["messages"],
     ])
 
