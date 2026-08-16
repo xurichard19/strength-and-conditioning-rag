@@ -3,6 +3,7 @@ import cohere
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
 from langchain_tavily import TavilySearch
+from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from langchain.agents import create_agent
 from pydantic import BaseModel, Field, model_validator
@@ -28,11 +29,18 @@ tavily_tool = TavilySearch(
     tavily_api_key=settings.tavily_api_key,
     search_depth='fast',
     include_images=False,
-    max_results=10
+    max_results=5
 )
 
 # cohere client
 cohere_client = cohere.ClientV2(api_key=settings.cohere_api_key)
+
+# openai client
+search_model = ChatOpenAI(
+    model="gpt-5.6-luna",
+    api_key=settings.openai_api_key,
+    reasoning_effort="none",
+)
 
 
 class Source(BaseModel):
@@ -63,7 +71,7 @@ class SearchResponse(BaseModel):
 
 
 @tool
-def similarity_search_research_docs(query: str, top_k: int = 15) -> list[Document]:
+def similarity_search_research_docs(query: str, top_k: int = 10) -> list[Document]:
     """
     perform similarity search on research paper vector store
     
@@ -76,7 +84,7 @@ def similarity_search_research_docs(query: str, top_k: int = 15) -> list[Documen
 
 
 @tool
-def hybrid_search_research_docs(query: str, top_k: int = 15) -> list[Document]:
+def hybrid_search_research_docs(query: str, top_k: int = 10) -> list[Document]:
     """
     perform hybrid search with rrf (rank contribution 67% semantic, 33% keyword) on research paper vector store 
     
@@ -132,7 +140,7 @@ def search_online(query: str) -> list[Document]:
 def rerank_research_results(
     query: str,
     research_documents: list[str],
-    top_n: int = 10,
+    top_n: int = 5,
 ) -> list[str]:
     """
     rerank research vector database results only
@@ -196,8 +204,9 @@ Output policy:
   help the downstream workflow address the user's query.
 """
 
+
 search_agent = create_agent(
-    model="gpt-5-mini",
+    model=search_model,
     tools=[similarity_search_research_docs, search_online, rerank_research_results],
     system_prompt=system_prompt,
     response_format=SearchResponse,

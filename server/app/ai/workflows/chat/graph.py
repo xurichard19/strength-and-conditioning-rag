@@ -8,10 +8,6 @@ from app.ai.workflows.chat.nodes.search import search_node
 from app.ai.workflows.chat.state import ChatState, WorkflowContext
 
 
-# future dependencies:
-# load_history_node
-# chat_controller
-# persist_turn_node
 def build_chat_workflow():
     """build langgraph chat workflow"""
 
@@ -20,29 +16,31 @@ def build_chat_workflow():
     # graph.add_node("load_history", load_history_node)
     graph.add_node("search", search_node)
     graph.add_node("generate", generate_node)
-    # graph.add_node("assistant", chat_controller)
-    # graph.add_node("persist_turn", persist_turn_node)
 
     graph.add_edge(START, "search")
     graph.add_edge("search", "generate")
     graph.add_edge("generate", END)
-
-    # future controller route; search_sources will be one of its tools
-    # graph.add_edge(START, "load_history")
-    # graph.add_edge("load_history", "assistant")
-    # graph.add_edge("assistant", "persist_turn")
-    # graph.add_edge("persist_turn", END)
 
     return graph.compile()
 
 
 async def stream_chat(
     graph,
-    *,
     message: str,
     context: WorkflowContext,
 ) -> AsyncIterator[dict[str, Any]]:
-    """stream public chat events from the generation node"""
+    """
+    stream the compiled chat graph and translate langgraph output into public chat events
+
+    - **graph**: compiled langgraph chat workflow
+    - **message**: current user message used to initialize graph state
+    - **context**: request-scoped user, authentication, and conversation values
+
+    yields dictionaries with one of these shapes:
+    - `{"type": "text", "delta": str}`
+    - `{"type": "sources", "sources": list[dict]}`
+    - `{"type": "done"}`
+    """
 
     sources = []
 
