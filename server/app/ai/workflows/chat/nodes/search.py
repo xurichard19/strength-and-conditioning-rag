@@ -16,8 +16,6 @@ async def search_node(state: ChatState) -> dict:
         None,
     )
 
-    if latest_user_message is None or not isinstance(latest_user_message.content, str):
-        raise ValueError("chat state does not contain a text user message")
-
     response = await search_sources(latest_user_message.content)
+    
     return {"sources": response.results}
