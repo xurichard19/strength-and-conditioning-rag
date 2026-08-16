@@ -1,13 +1,15 @@
 from chromadb import Search, K, Knn, Rrf
 import cohere
+from collections.abc import Sequence
+from pydantic import BaseModel, Field, model_validator
+from typing import Literal
+
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
 from langchain_tavily import TavilySearch
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from langchain.agents import create_agent
-from pydantic import BaseModel, Field, model_validator
-from typing import Literal
 
 
 from app.config import get_settings
@@ -224,3 +226,19 @@ async def search_sources(query: str) -> SearchResponse:
         'messages': [{'role': 'user', 'content': query}]
     })
     return result["structured_response"]
+
+
+def format_sources_for_prompt(sources: Sequence[Source]) -> str:
+    """format retrieved sources as evidence for model prompts"""
+
+    formatted_sources = []
+
+    for index, source in enumerate(sources, start=1):
+        identifier = source.doi if source.source_type == "research" else source.url
+        title = source.title or "untitled"
+        formatted_sources.append(
+            f"[{index}] type={source.source_type}; title={title}; "
+            f"identifier={identifier}\n{source.content}"
+        )
+
+    return "\n\n".join(formatted_sources) or "no relevant evidence was retrieved"
