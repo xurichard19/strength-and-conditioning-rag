@@ -1,6 +1,6 @@
-from dataclasses import Field, dataclass
+from dataclasses import dataclass
 import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal
 
 from langgraph.graph import MessagesState
@@ -20,6 +20,7 @@ class WorkflowContext:
 class PlanState(MessagesState):
     """state shared between planning workflow nodes"""
 
+    prompt: str | None
     sources: list[Source]
     answer: str | None
 
