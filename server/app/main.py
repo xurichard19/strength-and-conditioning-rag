@@ -20,7 +20,7 @@ from app.ai.workflows.chat.graph import build_chat_workflow
 from app.ai.workflows.plan.graph import build_plan_workflow
 
 # import routers
-from app.api.routers import chat, plan, profile
+from app.api.routers import chat, plan, profile, workouts
 
 
 settings = get_settings()
@@ -60,6 +60,7 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.include_router(chat.router)
 app.include_router(plan.router)
 app.include_router(profile.router)
+app.include_router(workouts.router)
 
 
 app.add_middleware(
