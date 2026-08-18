@@ -7,7 +7,7 @@ import { MarkdownResponse } from '../components/MarkdownResponse'
 import { SourceList } from '../components/SourceList'
 import { Button, EmptyState, PageHeader, Panel } from '../components/ui'
 import { useSessionState } from '../lib/sessionState'
-import type { Source } from '../types'
+import type { Source } from '../types/source'
 
 type ChatPageProps = {
   accessToken: string

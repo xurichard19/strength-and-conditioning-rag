@@ -5,7 +5,7 @@ import { ApiRequestError } from '../api/errors'
 import { fetchCachedSavedPlan } from '../api/workoutQueries'
 import { Button, EmptyState, IconButton, PageHeader, Panel } from '../components/ui'
 import { formatDateKey, toDateKey } from '../lib/dates'
-import type { Exercise, Workout } from '../types'
+import type { SavedExercise, SavedWorkout } from '../types/workouts'
 
 const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -34,8 +34,8 @@ function buildCalendarDates(displayDate: Date) {
   })
 }
 
-function groupExercisesByDate(workouts: Workout[]) {
-  return workouts.reduce<Record<string, Exercise[]>>((groupedExercises, workout) => {
+function groupExercisesByDate(workouts: SavedWorkout[]) {
+  return workouts.reduce<Record<string, SavedExercise[]>>((groupedExercises, workout) => {
     workout.exercises.forEach((exercise) => {
       groupedExercises[exercise.date] = [...(groupedExercises[exercise.date] ?? []), exercise]
     })
@@ -54,7 +54,7 @@ export function CalendarPage({ accessToken, onUnauthorized, userId }: CalendarPa
   const todayKey = toDateKey(today)
   const [displayDate, setDisplayDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
   const [selectedDate, setSelectedDate] = useState(todayKey)
-  const [workouts, setWorkouts] = useState<Workout[]>([])
+  const [workouts, setWorkouts] = useState<SavedWorkout[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const exercisesByDate = useMemo(() => groupExercisesByDate(workouts), [workouts])

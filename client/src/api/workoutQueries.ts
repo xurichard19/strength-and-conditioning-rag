@@ -1,4 +1,4 @@
-import type { SavedPlan } from '../types'
+import type { SavedPlan } from '../types/workouts'
 import { getCachedQuery, invalidateCachedQueries } from '../lib/queryCache'
 import { fetchSavedPlan } from './plan'
 

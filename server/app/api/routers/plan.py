@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.ai.workflows.plan.state import WorkflowContext
 from app.api.schemas import Exercise, PlanRequest, PlanResponse, Workout
 from app.auth.supabase import AuthUser, require_user
-from app.contracts import WorkoutPlan
+from app.contracts import PlannedWorkoutPlan
 from app.db.supabase import SupabaseDataError, insert_rows, select_rows
 
 
@@ -73,7 +73,7 @@ async def generate_workout_plan(
     query: PlanRequest,
     request: Request,
     user: AuthUser = Depends(require_user),
-) -> WorkoutPlan:
+) -> PlannedWorkoutPlan:
     logger.info("authenticated plan requested user_id=%s", user.id)
 
     try:
@@ -112,7 +112,7 @@ async def generate_workout_plan(
             ),
         )
         plan = result.get("answer")
-        if not isinstance(plan, WorkoutPlan):
+        if not isinstance(plan, PlannedWorkoutPlan):
             raise ValueError("plan generation failed to return a valid workout plan")
         # this gets server date, careful to use helper function in frontend in the future for user date
     except ValueError as exc:
