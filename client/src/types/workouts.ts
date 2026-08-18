@@ -39,7 +39,7 @@ export type SetResult = {
   notes?: string | null
 }
 
-export type WorkoutSetRecord = {
+export type ExerciseSetRecord = {
   id: string
   order_index: number
   planned: PlannedExerciseSet
@@ -50,7 +50,7 @@ export type WorkoutSetRecord = {
 export type ExerciseRecord = Omit<PlannedExercise, 'sets'> & {
   id: string
   order_index: number
-  sets: WorkoutSetRecord[]
+  sets: ExerciseSetRecord[]
 }
 
 export type WorkoutRecord = Omit<PlannedWorkout, 'exercises'> & {
@@ -63,7 +63,7 @@ export type WorkoutRecord = Omit<PlannedWorkout, 'exercises'> & {
   exercises: ExerciseRecord[]
 }
 
-export type CompletedExerciseSet = WorkoutSetRecord
+export type CompletedExerciseSet = ExerciseSetRecord
 
 export type CompletedExercise = Omit<ExerciseRecord, 'sets'> & {
   sets: CompletedExerciseSet[]

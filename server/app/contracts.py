@@ -1,4 +1,30 @@
-# this file defines shared planned and completed workout contracts
+"""shared business models used across the backend
+
+model families:
+- shared types: small reusable choices used by the other models
+  - use cases: contract validation, api schemas, and structured model output
+
+- source models: research and web evidence returned by search
+  - use cases: search service results, workflow evidence, and chat citations
+
+- profile models: user preferences and training profile data
+  - use cases: profile endpoints, supabase profile mapping, and workflow context
+
+- planned workout models: clean workout prescriptions before they are saved
+  - use cases: plan langgraph output, plan api responses, previews, and save requests
+
+- workout result models: what the user actually did for a set
+  - use cases: workout logging, set updates, performance history, and replanning context
+
+- persisted workout models: saved workouts with ids, versions, and lifecycle data
+  - use cases: supabase row mapping, calendar reads, history loads, and version checks
+
+- completed workout models: persisted workouts that have been marked complete
+  - use cases: completed workout responses, training history, and performance analysis
+  
+- planning workflow models: normalized commands and proposals used to change plans
+  - use cases: workflow entry adapters, plan graph input/output, and rpc handoff
+"""
 
 import datetime
 from typing import Literal
@@ -106,7 +132,7 @@ class SetResult(BaseModel):
 
 #---------------persisted workout models-----------
 
-class WorkoutSetRecord(BaseModel):
+class ExerciseSetRecord(BaseModel):
     id: UUID
     order_index: int = Field(ge=0)
     planned: PlannedExerciseSet
@@ -117,7 +143,7 @@ class WorkoutSetRecord(BaseModel):
 class ExerciseRecord(PlannedExercise):
     id: UUID
     order_index: int = Field(ge=0)
-    sets: list[WorkoutSetRecord] = Field(default_factory=list)
+    sets: list[ExerciseSetRecord] = Field(default_factory=list)
 
 
 class WorkoutRecord(PlannedWorkout):
@@ -132,7 +158,7 @@ class WorkoutRecord(PlannedWorkout):
 
 #---------------completed workout models-----------
 
-class CompletedExerciseSet(WorkoutSetRecord):
+class CompletedExerciseSet(ExerciseSetRecord):
     pass
 
 
@@ -143,3 +169,48 @@ class CompletedExercise(ExerciseRecord):
 class CompletedWorkout(WorkoutRecord):
     completed_at: datetime.datetime
     exercises: list[CompletedExercise]
+
+
+#---------------planning workflow models-----------
+# under dev, dont use
+
+PlanningTrigger = Literal[
+    "plan_page",
+    "chat",
+    "readiness",
+    "workout_result",
+    "missed_workout",
+    "profile_update",
+]
+PlanningOperation = Literal[
+    "create_plan",
+    "replace_plan",
+    "adjust_workout",
+    "adjust_future",
+]
+PlanningResultStatus = Literal[
+    "proposal",
+    "no_change",
+    "conflict",
+    "rejected",
+]
+
+
+class WorkoutVersionTarget(BaseModel):
+    workout_id: UUID
+    expected_version: int = Field(ge=1)
+
+
+class PlanningCommand(BaseModel):
+    trigger: PlanningTrigger
+    operation: PlanningOperation
+    effective_date: datetime.date
+    instructions: str = Field(min_length=1)
+    targets: list[WorkoutVersionTarget] = Field(default_factory=list)
+
+
+class PlanningResult(BaseModel):
+    status: PlanningResultStatus
+    proposed_plan: PlannedWorkoutPlan | None = None
+    targets: list[WorkoutVersionTarget] = Field(default_factory=list)
+    notes: str | None = None
