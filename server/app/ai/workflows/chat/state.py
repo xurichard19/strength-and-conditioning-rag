@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from langgraph.graph import MessagesState
 
-from app.ai.services.search import Source
+from app.contracts import Source
 
 
 @dataclass(frozen=True)

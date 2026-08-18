@@ -1,5 +1,5 @@
 // TODO(frontend-audit): remove these legacy saved-plan types after the plan
-// endpoints and supabase tables return the tracked workout contract
+// endpoints and supabase tables return the planned/completed workout contracts
 export type SavedExercise = {
   date: string
   name: string
@@ -39,14 +39,13 @@ export type PlannedWorkout = {
   name: string
   scheduled_date: string
   exercises: PlannedExercise[]
+  notes?: string | null
 }
 
 export type PlannedWorkoutPlan = {
   workouts: PlannedWorkout[]
   notes?: string | null
 }
-
-export type WorkoutStatus = 'planned' | 'in_progress' | 'completed' | 'skipped' | 'archived'
 
 export type SetResult = {
   actual_reps?: number | null
@@ -58,21 +57,19 @@ export type SetResult = {
   notes?: string | null
 }
 
-export type TrackedExerciseSet = {
+export type CompletedExerciseSet = {
   id: string
-  prescription: PlannedExerciseSet
+  planned: PlannedExerciseSet
   result?: SetResult | null
 }
 
-export type TrackedExercise = Omit<PlannedExercise, 'sets'> & {
+export type CompletedExercise = Omit<PlannedExercise, 'sets'> & {
   id: string
-  sets: TrackedExerciseSet[]
+  sets: CompletedExerciseSet[]
 }
 
-export type TrackedWorkout = Omit<PlannedWorkout, 'exercises'> & {
+export type CompletedWorkout = Omit<PlannedWorkout, 'exercises'> & {
   id: string
-  status: WorkoutStatus
-  started_at?: string | null
-  completed_at?: string | null
-  exercises: TrackedExercise[]
+  completed_at: string
+  exercises: CompletedExercise[]
 }

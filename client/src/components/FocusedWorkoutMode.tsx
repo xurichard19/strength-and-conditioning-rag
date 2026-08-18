@@ -17,7 +17,7 @@ export type FocusedExercise = {
   id: string
   kind: 'strength' | 'conditioning'
   name: string
-  prescription: string
+  planned: string
   targetLoad?: string
   targetReps?: string
   sets: number
@@ -192,7 +192,7 @@ export function FocusedWorkoutMode({ exercises, onClose }: FocusedWorkoutModePro
                       </span>
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-semibold">{listedExercise.name}</span>
-                        <span className="mt-0.5 block text-xs text-[var(--text-muted)]">{listedExercise.prescription}</span>
+                        <span className="mt-0.5 block text-xs text-[var(--text-muted)]">{listedExercise.planned}</span>
                       </span>
                     </button>
                   </li>
@@ -238,7 +238,7 @@ export function FocusedWorkoutMode({ exercises, onClose }: FocusedWorkoutModePro
 
                 <div className="mt-8 border-y border-[var(--border)] py-8 text-center">
                   <p className="text-xs font-semibold uppercase text-[var(--text-muted)]">Target</p>
-                  <p className="mt-3 text-4xl font-semibold text-[var(--text-h)] sm:text-5xl">{exercise.prescription}</p>
+                  <p className="mt-3 text-4xl font-semibold text-[var(--text-h)] sm:text-5xl">{exercise.planned}</p>
                   <p className="mt-3 text-sm text-[var(--text)]">
                     {exercise.kind === 'strength' ? 'Controlled reps · leave about 2 reps in reserve' : 'Conversational aerobic effort'}
                   </p>

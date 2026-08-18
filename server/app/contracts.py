@@ -1,10 +1,33 @@
-# this file defines shared planned and tracked workout contracts
+# this file defines shared planned and completed workout contracts
 
 import datetime
-from typing import Literal, TypeAlias
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+
+class Source(BaseModel):
+    title: str | None = None
+    doi: str | None = None
+    url: str | None = None
+    source_type: Literal["research", "web"]
+    content: str = Field(min_length=1)
+    score: float | None = None
+
+    @model_validator(mode="after")
+    def check_source_identifier(self):
+        if self.source_type == "research":
+            if not self.doi:
+                raise ValueError("doi is required for research sources")
+            if self.url:
+                raise ValueError("url should not be provided for research sources")
+        elif self.source_type == "web":
+            if not self.url:
+                raise ValueError("url is required for web sources")
+            if self.doi:
+                raise ValueError("doi should not be provided for web sources")
+        return self
 
 
 class PlannedExerciseSet(BaseModel):
@@ -30,20 +53,12 @@ class PlannedWorkout(BaseModel):
     name: str
     scheduled_date: datetime.date
     exercises: list[PlannedExercise]
+    notes: str | None = None
 
 
 class PlannedWorkoutPlan(BaseModel):
     workouts: list[PlannedWorkout]
     notes: str | None = None
-
-
-WorkoutStatus: TypeAlias = Literal[
-    "planned",
-    "in_progress",
-    "completed",
-    "skipped",
-    "archived",
-]
 
 
 class SetResult(BaseModel):
@@ -56,20 +71,18 @@ class SetResult(BaseModel):
     notes: str | None = None
 
 
-class TrackedExerciseSet(BaseModel):
+class CompletedExerciseSet(BaseModel):
     id: UUID
-    prescription: PlannedExerciseSet
+    planned: PlannedExerciseSet
     result: SetResult | None = None
 
 
-class TrackedExercise(PlannedExercise):
+class CompletedExercise(PlannedExercise):
     id: UUID
-    sets: list[TrackedExerciseSet] = Field(default_factory=list)
+    sets: list[CompletedExerciseSet] = Field(default_factory=list)
 
 
-class TrackedWorkout(PlannedWorkout):
+class CompletedWorkout(PlannedWorkout):
     id: UUID
-    status: WorkoutStatus = "planned"
-    started_at: datetime.datetime | None = None
-    completed_at: datetime.datetime | None = None
-    exercises: list[TrackedExercise]
+    completed_at: datetime.datetime
+    exercises: list[CompletedExercise]

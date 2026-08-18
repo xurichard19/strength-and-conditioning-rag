@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
+from app.contracts import Source
+
 
 MAX_CHAT_TEXT_LENGTH = 4000
 MAX_PLAN_GOAL_LENGTH = 1000
@@ -18,15 +20,6 @@ PrimaryGoal = Literal[
 ]
 ExperienceLevel = Literal["new", "intermediate", "experienced"]
 EquipmentAccess = Literal["full_gym", "home_gym", "minimal_equipment", "bodyweight_only"]
-
-
-class Source(BaseModel):
-    title: str | None = None
-    doi: str | None = None
-    url: str | None = None
-    source_type: Literal["research", "web"]
-    content: str
-    score: float | None = None
 
 
 class ChatRequest(BaseModel):

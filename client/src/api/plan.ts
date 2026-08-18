@@ -32,7 +32,7 @@ export async function savePlan(
   plan: PlannedWorkoutPlan,
   accessToken?: string,
 ): Promise<boolean> {
-  // TODO(frontend-audit): remove this adapter when saved plans use tracked workouts
+  // TODO(frontend-audit): remove this adapter when saved plans use planned/completed workouts
   const savedPlan: SavedPlan = {
     workouts: plan.workouts.map((workout) => ({
       exercises: workout.exercises.map((exercise) => ({
