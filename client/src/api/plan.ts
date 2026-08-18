@@ -1,4 +1,4 @@
-import type { SavedPlan, WorkoutPlan } from '../types'
+import type { PlannedWorkoutPlan, SavedPlan } from '../types/workouts'
 import { apiJson } from './client'
 
 export type PlanRequest = {
@@ -6,10 +6,21 @@ export type PlanRequest = {
   additional_context?: string
 }
 
+// TODO(frontend-audit): remove this legacy conversion with SavedPlan support
+function legacyReps(exercise: PlannedWorkoutPlan['workouts'][number]['exercises'][number]) {
+  const reps = exercise.sets.map((set) => set.reps)
+  if (!reps.some((value) => value != null)) return null
+
+  const first = reps[0]
+  return reps.every((value) => value === first)
+    ? first
+    : reps.map((value) => value ?? '-').join('/')
+}
+
 export async function submitPlan(
   request: PlanRequest,
   accessToken?: string,
-): Promise<WorkoutPlan> {
+): Promise<PlannedWorkoutPlan> {
   return apiJson('/plan/generate', {
     method: 'POST',
     accessToken,
@@ -18,17 +29,17 @@ export async function submitPlan(
 }
 
 export async function savePlan(
-  plan: WorkoutPlan,
+  plan: PlannedWorkoutPlan,
   accessToken?: string,
 ): Promise<boolean> {
-  // temporary adapter until supabase and the saved-plan endpoints use WorkoutPlan
+  // TODO(frontend-audit): remove this adapter when saved plans use tracked workouts
   const savedPlan: SavedPlan = {
     workouts: plan.workouts.map((workout) => ({
       exercises: workout.exercises.map((exercise) => ({
         date: workout.scheduled_date,
         name: exercise.name,
-        sets: exercise.sets,
-        reps: exercise.reps,
+        sets: exercise.sets.length || null,
+        reps: legacyReps(exercise),
         notes: exercise.notes,
       })),
     })),

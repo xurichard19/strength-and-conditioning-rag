@@ -1,5 +1,7 @@
 # Supabase Data Layer
 
+> **FRONTEND AUDIT REMINDER: REMOVE THE LEGACY SAVEDPLAN TYPES, CONVERSION ADAPTER, AND CALENDAR DATA FLOW AFTER SUPABASE AND THE PLAN ENDPOINTS USE THE TRACKED WORKOUT CONTRACT.**
+
 `app.db.supabase` is the single place for reusable Supabase table queries. Routers
 and AI workflows call these domain modules directly; workflows do not call FastAPI
 routes.

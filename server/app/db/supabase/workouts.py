@@ -3,7 +3,7 @@
 from datetime import date
 from typing import Any
 
-from app.contracts import WorkoutPlan
+from app.contracts import PlannedWorkoutPlan
 
 
 def get_workouts_in_range(
@@ -31,7 +31,7 @@ def get_recent_workouts(
 def save_workout_plan(
     user_id: str,
     access_token: str,
-    plan: WorkoutPlan,
+    plan: PlannedWorkoutPlan,
 ) -> None:
     """persist a generated workout plan once the database schema supports the full contract"""
 
