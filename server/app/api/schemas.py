@@ -1,25 +1,22 @@
 import datetime
-from typing import Literal, Self
+from typing import Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
-from app.contracts import Source
+from app.contracts import (
+    EquipmentAccess,
+    ExperienceLevel,
+    PlannedWorkoutPlan,
+    PrimaryGoal,
+    SessionDurationMinutes,
+    Source,
+    UserProfile,
+)
 
 
 MAX_CHAT_TEXT_LENGTH = 4000
 MAX_PLAN_GOAL_LENGTH = 1000
-
-PrimaryGoal = Literal[
-    "balanced_hybrid",
-    "strength",
-    "endurance",
-    "conditioning",
-    "event_preparation",
-    "general_fitness",
-]
-ExperienceLevel = Literal["new", "intermediate", "experienced"]
-EquipmentAccess = Literal["full_gym", "home_gym", "minimal_equipment", "bodyweight_only"]
 
 
 class ChatRequest(BaseModel):
@@ -37,18 +34,6 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     text: str
     sources: list[Source] = Field(default_factory=list)
-
-
-class Exercise(BaseModel):
-    date: datetime.date
-    name: str
-    reps: int | str | None = None
-    sets: int | None = None
-    notes: str | None = None
-
-
-class Workout(BaseModel):
-    exercises: list[Exercise]
 
 
 class PlanRequest(BaseModel):
@@ -70,7 +55,19 @@ class PlanRequest(BaseModel):
 class PlanResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    workouts: list[Workout]
+    plan: PlannedWorkoutPlan
+
+
+class SavePlanRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plan: PlannedWorkoutPlan
+
+
+class SavePlanResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    saved: bool
 
 
 class WorkoutExerciseResponse(BaseModel):
@@ -114,16 +111,8 @@ class ExerciseCompletionResponse(BaseModel):
     completed_at: datetime.datetime | None
 
 
-class ProfileResponse(BaseModel):
+class ProfileResponse(UserProfile):
     model_config = ConfigDict(extra="forbid")
-
-    display_name: str | None = Field(default=None, min_length=1, max_length=60)
-    primary_goal: PrimaryGoal | None = None
-    experience_level: ExperienceLevel | None = None
-    training_days_per_week: int | None = Field(default=None, ge=2, le=7)
-    session_duration_minutes: Literal[30, 45, 60, 75, 90] | None = None
-    equipment_access: EquipmentAccess | None = None
-    onboarding_completed_at: datetime.datetime | None = None
 
 
 class ProfileUpdate(BaseModel):
@@ -133,7 +122,7 @@ class ProfileUpdate(BaseModel):
     primary_goal: PrimaryGoal | None = None
     experience_level: ExperienceLevel | None = None
     training_days_per_week: int | None = Field(default=None, ge=2, le=7)
-    session_duration_minutes: Literal[30, 45, 60, 75, 90] | None = None
+    session_duration_minutes: SessionDurationMinutes | None = None
     equipment_access: EquipmentAccess | None = None
 
     @field_validator("display_name")

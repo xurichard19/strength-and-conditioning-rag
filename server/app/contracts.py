@@ -7,6 +7,23 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 
+#---------------shared types-----------
+
+PrimaryGoal = Literal[
+    "balanced_hybrid",
+    "strength",
+    "endurance",
+    "conditioning",
+    "event_preparation",
+    "general_fitness",
+]
+ExperienceLevel = Literal["new", "intermediate", "experienced"]
+EquipmentAccess = Literal["full_gym", "home_gym", "minimal_equipment", "bodyweight_only"]
+SessionDurationMinutes = Literal[30, 45, 60, 75, 90]
+
+
+#---------------source models-----------
+
 class Source(BaseModel):
     title: str | None = None
     doi: str | None = None
@@ -29,6 +46,20 @@ class Source(BaseModel):
                 raise ValueError("doi should not be provided for web sources")
         return self
 
+
+#---------------profile models-----------
+
+class UserProfile(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=60)
+    primary_goal: PrimaryGoal | None = None
+    experience_level: ExperienceLevel | None = None
+    training_days_per_week: int | None = Field(default=None, ge=2, le=7)
+    session_duration_minutes: SessionDurationMinutes | None = None
+    equipment_access: EquipmentAccess | None = None
+    onboarding_completed_at: datetime.datetime | None = None
+
+
+#---------------planned workout models-----------
 
 class PlannedExerciseSet(BaseModel):
     reps: int | None = Field(default=None, gt=0)
@@ -61,6 +92,8 @@ class PlannedWorkoutPlan(BaseModel):
     notes: str | None = None
 
 
+#---------------workout result models-----------
+
 class SetResult(BaseModel):
     actual_reps: int | None = Field(default=None, ge=0)
     actual_weight: float | None = Field(default=None, ge=0)
@@ -71,18 +104,42 @@ class SetResult(BaseModel):
     notes: str | None = None
 
 
-class CompletedExerciseSet(BaseModel):
+#---------------persisted workout models-----------
+
+class WorkoutSetRecord(BaseModel):
     id: UUID
+    order_index: int = Field(ge=0)
     planned: PlannedExerciseSet
     result: SetResult | None = None
+    missed_at: datetime.datetime | None = None
 
 
-class CompletedExercise(PlannedExercise):
+class ExerciseRecord(PlannedExercise):
     id: UUID
+    order_index: int = Field(ge=0)
+    sets: list[WorkoutSetRecord] = Field(default_factory=list)
+
+
+class WorkoutRecord(PlannedWorkout):
+    id: UUID
+    version: int = Field(ge=1)
+    completed_at: datetime.datetime | None = None
+    superseded_at: datetime.datetime | None = None
+    created_by_change_id: UUID | None = None
+    superseded_by_change_id: UUID | None = None
+    exercises: list[ExerciseRecord]
+
+
+#---------------completed workout models-----------
+
+class CompletedExerciseSet(WorkoutSetRecord):
+    pass
+
+
+class CompletedExercise(ExerciseRecord):
     sets: list[CompletedExerciseSet] = Field(default_factory=list)
 
 
-class CompletedWorkout(PlannedWorkout):
-    id: UUID
+class CompletedWorkout(WorkoutRecord):
     completed_at: datetime.datetime
     exercises: list[CompletedExercise]
