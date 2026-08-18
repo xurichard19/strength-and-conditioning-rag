@@ -1,7 +1,8 @@
 import datetime
 from typing import Literal, Self
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 
 MAX_CHAT_TEXT_LENGTH = 4000
@@ -77,6 +78,47 @@ class PlanResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     workouts: list[Workout]
+
+
+class WorkoutExerciseResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    workout_id: UUID
+    order_index: int = Field(ge=0)
+    name: str
+    sets: int | None = Field(default=None, gt=0)
+    reps: str | None = None
+    duration: str | None = None
+    rest: str | None = None
+    notes: str | None = None
+    metadata: dict[str, object] = Field(default_factory=dict)
+    completed_at: datetime.datetime | None = None
+
+
+class WorkoutRangeResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    scheduled_date: datetime.date
+    title: str | None = None
+    goal: str | None = None
+    notes: str | None = None
+    exercises: list[WorkoutExerciseResponse]
+
+
+class ExerciseCompletionUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    completed: StrictBool
+
+
+class ExerciseCompletionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    workout_id: UUID
+    completed_at: datetime.datetime | None
 
 
 class ProfileResponse(BaseModel):
