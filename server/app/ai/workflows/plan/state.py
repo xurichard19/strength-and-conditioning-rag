@@ -2,8 +2,7 @@ from dataclasses import dataclass
 
 from langgraph.graph import MessagesState
 
-from app.contracts import WorkoutPlan
-from app.ai.services.search import Source
+from app.contracts import PlannedWorkoutPlan, Source
 
 
 @dataclass(frozen=True)
@@ -20,4 +19,4 @@ class PlanState(MessagesState):
 
     prompt: str | None
     sources: list[Source]
-    answer: WorkoutPlan | None
+    answer: PlannedWorkoutPlan | None

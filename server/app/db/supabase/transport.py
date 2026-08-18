@@ -1,7 +1,9 @@
+# this file owns generic supabase rest requests and error handling
+
 import json
 from typing import Any
-from urllib.parse import urlencode
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 
@@ -10,6 +12,10 @@ from app.config import get_settings
 
 class SupabaseDataError(Exception):
     pass
+
+
+# TODO(database-migration): add a generic call_rpc(function_name, payload, access_token)
+# transport here; domain modules should own rpc names, payloads, and result mapping.
 
 
 def select_rows(

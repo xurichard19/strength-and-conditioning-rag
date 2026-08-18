@@ -1,4 +1,4 @@
-import type { SavedPlan } from '../types'
+import type { PlannedWorkoutPlan } from '../types/workouts'
 import { getCachedQuery, invalidateCachedQueries } from '../lib/queryCache'
 import { fetchSavedPlan } from './plan'
 
@@ -11,7 +11,7 @@ function workoutQueryPrefix(userId: string) {
 export function fetchCachedSavedPlan(
   userId: string,
   accessToken: string,
-): Promise<SavedPlan> {
+): Promise<PlannedWorkoutPlan> {
   return getCachedQuery(
     `${workoutQueryPrefix(userId)}all`,
     () => fetchSavedPlan(accessToken),

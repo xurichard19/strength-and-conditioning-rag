@@ -21,7 +21,7 @@ const previewExercises: FocusedExercise[] = [
     id: 'back-squat',
     kind: 'strength',
     name: 'Back squat',
-    prescription: '4 × 5 @ 100 kg',
+    planned: '4 × 5 @ 100 kg',
     targetLoad: '100',
     targetReps: '5',
     sets: 4,
@@ -31,7 +31,7 @@ const previewExercises: FocusedExercise[] = [
     id: 'romanian-deadlift',
     kind: 'strength',
     name: 'Romanian deadlift',
-    prescription: '3 × 8 @ 70 kg',
+    planned: '3 × 8 @ 70 kg',
     targetLoad: '70',
     targetReps: '8',
     sets: 3,
@@ -41,7 +41,7 @@ const previewExercises: FocusedExercise[] = [
     id: 'walking-lunge',
     kind: 'strength',
     name: 'Walking lunge',
-    prescription: '3 × 10 / side',
+    planned: '3 × 10 / side',
     targetLoad: '20',
     targetReps: '10',
     sets: 3,
@@ -51,7 +51,7 @@ const previewExercises: FocusedExercise[] = [
     id: 'easy-run',
     kind: 'conditioning',
     name: 'Easy run',
-    prescription: '4 km · easy effort',
+    planned: '4 km · easy effort',
     targetLoad: '4',
     targetReps: '24',
     sets: 1,
@@ -117,7 +117,7 @@ export function TodayPage() {
                     <h3 className="text-sm font-semibold text-[var(--text-h)]">{exercise.name}</h3>
                     <p className="mt-1 text-xs text-[var(--text)]">{exercise.kind === 'strength' ? 'Strength' : 'Conditioning'}</p>
                   </div>
-                  <span className="hidden font-mono text-sm font-semibold text-[var(--text-h)] sm:block">{exercise.prescription}</span>
+                  <span className="hidden font-mono text-sm font-semibold text-[var(--text-h)] sm:block">{exercise.planned}</span>
                   <button type="button" title="Exercise swaps are not active in this preview" aria-label={`Swap ${exercise.name}`} className="icon-button" disabled>
                     <Repeat2 aria-hidden="true" size={16} />
                   </button>

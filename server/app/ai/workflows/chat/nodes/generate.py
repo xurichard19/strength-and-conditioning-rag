@@ -30,7 +30,4 @@ async def generate_node(state: ChatState) -> dict:
     if not isinstance(response, AIMessage) or not isinstance(response.content, str):
         raise ValueError("chat generation did not return a text response")
 
-    return {
-        "messages": [response],
-        "answer": response.content,
-    }
+    return {"messages": [response]}

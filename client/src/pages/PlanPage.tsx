@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react'
 import {
   CalendarRange,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Dumbbell,
@@ -15,7 +16,7 @@ import { invalidateWorkoutQueries } from '../api/workoutQueries'
 import { Button, EmptyState, IconButton, PageHeader, Panel } from '../components/ui'
 import { formatDateKey } from '../lib/dates'
 import { useSessionState } from '../lib/sessionState'
-import type { PlannedExercise, WorkoutPlan } from '../types'
+import type { PlannedExercise, PlannedExerciseSet, PlannedWorkoutPlan } from '../types/workouts'
 
 const workoutsPerPage = 3
 
@@ -31,24 +32,51 @@ function formatShortDate(date: string) {
   return formatDateKey(date, { month: 'numeric', day: 'numeric' })
 }
 
-function formatExercisePrescription(exercise: PlannedExercise) {
+function formatPlannedSet(exercise: PlannedExercise, set: PlannedExerciseSet) {
   const details: string[] = []
 
-  if (exercise.sets != null && exercise.reps != null) {
-    details.push(`${exercise.sets} x ${exercise.reps}${exercise.reps_per_side ? ' / side' : ''}`)
-  } else if (exercise.sets != null) {
-    details.push(`${exercise.sets} sets`)
-  } else if (exercise.reps != null) {
-    details.push(`${exercise.reps} reps${exercise.reps_per_side ? ' / side' : ''}`)
-  }
-
-  if (exercise.weight != null) details.push(`${exercise.weight} ${exercise.weight_unit ?? ''}`.trim())
-  if (exercise.distance != null) details.push(`${exercise.distance} ${exercise.distance_unit ?? ''}`.trim())
-  if (exercise.duration_minutes != null) details.push(`${exercise.duration_minutes} min`)
-  if (exercise.target_rpe != null) details.push(`RPE ${exercise.target_rpe}`)
-  if (exercise.rest_seconds != null) details.push(`${exercise.rest_seconds}s rest`)
+  if (set.reps != null) details.push(`${set.reps} reps${exercise.reps_per_side ? ' / side' : ''}`)
+  if (set.weight != null) details.push(`${set.weight} ${exercise.weight_unit ?? ''}`.trim())
+  if (set.distance != null) details.push(`${set.distance} ${exercise.distance_unit ?? ''}`.trim())
+  if (set.duration_minutes != null) details.push(`${set.duration_minutes} min`)
+  if (set.target_rpe != null) details.push(`RPE ${set.target_rpe}`)
+  if (set.rest_seconds != null) details.push(`${set.rest_seconds}s rest`)
 
   return details
+}
+
+function formatRange(values: number[], suffix: string) {
+  if (values.length === 0) return null
+
+  const minimum = Math.min(...values)
+  const maximum = Math.max(...values)
+  return `${minimum === maximum ? minimum : `${minimum}-${maximum}`} ${suffix}`
+}
+
+function formatExerciseSummary(exercise: PlannedExercise) {
+  const summary = [`${exercise.sets.length} ${exercise.sets.length === 1 ? 'set' : 'sets'}`]
+  const reps = formatRange(
+    exercise.sets.flatMap((set) => set.reps == null ? [] : [set.reps]),
+    `reps${exercise.reps_per_side ? ' / side' : ''}`,
+  )
+  const weight = formatRange(
+    exercise.sets.flatMap((set) => set.weight == null ? [] : [set.weight]),
+    exercise.weight_unit ?? '',
+  )
+  const distance = formatRange(
+    exercise.sets.flatMap((set) => set.distance == null ? [] : [set.distance]),
+    exercise.distance_unit ?? '',
+  )
+  const duration = formatRange(
+    exercise.sets.flatMap((set) => set.duration_minutes == null ? [] : [set.duration_minutes]),
+    'min',
+  )
+
+  if (reps) summary.push(reps)
+  if (weight) summary.push(weight.trim())
+  if (distance) summary.push(distance.trim())
+  if (duration) summary.push(duration)
+  return summary
 }
 
 type PlanPageProps = {
@@ -60,14 +88,14 @@ type PlanPageProps = {
 type PlanState = {
   additionalContext: string
   goal: string
-  plan: WorkoutPlan | null
+  plan: PlannedWorkoutPlan | null
   workoutPage: number
 }
 
 const initialPlan: PlanState = { additionalContext: '', goal: '', plan: null, workoutPage: 0 }
 
 export function PlanPage({ accessToken, onUnauthorized, userId }: PlanPageProps) {
-  const [state, setState] = useSessionState(userId, 'plan', initialPlan)
+  const [state, setState] = useSessionState(userId, 'plan-v2', initialPlan)
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
@@ -236,21 +264,28 @@ export function PlanPage({ accessToken, onUnauthorized, userId }: PlanPageProps)
           <div className="p-4 sm:p-5">
             {saveMessage && <p className="feedback-success mb-4">{saveMessage}</p>}
             {saveError && <p role="alert" className="feedback-error mb-4">{saveError}</p>}
-            {plan?.notes && <p className="mb-4 text-sm leading-6 text-[var(--text-muted)]">{plan.notes}</p>}
+            {plan?.notes && (
+              <div className="pb-6">
+                <p className="text-sm leading-6 text-[var(--text-muted)]">{plan.notes}</p>
+              </div>
+            )}
             {error ? (
               <p role="alert" className="feedback-error">{error}</p>
             ) : plan ? (
-              <div className="grid gap-4 xl:grid-cols-3">
+              <div className="grid items-start gap-3 xl:grid-cols-3">
                 {visibleWorkouts.map((workout, dayIndex) => {
                   const date = workout.scheduled_date
                   return (
-                    <article key={`${date}-${dayIndex}`} className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-muted)]">
-                      <div className="border-b border-[var(--border)] bg-[var(--surface)] p-4">
+                    <article key={`${date}-${dayIndex}`} className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-sm">
+                      <div className="border-b border-[var(--border)] p-3.5">
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-xs font-semibold text-[var(--accent)]">Day {workoutPage * workoutsPerPage + dayIndex + 1}</p>
                             <h3 className="mt-1 text-base font-semibold">{workout.name}</h3>
                             <p className="mt-1 text-xs text-[var(--text-muted)]">{formatWorkoutDate(date)}</p>
+                            {workout.notes && (
+                              <p className="mt-2 text-xs leading-5 text-[var(--text-muted)]">{workout.notes}</p>
+                            )}
                           </div>
                           <span className="rounded border border-[var(--border)] px-2 py-1 text-xs font-semibold text-[var(--text)]">
                             {formatShortDate(date)}
@@ -258,25 +293,63 @@ export function PlanPage({ accessToken, onUnauthorized, userId }: PlanPageProps)
                         </div>
                       </div>
                       <ol className="list-none divide-y divide-[var(--border)] p-0">
-                        {workout.exercises.map((exercise, index) => {
-                          const prescription = formatExercisePrescription(exercise)
-                          return (
-                            <li key={`${exercise.name}-${index}`} className="p-3.5">
-                              <div className="flex items-start gap-3">
-                                <span className="font-mono text-xs font-semibold text-[var(--accent)]">{String(index + 1).padStart(2, '0')}</span>
-                                <div className="min-w-0 flex-1">
-                                  <h4 className="break-words text-sm font-semibold leading-5">{exercise.name}</h4>
-                                  {prescription.length > 0 && (
-                                    <div className="mt-2 flex flex-wrap gap-2 text-xs font-medium text-[var(--text)]">
-                                      {prescription.map((detail) => <span key={detail}>{detail}</span>)}
-                                    </div>
-                                  )}
-                                  {exercise.notes && <p className="mt-2 text-xs leading-5 text-[var(--text-muted)]">{exercise.notes}</p>}
-                                </div>
+                        {workout.exercises.map((exercise, exerciseIndex) => (
+                          <li key={`${exercise.name}-${exerciseIndex}`}>
+                            <details className="group">
+                              <summary className="flex cursor-pointer list-none items-center gap-3 px-3.5 py-3 transition hover:bg-[var(--surface-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] [&::-webkit-details-marker]:hidden">
+                                <span className="font-mono text-[0.65rem] font-semibold text-[var(--accent)]">
+                                  {String(exerciseIndex + 1).padStart(2, '0')}
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-semibold leading-5 text-[var(--text-h)] group-open:overflow-visible group-open:whitespace-normal group-open:text-clip">
+                                    {exercise.name}
+                                  </span>
+                                  <span className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[0.7rem] text-[var(--text-muted)]">
+                                    {formatExerciseSummary(exercise).map((detail, detailIndex) => (
+                                      <span key={detail} className="flex items-center gap-1.5">
+                                        {detailIndex > 0 && <span aria-hidden="true" className="text-[var(--border-strong)]">/</span>}
+                                        {detail}
+                                      </span>
+                                    ))}
+                                  </span>
+                                </span>
+                                <ChevronDown
+                                  aria-hidden="true"
+                                  size={16}
+                                  className="shrink-0 text-[var(--text-muted)] transition-transform duration-200 group-open:rotate-180"
+                                />
+                              </summary>
+
+                              <div className="border-t border-[var(--border)] bg-[var(--surface-muted)] px-3.5 py-3">
+                                {exercise.sets.length > 0 ? (
+                                  <ol className="grid list-none gap-2 p-0">
+                                    {exercise.sets.map((set, setIndex) => {
+                                      const planned = formatPlannedSet(exercise, set)
+                                      return (
+                                        <li key={setIndex} className="grid grid-cols-[2.75rem_minmax(0,1fr)] gap-2 text-xs">
+                                          <span className="font-mono font-semibold text-[var(--text-muted)]">SET {String(setIndex + 1).padStart(2, '0')}</span>
+                                          <span className="min-w-0">
+                                            <span className="flex flex-wrap gap-x-2 gap-y-1 font-medium text-[var(--text)]">
+                                              {planned.map((detail) => <span key={detail}>{detail}</span>)}
+                                            </span>
+                                            {set.notes && <span className="mt-1 block leading-5 text-[var(--text-muted)]">{set.notes}</span>}
+                                          </span>
+                                        </li>
+                                      )
+                                    })}
+                                  </ol>
+                                ) : (
+                                  <p className="text-xs text-[var(--text-muted)]">No planned set details provided.</p>
+                                )}
+                                {exercise.notes && (
+                                  <p className="mt-3 border-t border-[var(--border)] pt-2.5 text-xs leading-5 text-[var(--text-muted)]">
+                                    {exercise.notes}
+                                  </p>
+                                )}
                               </div>
-                            </li>
-                          )
-                        })}
+                            </details>
+                          </li>
+                        ))}
                       </ol>
                     </article>
                   )

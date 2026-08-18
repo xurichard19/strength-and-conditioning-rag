@@ -5,7 +5,7 @@ import { ApiRequestError } from '../api/errors'
 import { fetchCachedSavedPlan } from '../api/workoutQueries'
 import { Button, EmptyState, IconButton, PageHeader, Panel } from '../components/ui'
 import { formatDateKey, toDateKey } from '../lib/dates'
-import type { Exercise, Workout } from '../types'
+import type { PlannedExercise, PlannedWorkout } from '../types/workouts'
 
 const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -34,13 +34,27 @@ function buildCalendarDates(displayDate: Date) {
   })
 }
 
-function groupExercisesByDate(workouts: Workout[]) {
-  return workouts.reduce<Record<string, Exercise[]>>((groupedExercises, workout) => {
+function groupExercisesByDate(workouts: PlannedWorkout[]) {
+  return workouts.reduce<Record<string, PlannedExercise[]>>((groupedExercises, workout) => {
     workout.exercises.forEach((exercise) => {
-      groupedExercises[exercise.date] = [...(groupedExercises[exercise.date] ?? []), exercise]
+      groupedExercises[workout.scheduled_date] = [
+        ...(groupedExercises[workout.scheduled_date] ?? []),
+        exercise,
+      ]
     })
     return groupedExercises
   }, {})
+}
+
+function formatRepetitions(exercise: PlannedExercise) {
+  const repetitions = exercise.sets.flatMap((exerciseSet) => (
+    exerciseSet.reps == null ? [] : [exerciseSet.reps]
+  ))
+  if (repetitions.length === 0) return null
+
+  const minimum = Math.min(...repetitions)
+  const maximum = Math.max(...repetitions)
+  return minimum === maximum ? String(minimum) : `${minimum}-${maximum}`
 }
 
 type CalendarPageProps = {
@@ -54,7 +68,7 @@ export function CalendarPage({ accessToken, onUnauthorized, userId }: CalendarPa
   const todayKey = toDateKey(today)
   const [displayDate, setDisplayDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
   const [selectedDate, setSelectedDate] = useState(todayKey)
-  const [workouts, setWorkouts] = useState<Workout[]>([])
+  const [workouts, setWorkouts] = useState<PlannedWorkout[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const exercisesByDate = useMemo(() => groupExercisesByDate(workouts), [workouts])
@@ -189,11 +203,11 @@ export function CalendarPage({ accessToken, onUnauthorized, userId }: CalendarPa
                 {selectedExercises.map((exercise, exerciseIndex) => (
                   <article key={`${exercise.name}-${exerciseIndex}`} className="py-4 first:pt-1 last:pb-1">
                     <h3 className="text-sm font-semibold">{exercise.name}</h3>
-                    {(exercise.sets != null || exercise.reps != null) && (
+                    {exercise.sets.length > 0 && (
                       <div className="mt-2 flex items-center gap-3 text-xs font-medium text-[var(--text)]">
                         <Clock3 aria-hidden="true" size={14} className="text-[var(--accent)]" />
-                        {exercise.sets != null && <span>{exercise.sets} sets</span>}
-                        {exercise.reps != null && <span>{exercise.reps} reps</span>}
+                        <span>{exercise.sets.length} sets</span>
+                        {formatRepetitions(exercise) && <span>{formatRepetitions(exercise)} reps</span>}
                       </div>
                     )}
                     {exercise.notes && <p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">{exercise.notes}</p>}

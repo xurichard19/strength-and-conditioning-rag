@@ -1,4 +1,4 @@
-import type { SavedPlan, WorkoutPlan } from '../types'
+import type { PlannedWorkoutPlan } from '../types/workouts'
 import { apiJson } from './client'
 
 export type PlanRequest = {
@@ -6,41 +6,44 @@ export type PlanRequest = {
   additional_context?: string
 }
 
+type PlanResponse = {
+  plan: PlannedWorkoutPlan
+}
+
+type SavePlanRequest = {
+  plan: PlannedWorkoutPlan
+}
+
+type SavePlanResponse = {
+  saved: boolean
+}
+
 export async function submitPlan(
   request: PlanRequest,
   accessToken?: string,
-): Promise<WorkoutPlan> {
-  return apiJson('/plan/generate', {
+): Promise<PlannedWorkoutPlan> {
+  const response = await apiJson<PlanResponse>('/plan/generate', {
     method: 'POST',
     accessToken,
     body: JSON.stringify(request),
   }, 'Plan request failed')
+  return response.plan
 }
 
 export async function savePlan(
-  plan: WorkoutPlan,
+  plan: PlannedWorkoutPlan,
   accessToken?: string,
 ): Promise<boolean> {
-  // temporary adapter until supabase and the saved-plan endpoints use WorkoutPlan
-  const savedPlan: SavedPlan = {
-    workouts: plan.workouts.map((workout) => ({
-      exercises: workout.exercises.map((exercise) => ({
-        date: workout.scheduled_date,
-        name: exercise.name,
-        sets: exercise.sets,
-        reps: exercise.reps,
-        notes: exercise.notes,
-      })),
-    })),
-  }
-
-  return apiJson('/plan/', {
+  const request: SavePlanRequest = { plan }
+  const response = await apiJson<SavePlanResponse>('/plan/', {
     method: 'POST',
     accessToken,
-    body: JSON.stringify(savedPlan),
+    body: JSON.stringify(request),
   }, 'Plan save failed')
+  return response.saved
 }
 
-export async function fetchSavedPlan(accessToken?: string): Promise<SavedPlan> {
-  return apiJson('/plan/', { accessToken }, 'Plan load failed')
+export async function fetchSavedPlan(accessToken?: string): Promise<PlannedWorkoutPlan> {
+  const response = await apiJson<PlanResponse>('/plan/', { accessToken }, 'Plan load failed')
+  return response.plan
 }

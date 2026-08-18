@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from langgraph.graph import MessagesState
 
-from app.ai.services.search import Source
+from app.contracts import Source
 
 
 @dataclass(frozen=True)
@@ -18,4 +18,3 @@ class ChatState(MessagesState):
     """state shared between chat workflow nodes"""
 
     sources: list[Source]
-    answer: str | None
