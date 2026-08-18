@@ -18,4 +18,3 @@ class ChatState(MessagesState):
     """state shared between chat workflow nodes"""
 
     sources: list[Source]
-    answer: str | None
