@@ -1,7 +1,9 @@
+# this file owns generic supabase rest requests and error handling
+
 import json
 from typing import Any
-from urllib.parse import urlencode
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 
