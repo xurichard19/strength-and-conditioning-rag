@@ -21,8 +21,8 @@ class FakeResponse:
 
 
 class UpdateRowsTests(unittest.TestCase):
-    @patch("app.db.supabase.urlopen")
-    @patch("app.db.supabase.get_settings")
+    @patch("app.db.supabase.transport.urlopen")
+    @patch("app.db.supabase.transport.get_settings")
     def test_patch_request_forwards_caller_auth_and_returns_representation(
         self,
         get_settings,
@@ -61,8 +61,8 @@ class UpdateRowsTests(unittest.TestCase):
         self.assertEqual(request.get_header("Prefer"), "return=representation")
         urlopen.assert_called_once_with(request, timeout=10)
 
-    @patch("app.db.supabase.urlopen")
-    @patch("app.db.supabase.get_settings")
+    @patch("app.db.supabase.transport.urlopen")
+    @patch("app.db.supabase.transport.get_settings")
     def test_patch_rejects_an_unexpected_data_api_response(self, get_settings, urlopen) -> None:
         get_settings.return_value = SimpleNamespace(
             supabase_url="https://project.supabase.co",
