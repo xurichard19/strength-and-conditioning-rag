@@ -14,6 +14,10 @@ class SupabaseDataError(Exception):
     pass
 
 
+# TODO(database-migration): add a generic call_rpc(function_name, payload, access_token)
+# transport here; domain modules should own rpc names, payloads, and result mapping.
+
+
 def select_rows(
     table: str,
     query_params: list[tuple[str, str]],

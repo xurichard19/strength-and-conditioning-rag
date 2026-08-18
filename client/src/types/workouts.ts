@@ -1,21 +1,3 @@
-// TODO(frontend-audit): remove these legacy saved-plan types after the plan
-// endpoints and supabase tables return the planned/completed workout contracts
-export type SavedExercise = {
-  date: string
-  name: string
-  reps?: number | string | null
-  sets?: number | null
-  notes?: string | null
-}
-
-export type SavedWorkout = {
-  exercises: SavedExercise[]
-}
-
-export type SavedPlan = {
-  workouts: SavedWorkout[]
-}
-
 export type PlannedExerciseSet = {
   reps?: number | null
   weight?: number | null
@@ -57,19 +39,37 @@ export type SetResult = {
   notes?: string | null
 }
 
-export type CompletedExerciseSet = {
+export type WorkoutSetRecord = {
   id: string
+  order_index: number
   planned: PlannedExerciseSet
   result?: SetResult | null
+  missed_at?: string | null
 }
 
-export type CompletedExercise = Omit<PlannedExercise, 'sets'> & {
+export type ExerciseRecord = Omit<PlannedExercise, 'sets'> & {
   id: string
+  order_index: number
+  sets: WorkoutSetRecord[]
+}
+
+export type WorkoutRecord = Omit<PlannedWorkout, 'exercises'> & {
+  id: string
+  version: number
+  completed_at?: string | null
+  superseded_at?: string | null
+  created_by_change_id?: string | null
+  superseded_by_change_id?: string | null
+  exercises: ExerciseRecord[]
+}
+
+export type CompletedExerciseSet = WorkoutSetRecord
+
+export type CompletedExercise = Omit<ExerciseRecord, 'sets'> & {
   sets: CompletedExerciseSet[]
 }
 
-export type CompletedWorkout = Omit<PlannedWorkout, 'exercises'> & {
-  id: string
+export type CompletedWorkout = Omit<WorkoutRecord, 'completed_at' | 'exercises'> & {
   completed_at: string
   exercises: CompletedExercise[]
 }
