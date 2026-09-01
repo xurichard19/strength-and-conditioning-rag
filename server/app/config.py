@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",
+            "http://localhost:8081",
             "https://arcelassist.vercel.app",
         ]
     )
