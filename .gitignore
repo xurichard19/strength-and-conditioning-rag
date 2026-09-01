@@ -5,6 +5,7 @@ secrets/
 
 data/
 *.pkl
+docs/
 
 __pycache__/
 .pytest_cache/
