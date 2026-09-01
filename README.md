@@ -1,16 +1,16 @@
 # Arcel: Strength & Conditioning Assistant
 
-note: web client is depreciated, mobile client currently in development
+note: web client depreciated, mobile client currently in development
 
 Arcel is a full-stack assistant for hybrid athletes building strength and conditioning programs around sport-specific demands. It answers conversational and research-backed training questions using more than 300 CC BY 4.0 research papers, live web search, and streamed LLM generation.
 
-The React/Vite frontend is deployed on Vercel, while the containerized FastAPI backend runs on Google Cloud Run behind Google Cloud Load Balancing and Cloud Armor. The backend uses LangGraph for request-level workflow orchestration, a LangChain search agent for evidence gathering, OpenAI for model inference, Chroma Cloud for research retrieval, Tavily for web search, Cohere for optional research-only reranking, and Supabase for authentication and application data.
+The Expo/React Native mobile client connects to the containerized FastAPI backend running on Google Cloud Run behind Google Cloud Load Balancing and Cloud Armor. The backend uses LangGraph for request-level workflow orchestration, a LangChain search agent for evidence gathering, OpenAI for model inference, Chroma Cloud for research retrieval, Tavily for web search, Cohere for reranking, and Supabase for authentication and application data.
 
 ---
 #### App Infrastructure
 ```mermaid
 flowchart TB
-    User(["User"]) --> FE["React frontend<br/>Vite and Vercel"]
+    User(["User"]) --> FE["React Native mobile client<br/>Expo"]
     FE --> Edge["Google Cloud edge<br/>Load Balancer and<br/>Cloud Armor"]
     Edge --> API["FastAPI backend<br/>Cloud Run"]
     API --> Workflows["LangGraph workflows<br/>chat and plan"]
@@ -66,5 +66,5 @@ run api server from /
 reindex with compose service
 >> docker compose run --rm index
 
-run client from /client
->> npm run dev
+run mobile client from /mobile
+>> npm start
