@@ -81,7 +81,7 @@ export function MarkdownText({ children }: { children: string }) {
 
 const styles = StyleSheet.create({
   container: { gap: 4 },
-  paragraph: { fontFamily: fonts.regular, fontSize: 15, lineHeight: 22, letterSpacing: -0.2 },
+  paragraph: { fontFamily: fonts.regular, fontSize: 14.5, lineHeight: 21, letterSpacing: -0.2 },
   heading: { fontFamily: fonts.bold, fontSize: 19, lineHeight: 24, marginTop: 4, marginBottom: 2 },
   smallHeading: { fontFamily: fonts.semibold, fontSize: 16, lineHeight: 21 },
   spacer: { height: 5 },

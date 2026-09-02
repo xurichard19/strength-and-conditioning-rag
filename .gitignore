@@ -3,7 +3,7 @@
 !.env.example
 secrets/
 
-data/
+/data/
 *.pkl
 docs/
 
