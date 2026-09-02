@@ -1,1 +1,0 @@
-create table chat_history ();

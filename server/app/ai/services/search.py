@@ -154,11 +154,11 @@ Search procedure:
 3. You may use rerank_research_results only on results returned by the research vector
    database tool. Never pass web results or a mixed research and web list to the
    reranker. Web results must remain outside every reranker call.
-4. If the results do not adequately address the query, perform up to two additional
-   search rounds. Use materially different queries that target the missing concepts;
+4. If the results do not adequately address the query, perform up to one additional
+   search round. Use a materially different query that targets the missing concepts;
    do not repeat an unsuccessful query with superficial wording changes.
 5. Stop searching once the evidence adequately covers the request or the additional
-   search rounds are exhausted.
+   search round is exhausted.
 
 Evidence policy:
 - Prefer relevant research documents over web results for stable scientific claims,
