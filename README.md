@@ -24,8 +24,6 @@ flowchart TB
     Index --> Chroma
 ```
 
-### AI Workflows
-
 #### Chat LangGraph Workflow
 
 ```mermaid
