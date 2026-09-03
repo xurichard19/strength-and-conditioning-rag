@@ -20,8 +20,7 @@ LangGraph node ─┘
 - `workouts.py`: planned and completed workout reads, date-range queries, and plan
   persistence.
 - `conversations.py`: conversation history and message persistence.
-- `__init__.py`: blank package marker. Domain modules import primitives directly
-  from `transport.py`.
+- `__init__.py`: convenience exports for the generic transport primitives.
 
 The domain files own table names, selected columns, query filters, ordering, and
 mapping Supabase rows into application contracts. Keep raw query tuples out of

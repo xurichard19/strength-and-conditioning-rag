@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import NotRequired
 
 from langgraph.graph import MessagesState
 
@@ -11,12 +12,11 @@ class WorkflowContext:
 
     user_id: str
     access_token: str
-    conversation_id: str
 
 
 class PlanState(MessagesState):
     """state shared between planning workflow nodes"""
 
-    prompt: str | None
-    sources: list[Source]
-    answer: PlannedWorkoutPlan | None
+    prompt: NotRequired[str]
+    sources: NotRequired[list[Source]]
+    answer: NotRequired[PlannedWorkoutPlan]
