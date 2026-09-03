@@ -1,33 +1,7 @@
-"""shared business models used across the backend
-
-model families:
-- shared types: small reusable choices used by the other models
-  - use cases: contract validation, api schemas, and structured model output
-
-- source models: research and web evidence returned by search
-  - use cases: search service results, workflow evidence, and chat citations
-
-- profile models: user preferences and training profile data
-  - use cases: profile endpoints, supabase profile mapping, and workflow context
-
-- planned workout models: clean workout prescriptions before they are saved
-  - use cases: plan langgraph output, plan api responses, previews, and save requests
-
-- workout result models: what the user actually did for a set
-  - use cases: workout logging, set updates, performance history, and replanning context
-
-- persisted workout models: saved workouts with ids, versions, and lifecycle data
-  - use cases: supabase row mapping, calendar reads, history loads, and version checks
-
-- completed workout models: persisted workouts that have been marked complete
-  - use cases: completed workout responses, training history, and performance analysis
-  
-- planning workflow models: normalized commands and proposals used to change plans
-  - use cases: workflow entry adapters, plan graph input/output, and rpc handoff
-"""
+# shared business models used across the backend
 
 import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -35,17 +9,28 @@ from pydantic import BaseModel, Field, model_validator
 
 #---------------shared types-----------
 
-PrimaryGoal = Literal[
-    "balanced_hybrid",
-    "strength",
-    "endurance",
-    "conditioning",
-    "event_preparation",
-    "general_fitness",
+TrainingPlanStatus = Literal["draft", "active", "archived", "cancelled"]
+PlanningChangeStatus = Literal[
+    "pending",
+    "proposal",
+    "accepted",
+    "rejected",
+    "processing",
+    "applied",
+    "no_change",
+    "conflict",
+    "failed",
+    "cancelled",
 ]
-ExperienceLevel = Literal["new", "intermediate", "experienced"]
-EquipmentAccess = Literal["full_gym", "home_gym", "minimal_equipment", "bodyweight_only"]
-SessionDurationMinutes = Literal[30, 45, 60, 75, 90]
+WorkoutModality = Literal["strength", "endurance", "mixed", "rest"]
+WorkoutStatus = Literal["planned", "in_progress", "completed", "skipped", "moved", "cancelled"]
+ProtectedQuality = Literal["intensity", "frequency", "duration"]
+ExerciseKind = Literal["load", "bodyweight", "time"]
+ExerciseRole = Literal["primary", "secondary", "accessory"]
+SetResultStatus = Literal["pending", "completed", "missed", "skipped"]
+MessageRole = Literal["user", "assistant", "system", "tool"]
+SportsWorkoutIntensity = Literal["easy", "moderate", "hard", "variable"]
+SportsWorkoutStatus = Literal["planned", "completed", "cancelled"]
 
 
 #---------------source models-----------
@@ -73,16 +58,59 @@ class Source(BaseModel):
         return self
 
 
-#---------------profile models-----------
-
-class UserProfile(BaseModel):
+class ProfileRecord(BaseModel):
+    id: UUID
+    email: str | None = None
     display_name: str | None = Field(default=None, min_length=1, max_length=60)
-    primary_goal: PrimaryGoal | None = None
-    experience_level: ExperienceLevel | None = None
-    training_days_per_week: int | None = Field(default=None, ge=2, le=7)
-    session_duration_minutes: SessionDurationMinutes | None = None
-    equipment_access: EquipmentAccess | None = None
-    onboarding_completed_at: datetime.datetime | None = None
+    timezone: str = Field(default="UTC", min_length=1)
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
+class OnboardingResponseRecord(BaseModel):
+    user_id: UUID
+    schema_version: int = Field(default=1, gt=0)
+    answers: dict[str, Any] = Field(default_factory=dict)
+    completed_at: datetime.datetime | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
+class TrainingPlanRecord(BaseModel):
+    id: UUID
+    user_id: UUID
+    name: str = Field(min_length=1)
+    status: TrainingPlanStatus = "active"
+    goal: str | None = None
+    starts_on: datetime.date
+    target_event_date: datetime.date | None = None
+    horizon_days: int = Field(default=14, gt=0)
+    refresh_interval_days: int = Field(default=7, gt=0)
+    planned_through: datetime.date | None = None
+    next_refresh_at: datetime.datetime | None = None
+    strategy: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    archived_at: datetime.datetime | None = None
+
+
+class PlanningChangeRecord(BaseModel):
+    id: UUID
+    user_id: UUID
+    plan_id: UUID
+    trigger: str = Field(min_length=1)
+    operation: str = Field(min_length=1)
+    effective_from: datetime.date
+    horizon_end: datetime.date | None = None
+    status: PlanningChangeStatus = "pending"
+    idempotency_key: str = Field(min_length=1)
+    command_payload: dict[str, Any] = Field(default_factory=dict)
+    result_payload: dict[str, Any] = Field(default_factory=dict)
+    generation_metadata: dict[str, Any] = Field(default_factory=dict)
+    attempts: int = Field(default=0, ge=0)
+    error: str | None = None
+    requested_at: datetime.datetime
+    applied_at: datetime.datetime | None = None
 
 
 #---------------planned workout models-----------
@@ -91,24 +119,32 @@ class PlannedExerciseSet(BaseModel):
     reps: int | None = Field(default=None, gt=0)
     weight: float | None = Field(default=None, ge=0)
     distance: float | None = Field(default=None, gt=0)
-    duration_minutes: float | None = Field(default=None, gt=0)
+    duration_seconds: int | None = Field(default=None, gt=0)
     target_rpe: float | None = Field(default=None, ge=1, le=10)
     rest_seconds: int | None = Field(default=None, ge=0)
     notes: str | None = None
 
 
 class PlannedExercise(BaseModel):
-    name: str
+    name: str = Field(min_length=1)
+    kind: ExerciseKind
+    role: ExerciseRole = "secondary"
     reps_per_side: bool = False
     weight_unit: Literal["kg", "lb"] | None = None
     distance_unit: Literal["m", "km", "mi"] | None = None
+    rationale: str | None = None
+    form_notes: str | None = None
     sets: list[PlannedExerciseSet] = Field(default_factory=list)
     notes: str | None = None
 
 
 class PlannedWorkout(BaseModel):
-    name: str
+    name: str = Field(min_length=1)
     scheduled_date: datetime.date
+    modality: WorkoutModality
+    planned_duration_minutes: int | None = Field(default=None, ge=0)
+    intent: str | None = None
+    protected_quality: ProtectedQuality | None = None
     exercises: list[PlannedExercise]
     notes: str | None = None
 
@@ -118,99 +154,105 @@ class PlannedWorkoutPlan(BaseModel):
     notes: str | None = None
 
 
-#---------------workout result models-----------
-
-class SetResult(BaseModel):
-    actual_reps: int | None = Field(default=None, ge=0)
-    actual_weight: float | None = Field(default=None, ge=0)
-    actual_distance: float | None = Field(default=None, ge=0)
-    actual_duration_minutes: float | None = Field(default=None, ge=0)
-    actual_rpe: float | None = Field(default=None, ge=1, le=10)
-    completed_at: datetime.datetime | None = None
-    notes: str | None = None
-
-
 #---------------persisted workout models-----------
 
 class ExerciseSetRecord(BaseModel):
     id: UUID
+    exercise_id: UUID
     order_index: int = Field(ge=0)
-    planned: PlannedExerciseSet
-    result: SetResult | None = None
+    planned_reps: int | None = Field(default=None, gt=0)
+    planned_weight: float | None = Field(default=None, ge=0)
+    planned_distance: float | None = Field(default=None, gt=0)
+    planned_duration_seconds: int | None = Field(default=None, gt=0)
+    planned_rpe: float | None = Field(default=None, ge=1, le=10)
+    planned_rest_seconds: int | None = Field(default=None, ge=0)
+    planned_notes: str | None = None
+    actual_reps: int | None = Field(default=None, ge=0)
+    actual_weight: float | None = Field(default=None, ge=0)
+    actual_distance: float | None = Field(default=None, ge=0)
+    actual_duration_seconds: int | None = Field(default=None, ge=0)
+    actual_rpe: float | None = Field(default=None, ge=1, le=10)
+    result_status: SetResultStatus = "pending"
+    result_notes: str | None = None
+    completed_at: datetime.datetime | None = None
     missed_at: datetime.datetime | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
 
 
-class ExerciseRecord(PlannedExercise):
+class ExerciseRecord(BaseModel):
     id: UUID
+    workout_id: UUID
     order_index: int = Field(ge=0)
+    name: str = Field(min_length=1)
+    kind: ExerciseKind
+    role: ExerciseRole
+    reps_per_side: bool = False
+    weight_unit: Literal["kg", "lb"] | None = None
+    distance_unit: Literal["m", "km", "mi"] | None = None
+    rationale: str | None = None
+    form_notes: str | None = None
+    notes: str | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
     sets: list[ExerciseSetRecord] = Field(default_factory=list)
 
 
-class WorkoutRecord(PlannedWorkout):
+class WorkoutRecord(BaseModel):
     id: UUID
+    user_id: UUID
+    plan_id: UUID
+    replaces_workout_id: UUID | None = None
+    scheduled_date: datetime.date
+    name: str = Field(min_length=1)
+    modality: WorkoutModality
+    planned_duration_minutes: int | None = Field(default=None, ge=0)
+    intent: str | None = None
+    protected_quality: ProtectedQuality | None = None
+    status: WorkoutStatus = "planned"
     version: int = Field(ge=1)
+    notes: str | None = None
+    started_at: datetime.datetime | None = None
     completed_at: datetime.datetime | None = None
+    skipped_at: datetime.datetime | None = None
     superseded_at: datetime.datetime | None = None
     created_by_change_id: UUID | None = None
     superseded_by_change_id: UUID | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
     exercises: list[ExerciseRecord]
 
 
-#---------------completed workout models-----------
-
-class CompletedExerciseSet(ExerciseSetRecord):
-    pass
-
-
-class CompletedExercise(ExerciseRecord):
-    sets: list[CompletedExerciseSet] = Field(default_factory=list)
-
-
-class CompletedWorkout(WorkoutRecord):
-    completed_at: datetime.datetime
-    exercises: list[CompletedExercise]
+class ConversationRecord(BaseModel):
+    id: UUID
+    user_id: UUID
+    title: str | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    archived_at: datetime.datetime | None = None
 
 
-#---------------planning workflow models-----------
-# under dev, dont use
-
-PlanningTrigger = Literal[
-    "plan_page",
-    "chat",
-    "readiness",
-    "workout_result",
-    "missed_workout",
-    "profile_update",
-]
-PlanningOperation = Literal[
-    "create_plan",
-    "replace_plan",
-    "adjust_workout",
-    "adjust_future",
-]
-PlanningResultStatus = Literal[
-    "proposal",
-    "no_change",
-    "conflict",
-    "rejected",
-]
+class MessageRecord(BaseModel):
+    id: UUID
+    conversation_id: UUID
+    user_id: UUID
+    role: MessageRole
+    content: str = Field(min_length=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime.datetime
 
 
-class WorkoutVersionTarget(BaseModel):
-    workout_id: UUID
-    expected_version: int = Field(ge=1)
-
-
-class PlanningCommand(BaseModel):
-    trigger: PlanningTrigger
-    operation: PlanningOperation
-    effective_date: datetime.date
-    instructions: str = Field(min_length=1)
-    targets: list[WorkoutVersionTarget] = Field(default_factory=list)
-
-
-class PlanningResult(BaseModel):
-    status: PlanningResultStatus
-    proposed_plan: PlannedWorkoutPlan | None = None
-    targets: list[WorkoutVersionTarget] = Field(default_factory=list)
+class SportsWorkoutRecord(BaseModel):
+    id: UUID
+    user_id: UUID
+    sport: str = Field(min_length=1)
+    scheduled_date: datetime.date
+    start_time: datetime.time | None = None
+    planned_duration_minutes: int | None = Field(default=None, gt=0)
+    intensity: SportsWorkoutIntensity | None = None
+    status: SportsWorkoutStatus = "planned"
     notes: str | None = None
+    completed_at: datetime.datetime | None = None
+    cancelled_at: datetime.datetime | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime

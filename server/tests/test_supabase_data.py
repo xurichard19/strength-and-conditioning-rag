@@ -1,9 +1,18 @@
 import json
 import unittest
-from types import SimpleNamespace
+from io import BytesIO
+from urllib.error import HTTPError
 from unittest.mock import patch
 
-from app.db.supabase import SupabaseDataError, update_rows
+from app.db.supabase.transport import (
+    SupabaseDataError,
+    call_rpc,
+    delete_rows,
+    insert_rows,
+    select_rows,
+    update_rows,
+    upsert_rows,
+)
 
 
 class FakeResponse:
@@ -22,16 +31,14 @@ class FakeResponse:
 
 class UpdateRowsTests(unittest.TestCase):
     @patch("app.db.supabase.transport.urlopen")
-    @patch("app.db.supabase.transport.get_settings")
+    @patch("app.db.supabase.transport.settings")
     def test_patch_request_forwards_caller_auth_and_returns_representation(
         self,
-        get_settings,
+        settings,
         urlopen,
     ) -> None:
-        get_settings.return_value = SimpleNamespace(
-            supabase_url="https://project.supabase.co/",
-            supabase_publishable_key="publishable-key",
-        )
+        settings.supabase_url = "https://project.supabase.co/"
+        settings.supabase_publishable_key = "publishable-key"
         returned_profile = {"display_name": "Ada"}
         urlopen.return_value = FakeResponse([returned_profile])
 
@@ -62,12 +69,10 @@ class UpdateRowsTests(unittest.TestCase):
         urlopen.assert_called_once_with(request, timeout=10)
 
     @patch("app.db.supabase.transport.urlopen")
-    @patch("app.db.supabase.transport.get_settings")
-    def test_patch_rejects_an_unexpected_data_api_response(self, get_settings, urlopen) -> None:
-        get_settings.return_value = SimpleNamespace(
-            supabase_url="https://project.supabase.co",
-            supabase_publishable_key="publishable-key",
-        )
+    @patch("app.db.supabase.transport.settings")
+    def test_patch_rejects_an_unexpected_data_api_response(self, settings, urlopen) -> None:
+        settings.supabase_url = "https://project.supabase.co"
+        settings.supabase_publishable_key = "publishable-key"
         urlopen.return_value = FakeResponse({"message": "unexpected"})
 
         with self.assertRaises(SupabaseDataError):
@@ -77,6 +82,84 @@ class UpdateRowsTests(unittest.TestCase):
                 [("id", "eq.user-123")],
                 "caller-jwt",
             )
+
+
+class TransportTests(unittest.TestCase):
+    @patch("app.db.supabase.transport.urlopen")
+    @patch("app.db.supabase.transport.settings")
+    def test_rpc_uses_rpc_path(self, settings, urlopen) -> None:
+        settings.supabase_url = "https://project.supabase.co"
+        settings.supabase_publishable_key = "publishable-key"
+        urlopen.return_value = FakeResponse({"status": "applied"})
+
+        result = call_rpc("apply_planning_change", {"id": "123"}, "caller-jwt")
+
+        self.assertEqual(result, {"status": "applied"})
+        request = urlopen.call_args.args[0]
+        self.assertEqual(
+            request.full_url,
+            "https://project.supabase.co/rest/v1/rpc/apply_planning_change",
+        )
+
+    @patch("app.db.supabase.transport.urlopen")
+    @patch("app.db.supabase.transport.settings")
+    def test_mutations_return_rows(self, settings, urlopen) -> None:
+        settings.supabase_url = "https://project.supabase.co"
+        settings.supabase_publishable_key = "publishable-key"
+        row = {"id": "123"}
+        urlopen.side_effect = [FakeResponse([row]), FakeResponse([row]), FakeResponse([row])]
+
+        self.assertEqual(insert_rows("profiles", row, "caller-jwt"), [row])
+        self.assertEqual(upsert_rows("profiles", row, "caller-jwt", "id"), [row])
+        self.assertEqual(
+            delete_rows("profiles", [("id", "eq.123")], "caller-jwt"),
+            [row],
+        )
+
+        insert_request, upsert_request, delete_request = [
+            call.args[0] for call in urlopen.call_args_list
+        ]
+        self.assertEqual(insert_request.get_header("Prefer"), "return=representation")
+        self.assertEqual(
+            upsert_request.get_header("Prefer"),
+            "resolution=merge-duplicates,return=representation",
+        )
+        self.assertEqual(delete_request.get_method(), "DELETE")
+        self.assertEqual(delete_request.get_header("Prefer"), "return=representation")
+
+    @patch("app.db.supabase.transport.urlopen")
+    @patch("app.db.supabase.transport.settings")
+    def test_http_errors_have_structured_fields(self, settings, urlopen) -> None:
+        settings.supabase_url = "https://project.supabase.co"
+        settings.supabase_publishable_key = "publishable-key"
+        urlopen.side_effect = HTTPError(
+            "https://project.supabase.co/rest/v1/profiles",
+            409,
+            "conflict",
+            {},
+            BytesIO(b'{"message":"Duplicate Row","code":"23505"}'),
+        )
+
+        with self.assertRaises(SupabaseDataError) as caught:
+            insert_rows("profiles", {"id": "123"}, "caller-jwt")
+
+        self.assertEqual(str(caught.exception), "duplicate row")
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(caught.exception.code, "23505")
+
+    @patch("app.db.supabase.transport.urlopen")
+    def test_table_and_rpc_names_are_validated(self, urlopen) -> None:
+        with self.assertRaisesRegex(ValueError, "invalid supabase resource name"):
+            select_rows("../profiles", [], "caller-jwt")
+        with self.assertRaisesRegex(ValueError, "invalid supabase resource name"):
+            call_rpc("apply-change", {}, "caller-jwt")
+        urlopen.assert_not_called()
+
+    def test_update_and_delete_require_filters(self) -> None:
+        with self.assertRaisesRegex(ValueError, "update filters are required"):
+            update_rows("profiles", {}, [], "caller-jwt")
+        with self.assertRaisesRegex(ValueError, "delete filters are required"):
+            delete_rows("profiles", [], "caller-jwt")
 
 
 if __name__ == "__main__":
