@@ -92,13 +92,13 @@ class TransportTests(unittest.TestCase):
         settings.supabase_publishable_key = "publishable-key"
         urlopen.return_value = FakeResponse({"status": "applied"})
 
-        result = call_rpc("apply_planning_change", {"id": "123"}, "caller-jwt")
+        result = call_rpc("replace_planned_workouts", {"id": "123"}, "caller-jwt")
 
         self.assertEqual(result, {"status": "applied"})
         request = urlopen.call_args.args[0]
         self.assertEqual(
             request.full_url,
-            "https://project.supabase.co/rest/v1/rpc/apply_planning_change",
+            "https://project.supabase.co/rest/v1/rpc/replace_planned_workouts",
         )
 
     @patch("app.db.supabase.transport.urlopen")

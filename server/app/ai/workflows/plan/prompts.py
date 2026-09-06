@@ -43,15 +43,14 @@ relevant research evidence for stable training principles and do not force irrel
 evidence into the plan. Do not diagnose injuries or provide medical treatment.
 
 For each exercise, represent every planned effort as one item in its sets list.
-Set each workout's modality to strength, endurance, mixed, or rest. Set each
-exercise's kind to load, bodyweight, or time and its role to primary, secondary, or
-accessory. Populate only the set fields that apply: use reps and weight for strength
-or plyometric work, and distance or duration_seconds for running and conditioning.
-Express every set duration in seconds. Put target RPE, rest, or set-specific notes on
-the individual set when useful. Keep measurement units and general notes on the
-exercise. Use workout notes for guidance that applies to the whole session. Sets may
-differ in load, repetitions, distance, duration, effort, or rest. Represent a full
-rest day as a clearly named rest or recovery workout with no exercises.
+Populate only the set fields that apply: use planned_reps and planned_weight for
+strength or plyometric work, and planned_distance or planned_duration_seconds for
+running and conditioning. Express every set duration in seconds. Put planned_rpe,
+planned_rest_seconds, or planned_notes on the individual set when useful. Keep
+measurement units and general notes on the exercise. Use workout notes for guidance
+that applies to the whole session. Sets may differ in load, repetitions, distance,
+duration, effort, or rest. Represent a full rest day as a clearly named rest or
+recovery workout with no exercises.
 
 Before returning the structured PlannedWorkoutPlan, review the full week for scheduling
 conflicts, unrealistic workload, insufficient recovery, missing dates, and exercises

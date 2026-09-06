@@ -63,17 +63,15 @@ erDiagram
 
     AUTH_USERS ||--|| PROFILES : owns
     PROFILES ||--o| ONBOARDING_RESPONSES : completes
-    PROFILES ||--o{ TRAINING_PLANS : owns
-    PROFILES ||--o{ PLANNING_CHANGES : owns
-    TRAINING_PLANS ||--o{ PLANNING_CHANGES : records
-    TRAINING_PLANS ||--o{ WORKOUTS : schedules
-    PLANNING_CHANGES o|--o{ WORKOUTS : versions
+    PROFILES ||--o{ PLANNING_CHANGES : records
+    PROFILES ||--o{ WORKOUTS : schedules
+    PLANNING_CHANGES ||--o{ WORKOUTS : creates
+    PLANNING_CHANGES o|--o{ WORKOUTS : supersedes
+    PLANNING_CHANGES o|--o{ PLANNING_CHANGES : reverts
     WORKOUTS ||--o{ EXERCISES : contains
     EXERCISES ||--o{ EXERCISE_SETS : contains
-    PROFILES ||--o{ CONVERSATIONS : owns
     PROFILES ||--o{ MESSAGES : owns
     PROFILES ||--o{ SPORTS_WORKOUTS : schedules
-    CONVERSATIONS ||--o{ MESSAGES : contains
 
     AUTH_USERS {
         uuid id PK
@@ -90,69 +88,36 @@ erDiagram
 
     ONBOARDING_RESPONSES {
         uuid user_id PK,FK
-        integer schema_version
         jsonb answers
         timestamptz completed_at
         timestamptz created_at
         timestamptz updated_at
     }
 
-    TRAINING_PLANS {
-        uuid id PK
-        uuid user_id FK
-        text name
-        text status
-        text goal
-        date starts_on
-        date target_event_date
-        smallint horizon_days
-        smallint refresh_interval_days
-        date planned_through
-        timestamptz next_refresh_at
-        jsonb strategy
-        timestamptz created_at
-        timestamptz updated_at
-        timestamptz archived_at
-    }
-
     PLANNING_CHANGES {
         uuid id PK
         uuid user_id FK
-        uuid plan_id FK
-        text trigger
-        text operation
+        text reason
         date effective_from
         date horizon_end
-        text status
-        text idempotency_key UK
-        jsonb command_payload
-        jsonb result_payload
-        jsonb generation_metadata
-        integer attempts
-        text error
-        timestamptz requested_at
-        timestamptz applied_at
+        uuid reverts_change_id FK
+        timestamptz created_at
     }
 
     WORKOUTS {
         uuid id PK
         uuid user_id FK
-        uuid plan_id FK
-        uuid replaces_workout_id FK
+        uuid created_by_change_id FK
         date scheduled_date
         text name
-        text modality
         integer planned_duration_minutes
         text intent
-        text protected_quality
         text status
-        integer version
         text notes
         timestamptz started_at
         timestamptz completed_at
         timestamptz skipped_at
         timestamptz superseded_at
-        uuid created_by_change_id FK
         uuid superseded_by_change_id FK
         timestamptz created_at
         timestamptz updated_at
@@ -163,13 +128,9 @@ erDiagram
         uuid workout_id FK
         integer order_index
         text name
-        text kind
-        text role
         boolean reps_per_side
         text weight_unit
         text distance_unit
-        text rationale
-        text form_notes
         text notes
         timestamptz created_at
         timestamptz updated_at
@@ -194,27 +155,15 @@ erDiagram
         text result_status
         text result_notes
         timestamptz completed_at
-        timestamptz missed_at
         timestamptz created_at
         timestamptz updated_at
-    }
-
-    CONVERSATIONS {
-        uuid id PK
-        uuid user_id FK
-        text title
-        timestamptz created_at
-        timestamptz updated_at
-        timestamptz archived_at
     }
 
     MESSAGES {
         uuid id PK
-        uuid conversation_id FK
         uuid user_id FK
         text role
         text content
-        jsonb metadata
         timestamptz created_at
     }
 

@@ -17,10 +17,12 @@ LangGraph node ─┘
   Supabase errors. It does not know domain RPC names or payload shapes.
 - `profiles.py`: profile reads, recovery for an unexpectedly missing profile, and
   allowed profile updates.
-- `workouts.py`: planned and completed workout reads, date-range queries, and plan
-  persistence.
-- `conversations.py`: conversation history and message persistence.
-- `__init__.py`: convenience exports for the generic transport primitives.
+- `onboarding_responses.py`: onboarding-answer reads and writes.
+- `planning_changes.py`: change history reads and atomic rollback.
+- `workouts.py`: current calendar, history, replanning reads, and atomic replacement.
+- `sports_workouts.py`: user-entered sports constraints and their lifecycle.
+- `messages.py`: user message history and persistence.
+- `__init__.py`: public convenience exports for transport primitives and the atomic workout RPC.
 
 The domain files own table names, selected columns, query filters, ordering, and
 mapping Supabase rows into application contracts. Keep raw query tuples out of
@@ -40,58 +42,26 @@ routers and workflow nodes.
 5. Add a unit test that mocks `app.db.supabase.transport` and asserts the user
    filter, date boundaries, ordering, and output mapping.
 
-Example implementation shape:
-
-```python
-from app.contracts import WorkoutRecord
-from app.db.supabase.transport import select_rows
-
-
-def get_workouts_in_range(
-    user_id,
-    access_token,
-    start_date,
-    end_date,
-) -> list[WorkoutRecord]:
-    rows = select_rows(
-        "workouts",
-        [
-            (
-                "select",
-                "id,version,name,scheduled_date,completed_at,superseded_at,notes,"
-                "exercises(id,order_index,name,reps_per_side,weight_unit,distance_unit,notes,"
-                "exercise_sets(id,order_index,planned_reps,planned_weight,planned_distance,"
-                "planned_duration_minutes,planned_rpe,planned_rest_seconds,planned_notes,"
-                "actual_reps,actual_weight,actual_distance,actual_duration_minutes,actual_rpe,"
-                "completed_at,missed_at,result_notes))",
-            ),
-            ("user_id", f"eq.{user_id}"),
-            ("scheduled_date", f"gte.{start_date.isoformat()}"),
-            ("scheduled_date", f"lte.{end_date.isoformat()}"),
-            ("superseded_at", "is.null"),
-            ("order", "scheduled_date.asc,id.asc"),
-        ],
-        access_token,
-    )
-    return map_rows_to_workout_records(rows)
-```
-
-Use the database schema you settle on for the final column list and mapper. The
-current skeletons deliberately raise `NotImplementedError` so they cannot be wired
-accidentally before that work is complete.
+`workouts.get_workouts_in_range` is the reference implementation for nested table
+selection, deterministic ordering, ownership scoping, and contract mapping.
 
 ## Atomic Mutations And RPC
 
-Multi-table workout changes must use one Supabase RPC rather than a sequence of REST
-inserts. The database function should verify ownership and expected versions,
-deduplicate the idempotency key, supersede affected workouts, insert replacement
-workouts/exercises/sets, record the planning change, and commit atomically.
+Multi-table workout changes use one Supabase RPC rather than a sequence of REST
+inserts. `replace_planned_workouts` records why the schedule changed, verifies
+ownership and the expected current workout IDs, supersedes the affected rows,
+inserts their replacements and nested exercises/sets, and commits everything
+atomically. A caller-created change ID makes retries idempotent.
+
+`rollback_planning_change` records a rollback, supersedes the unwanted current
+workouts, and copies the prior workout snapshot into new current rows. Rollback is
+limited to the latest overlapping change and rejects workouts that have started.
 
 The generic `call_rpc(function_name, payload, access_token)` HTTP helper belongs in
 `transport.py`. The domain module owns the concrete function name, typed input
-mapping, and conversion of the RPC response into application contracts. For example,
-`workouts.py` may call an `apply_planning_change` RPC, but routers and graph nodes
-must not call that transport helper directly.
+mapping, and conversion of the RPC response into application contracts. Routers and
+graph nodes call `workouts.replace_planned_workouts`; they do not call the generic
+transport helper directly.
 
 Do not keep a database transaction open while a LangGraph or model call runs. The
 graph creates a proposal first; the authenticated application service submits the
