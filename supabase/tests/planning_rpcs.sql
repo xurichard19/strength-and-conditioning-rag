@@ -174,4 +174,39 @@ begin
   raise notice 'planning rpc integration checks passed';
 end;
 $$;
+
+reset role;
+do $$
+declare change_to_delete uuid; blocked boolean := false;
+begin
+  if has_table_privilege('authenticated', 'public.planning_changes', 'insert')
+    or has_table_privilege('authenticated', 'public.planning_changes', 'update')
+    or has_table_privilege('authenticated', 'public.planning_changes', 'delete') then
+    raise exception 'authenticated clients can mutate planning history';
+  end if;
+  select created_by_change_id into strict change_to_delete from public.workouts limit 1;
+  begin
+    delete from public.planning_changes where id = change_to_delete;
+  exception when foreign_key_violation then blocked := true;
+  end;
+  if not blocked then raise exception 'populated history can be deleted independently'; end if;
+end;
+$$;
+
+-- Account deletion must cascade through the whole graph; history deletion must not.
+delete from auth.users where id = '11111111-1111-4111-8111-111111111111';
+do $$
+begin
+  if exists(select 1 from public.profiles)
+    or exists(select 1 from public.workouts)
+    or exists(select 1 from public.exercises)
+    or exists(select 1 from public.exercise_sets)
+    or exists(select 1 from public.planning_changes)
+    or exists(select 1 from public.planning_change_workouts)
+    or exists(select 1 from public.replan_jobs) then
+    raise exception 'account cascade left orphaned rows';
+  end if;
+  raise notice 'history permissions and account cascade checks passed';
+end;
+$$;
 rollback;

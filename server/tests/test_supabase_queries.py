@@ -10,7 +10,7 @@ from pydantic import SecretStr, ValidationError
 
 from app.contracts import (
     ClaimedReplanJob, ExerciseSetResult, PlannedExercise, PlannedExerciseSet,
-    PlannedWorkout, ProfileUpdate, SportsWorkoutUpdate,
+    PlannedWorkout, PlannedWorkoutPlan, ProfileUpdate, SportsWorkoutUpdate,
 )
 from app.db.supabase import calendar, messages, onboarding_responses, planning_changes
 from app.db.supabase import planning_schedules, profiles, replan_jobs, sports_workouts, workouts
@@ -44,6 +44,18 @@ def schedule_row(revision=1):
 
 
 class HandlerTests(unittest.TestCase):
+    def test_planning_contracts_reject_unknown_fields(self):
+        for model, payload in (
+            (PlannedExerciseSet, {'reps': 5}),
+            (PlannedExercise, {'name': 'squat', 'rationale': 'old field'}),
+            (PlannedWorkout, {'name': 'strength', 'scheduled_date': DAY, 'exercises': [], 'intent': 'old field'}),
+            (PlannedWorkoutPlan, {'workouts': [], 'legacy': True}),
+        ):
+            with self.subTest(model=model):
+                with self.assertRaises(ValidationError):
+                    model.model_validate(payload)
+        self.assertEqual(PlannedExerciseSet(planned_reps=5).planned_reps, 5)
+
     def setUp(self):
         self.http = patch('app.db.supabase.transport.urlopen').start()
         self.settings = patch('app.db.supabase.transport.settings').start()

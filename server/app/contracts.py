@@ -48,6 +48,8 @@ class Source(BaseModel):
 # -------------------- plan workflow output --------------------
 
 class PlannedExerciseSet(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     planned_reps: int | None = Field(default=None, gt=0)
     planned_weight: float | None = Field(default=None, ge=0)
     planned_distance: float | None = Field(default=None, gt=0)
@@ -58,6 +60,8 @@ class PlannedExerciseSet(BaseModel):
 
 
 class PlannedExercise(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1)
     reps_per_side: bool = False
     weight_unit: Literal["kg", "lb"] | None = None
@@ -67,6 +71,8 @@ class PlannedExercise(BaseModel):
 
 
 class PlannedWorkout(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1)
     scheduled_date: datetime.date
     exercises: list[PlannedExercise]
@@ -74,6 +80,8 @@ class PlannedWorkout(BaseModel):
 
 
 class PlannedWorkoutPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     workouts: list[PlannedWorkout]
     notes: str | None = None
 

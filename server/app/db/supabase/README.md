@@ -67,3 +67,62 @@ or out-of-order requests. See [Planning RPCs](../../../../supabase/RPCS.md).
 
 These handlers do not start a scheduler or worker. Existing routes and workflow
 call sites still need migration to this interface.
+
+## Handoff: failures and caller responsibilities
+
+The function docstrings are the operation-level reference: they describe input
+semantics, side effects, return ordering, and retry behavior. The rules below
+apply across modules.
+
+- Authenticate first. Derive user IDs from the verified session or trusted job,
+  not a client-supplied owner field. Backend credentials bypass RLS; explicit
+  owner filters do not replace authorization.
+- Construct the typed write inputs before calling handlers. Planning output
+  contracts reject unknown fields, including old names such as `reps` in place
+  of `planned_reps`. Do not catch validation errors and substitute empty plans.
+- Use the athlete's timezone to choose calendar dates. Range handlers compare
+  dates as supplied; they do not convert UTC timestamps into local dates.
+- `ValueError` indicates local validation such as an invalid UUID, empty patch,
+  or reversed date range. Pydantic `ValidationError` can indicate invalid write
+  input or an unexpected database response; distinguish those at the call site.
+- `SupabaseDataError` carries `status_code` and `code` when available. RPC 400
+  errors describe invalid arguments; 404 means required state is missing; 409
+  means a revision, lease, request key, or history-order conflict. Read the
+  operation-specific error and reload state rather than treating every 409 as
+  a temporary network failure.
+- A network timeout can occur after a successful commit. Publication is
+  deduplicated by retained job ID and adjustment enqueue by retained request key.
+  Message/sports inserts have no such key. Undo/redo and result writes use
+  expected revisions: inspect current state before retrying an uncertain write.
+- `None` from a single-record reader means no visible match, not necessarily
+  that the ID does not exist. An empty list is a successful empty read. In
+  contrast, `None` from job claiming means no claim was issued on that pass;
+  it can also follow retirement of an expired/exhausted job.
+- Each handler is synchronous. `asyncio.to_thread` avoids blocking an async
+  event loop, but cancelling that await does not guarantee the database write
+  stopped. There is no transaction spanning multiple handler calls.
+
+### Worker integration checklist
+
+1. Configure a schedule explicitly during setup/settings changes. Do not reset
+   `next_refresh_at` when an adjustment is requested.
+2. Persist an input change, then decide whether to enqueue an adjustment and
+   choose its inclusive window. Those are separate transactions: the future
+   application layer must address a crash between saving and enqueuing. No
+   outbox or atomic input-plus-enqueue handler is implemented here.
+3. Run scheduler passes with `enqueue_due_replans`; workers claim independently.
+   Monitor terminal failures and overdue schedules. Automatic attempts stop
+   after five; recovery requires an explicit retry or a later occurrence.
+4. Load context from the claim. Use the claim's effective dates for edits, even
+   though its calendar context extends to the horizon. Renew the lease during
+   long model calls; this handler layer does not start a heartbeat for you.
+5. Compare the proposal with current versions. Submit only changed/removed IDs
+   and new versions; the database does not detect semantically identical plans.
+   It guards data integrity, not training quality or completeness.
+6. If inputs changed, discard the proposal. Release the still-valid claim for
+   retry, then reclaim and regenerate with fresh context. If the lease was lost,
+   stop trying to publish or mutate that claim. After an uncertain publication,
+   inspect the job or repeat publication for the same retained job ID.
+7. Refresh the calendar and revision after successful publication, results, or
+   undo/redo. Do not infer current calendar state solely from receipt IDs: later
+   changes may already have superseded those versions.

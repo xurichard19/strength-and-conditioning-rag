@@ -161,6 +161,17 @@ class TransportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "delete filters are required"):
             delete_rows("profiles", [], "caller-jwt")
 
+    @patch("app.db.supabase.transport.urlopen")
+    def test_mutations_reject_modifiers_and_embedded_filters(self, urlopen) -> None:
+        for filters in ([('select', '*')], [('order', 'id.asc'), ('limit', '1')],
+                        [('offset', '1')], [('exercises.id', 'eq.123')]):
+            with self.subTest(filters=filters):
+                with self.assertRaisesRegex(ValueError, 'update filters are required'):
+                    update_rows('profiles', {}, filters, 'caller-jwt')
+                with self.assertRaisesRegex(ValueError, 'delete filters are required'):
+                    delete_rows('profiles', filters, 'caller-jwt')
+        urlopen.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
