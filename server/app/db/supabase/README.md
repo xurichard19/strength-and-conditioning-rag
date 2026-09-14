@@ -47,25 +47,14 @@ selection, deterministic ordering, ownership scoping, and contract mapping.
 
 ## Atomic Mutations And RPC
 
-Multi-table workout changes use one Supabase RPC rather than a sequence of REST
-inserts. `replace_planned_workouts` records why the schedule changed, verifies
-ownership and the expected current workout IDs, supersedes the affected rows,
-inserts their replacements and nested exercises/sets, and commits everything
-atomically. A caller-created change ID makes retries idempotent.
+The RPC migration now implements job-based publication and version-switching
+undo/redo. See [Planning RPCs](../../../../supabase/RPCS.md) for signatures, return
+values, permissions, and worker behavior.
 
-`rollback_planning_change` records a rollback, supersedes the unwanted current
-workouts, and copies the prior workout snapshot into new current rows. Rollback is
-limited to the latest overlapping change and rejects workouts that have started.
-
-The generic `call_rpc(function_name, payload, access_token)` HTTP helper belongs in
-`transport.py`. The domain module owns the concrete function name, typed input
-mapping, and conversion of the RPC response into application contracts. Routers and
-graph nodes call `workouts.replace_planned_workouts`; they do not call the generic
-transport helper directly.
-
-Do not keep a database transaction open while a LangGraph or model call runs. The
-graph creates a proposal first; the authenticated application service submits the
-accepted proposal to the RPC afterward.
+The existing Python mutation wrappers still target the previous RPC signatures and
+must be updated before use. New planning RPCs require the backend service role;
+ordinary owner-scoped reads continue to use the caller JWT. No worker or scheduler
+is wired yet.
 
 ## Wiring Existing Routers
 

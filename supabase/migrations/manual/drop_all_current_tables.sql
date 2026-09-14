@@ -1,15 +1,21 @@
 drop trigger if exists on_auth_user_created on auth.users;
 
-drop function if exists public.replace_planned_workouts(
-  uuid,
-  text,
-  date,
-  date,
-  jsonb,
-  jsonb
-);
-
-drop function if exists public.rollback_planning_change(uuid, uuid, text);
+do $$
+declare v_function regprocedure;
+begin
+  for v_function in select p.oid::regprocedure from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = any(array[
+      'configure_planning_schedule', 'enqueue_adjustment', 'enqueue_due_replans', 'claim_replan_job',
+      'renew_replan_lease', 'fail_replan_job', 'cancel_replan_job', 'retry_replan_job', 'purge_replan_jobs',
+      'invalidate_planning_inputs', 'workout_has_results', 'complete_replan_job',
+      'set_planning_change_applied', 'undo_planning_change', 'redo_planning_change',
+      'record_workout_results', 'bump_planning_input_revision'])
+  loop
+    execute format('drop function if exists %s cascade', v_function);
+  end loop;
+end;
+$$;
 
 drop table if exists public.exercise_sets cascade;
 drop table if exists public.replan_jobs cascade;
