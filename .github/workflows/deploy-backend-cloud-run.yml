@@ -1,0 +1,102 @@
+name: deploy backend to cloud run
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-backend-cloud-run.yml"
+      - ".dockerignore"
+      - "server/**"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-run-backend
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.GCP_REGION || 'us-east1' }}
+  ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY || 'arcel' }}
+  CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE || 'arcel-backend' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: check out repository
+        uses: actions/checkout@v7
+
+      - name: authenticate to google cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - name: set up google cloud sdk
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: enable required google cloud apis
+        run: |
+          gcloud services enable \
+            artifactregistry.googleapis.com \
+            run.googleapis.com \
+            --project="${GCP_PROJECT_ID}"
+
+      - name: configure docker for artifact registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: ensure artifact registry repository exists
+        run: |
+          if ! gcloud artifacts repositories describe "${ARTIFACT_REGISTRY_REPOSITORY}" \
+            --project="${GCP_PROJECT_ID}" \
+            --location="${GCP_REGION}" >/dev/null 2>&1; then
+            gcloud artifacts repositories create "${ARTIFACT_REGISTRY_REPOSITORY}" \
+              --project="${GCP_PROJECT_ID}" \
+              --repository-format=docker \
+              --location="${GCP_REGION}"
+          fi
+
+      - name: build and push backend image
+        id: image
+        run: |
+          image_uri="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPOSITORY}/${CLOUD_RUN_SERVICE}:${GITHUB_SHA}"
+          docker build -f server/Dockerfile -t "${image_uri}" .
+          docker push "${image_uri}"
+          echo "uri=${image_uri}" >> "${GITHUB_OUTPUT}"
+
+      - name: deploy backend to cloud run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          region: ${{ env.GCP_REGION }}
+          service: ${{ env.CLOUD_RUN_SERVICE }}
+          image: ${{ steps.image.outputs.uri }}
+          env_vars: |-
+            ENVIRONMENT=production
+            CHROMA_TENANT=${{ secrets.CHROMA_TENANT }}
+            CHROMA_DATABASE=${{ secrets.CHROMA_DATABASE }}
+            CHROMA_API_KEY=${{ secrets.CHROMA_API_KEY }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            COHERE_API_KEY=${{ secrets.COHERE_API_KEY }}
+            TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
+            SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+            SENTRY_TRACES_SAMPLE_RATE=0.1
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          flags: >-
+            --port=8000
+            --memory=2Gi
+            --max-instances=10
+            --no-invoker-iam-check
+
+      - name: verify backend health
+        env:
+          SERVICE_URL: ${{ steps.deploy.outputs.url }}
+        run: curl --fail --show-error --silent --retry 5 --retry-delay 5 --max-time 30 "${SERVICE_URL}/health"

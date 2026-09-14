@@ -17,6 +17,7 @@ client/dist/
 .env
 .env.*
 secrets/
+gha-creds-*.json
 data/
 
 .DS_Store
