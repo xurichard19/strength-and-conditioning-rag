@@ -151,16 +151,12 @@ begin
       created_by_change_id,
       scheduled_date,
       name,
-      planned_duration_minutes,
-      intent,
       notes
     ) values (
       v_user_id,
       p_change_id,
       (v_workout->>'scheduled_date')::date,
       v_workout->>'name',
-      (v_workout->>'planned_duration_minutes')::integer,
-      v_workout->>'intent',
       v_workout->>'notes'
     )
     returning id into v_workout_id;
@@ -372,16 +368,12 @@ begin
       created_by_change_id,
       scheduled_date,
       name,
-      planned_duration_minutes,
-      intent,
       notes
     ) values (
       v_user_id,
       p_rollback_id,
       v_old_workout.scheduled_date,
       v_old_workout.name,
-      v_old_workout.planned_duration_minutes,
-      v_old_workout.intent,
       v_old_workout.notes
     )
     returning id into v_workout_id;

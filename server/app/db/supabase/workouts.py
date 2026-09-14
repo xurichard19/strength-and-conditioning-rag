@@ -9,7 +9,7 @@ from app.db.supabase.transport import call_rpc, select_rows
 
 WORKOUT_COLUMNS = (
     "id,user_id,created_by_change_id,scheduled_date,name,"
-    "planned_duration_minutes,intent,status,notes,"
+    "status,notes,"
     "started_at,completed_at,skipped_at,superseded_at,superseded_by_change_id,"
     "created_at,updated_at,"
     "exercises(id,workout_id,order_index,name,reps_per_side,weight_unit,"

@@ -12,6 +12,9 @@ drop function if exists public.replace_planned_workouts(
 drop function if exists public.rollback_planning_change(uuid, uuid, text);
 
 drop table if exists public.exercise_sets cascade;
+drop table if exists public.replan_jobs cascade;
+drop table if exists public.planning_change_workouts cascade;
+drop table if exists public.planning_schedules cascade;
 drop table if exists public.exercises cascade;
 drop table if exists public.workouts cascade;
 drop table if exists public.planning_changes cascade;

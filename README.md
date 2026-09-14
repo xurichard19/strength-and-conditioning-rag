@@ -55,21 +55,16 @@ flowchart TB
     Generate --> Plan["Structured<br/>WorkoutPlan"]
 ```
 
-#### Database Infrastructure
+### Database Infrastructure
+
+#### Athlete data
 
 ```mermaid
 erDiagram
-    direction LR
+    direction TB
 
     AUTH_USERS ||--|| PROFILES : owns
     PROFILES ||--o| ONBOARDING_RESPONSES : completes
-    PROFILES ||--o{ PLANNING_CHANGES : records
-    PROFILES ||--o{ WORKOUTS : schedules
-    PLANNING_CHANGES ||--o{ WORKOUTS : creates
-    PLANNING_CHANGES o|--o{ WORKOUTS : supersedes
-    PLANNING_CHANGES o|--o{ PLANNING_CHANGES : reverts
-    WORKOUTS ||--o{ EXERCISES : contains
-    EXERCISES ||--o{ EXERCISE_SETS : contains
     PROFILES ||--o{ MESSAGES : owns
     PROFILES ||--o{ SPORTS_WORKOUTS : schedules
 
@@ -94,13 +89,98 @@ erDiagram
         timestamptz updated_at
     }
 
+    MESSAGES {
+        uuid id PK
+        uuid user_id FK
+        text role
+        text content
+        timestamptz created_at
+    }
+
+    SPORTS_WORKOUTS {
+        uuid id PK
+        uuid user_id FK
+        text sport
+        date scheduled_date
+        time start_time
+        integer planned_duration_minutes
+        text intensity
+        text status
+        text notes
+        timestamptz completed_at
+        timestamptz cancelled_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+```
+
+#### Schedule and background jobs
+
+```mermaid
+erDiagram
+    direction TB
+
+    PROFILES ||--o| PLANNING_SCHEDULES : configures
+    PROFILES ||--o{ REPLAN_JOBS : queues
+    PLANNING_CHANGES o|--o{ REPLAN_JOBS : produces
+
+    PLANNING_SCHEDULES {
+        uuid user_id PK,FK
+        integer horizon_days
+        integer refresh_interval_days
+        date horizon_end
+        timestamptz next_refresh_at
+        bigint revision
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    REPLAN_JOBS {
+        uuid id PK
+        uuid user_id FK
+        text kind
+        text status
+        text reason
+        text deduplication_key
+        date effective_from
+        date effective_through
+        timestamptz scheduled_for
+        timestamptz available_at
+        integer attempts
+        bigint expected_revision
+        uuid lease_token
+        timestamptz lease_expires_at
+        uuid change_id FK
+        text error
+        timestamptz completed_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+```
+
+#### Changes and calendar workouts
+
+```mermaid
+erDiagram
+    direction TB
+
+    PROFILES ||--o{ PLANNING_CHANGES : records
+    PROFILES ||--o{ WORKOUTS : schedules
+    PLANNING_CHANGES ||--o{ WORKOUTS : creates
+    PLANNING_CHANGES ||--o{ PLANNING_CHANGE_WORKOUTS : records
+    WORKOUTS ||--o{ PLANNING_CHANGE_WORKOUTS : participates
+
     PLANNING_CHANGES {
         uuid id PK
         uuid user_id FK
+        bigint revision
+        text kind
+        text status
         text reason
         date effective_from
-        date horizon_end
-        uuid reverts_change_id FK
+        date effective_through
+        date horizon_end_before
+        date horizon_end_after
         timestamptz created_at
     }
 
@@ -110,18 +190,32 @@ erDiagram
         uuid created_by_change_id FK
         date scheduled_date
         text name
-        integer planned_duration_minutes
-        text intent
         text status
         text notes
         timestamptz started_at
         timestamptz completed_at
         timestamptz skipped_at
         timestamptz superseded_at
-        uuid superseded_by_change_id FK
         timestamptz created_at
         timestamptz updated_at
     }
+
+    PLANNING_CHANGE_WORKOUTS {
+        uuid change_id PK,FK
+        uuid workout_id PK,FK
+        uuid user_id FK
+        text side
+    }
+```
+
+#### Exercises and set results
+
+```mermaid
+erDiagram
+    direction TB
+
+    WORKOUTS ||--o{ EXERCISES : contains
+    EXERCISES ||--o{ EXERCISE_SETS : contains
 
     EXERCISES {
         uuid id PK
@@ -155,30 +249,6 @@ erDiagram
         text result_status
         text result_notes
         timestamptz completed_at
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    MESSAGES {
-        uuid id PK
-        uuid user_id FK
-        text role
-        text content
-        timestamptz created_at
-    }
-
-    SPORTS_WORKOUTS {
-        uuid id PK
-        uuid user_id FK
-        text sport
-        date scheduled_date
-        time start_time
-        integer planned_duration_minutes
-        text intensity
-        text status
-        text notes
-        timestamptz completed_at
-        timestamptz cancelled_at
         timestamptz created_at
         timestamptz updated_at
     }
