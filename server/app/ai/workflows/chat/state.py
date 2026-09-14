@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import NotRequired
 
 from langgraph.graph import MessagesState
 
@@ -11,10 +12,9 @@ class WorkflowContext:
 
     user_id: str
     access_token: str
-    conversation_id: str
 
 
 class ChatState(MessagesState):
     """state shared between chat workflow nodes"""
 
-    sources: list[Source]
+    sources: NotRequired[list[Source]]

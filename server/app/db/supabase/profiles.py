@@ -1,27 +1,55 @@
-# this file owns reusable profile table queries and row mapping
+# profile reads and updates
 
-from typing import Any
+from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from app.contracts import UserProfile
-
-
-def get_profile(user_id: str, access_token: str) -> UserProfile | None:
-    """return the authenticated user's profile, or none when it does not exist"""
-
-    raise NotImplementedError
+from app.contracts import ProfileRecord, ProfileUpdate
+from app.db.supabase._queries import identifier
+from app.db.supabase.transport import select_rows, update_rows
 
 
-def ensure_profile(user_id: str, email: str | None, access_token: str) -> UserProfile:
-    """return a profile, creating a minimal row only when the row is unexpectedly missing"""
+def get_profile(user_id: str | UUID, access_token: str | None) -> ProfileRecord | None:
+    """
+    read the profile created by the auth signup trigger
 
-    raise NotImplementedError
+    reads the profile normally created by the auth signup trigger. does not create
+    a replacement when missing; the caller decides whether missing data is an account
+    setup problem. the returned profile is identity/preferences data, not onboarding
+    answers, which have a separate handler.
+
+    - **user_id**: authenticated owner's user id; backend callers must authorize this user
+    - **access_token**: verified user jwt for rls; none uses backend service-role credentials
+    - **returns**: user profile, or none if no visible profile exists
+    """
+
+    rows = select_rows("profiles", [("select", "id,email,display_name,timezone,created_at,updated_at"),
+        ("id", f"eq.{identifier(user_id)}"), ("limit", "1")], access_token)
+    return ProfileRecord.model_validate(rows[0]) if rows else None
 
 
-def update_profile(
-    user_id: str,
-    values: dict[str, Any],
-    access_token: str,
-) -> UserProfile | None:
-    """update allowed profile fields and return the updated row"""
+def update_profile(user_id: str | UUID, values: ProfileUpdate, access_token: str) -> ProfileRecord | None:
+    """
+    update supplied profile fields; omitted fields remain unchanged
 
-    raise NotImplementedError
+    only fields allowed by ProfileUpdate can be changed; user id and email are not
+    write inputs. exclude_unset preserves omitted fields; explicit null can clear
+    display_name but not timezone. validates the timezone using the timezone database.
+    a database trigger bumps the planning revision, but this does not enqueue a replan.
+    an empty update or invalid timezone raises valueerror before any write.
+
+    - **user_id**: authenticated owner's user id; backend callers must authorize this user
+    - **values**: validated fields to save; omitted fields stay unchanged and explicit nulls clear nullable fields
+    - **access_token**: verified user jwt used to enforce rls
+    - **returns**: updated profile, or none if no visible profile matches
+    """
+
+    payload = values.model_dump(mode="json", exclude_unset=True)
+    if not payload:
+        raise ValueError("profile update is empty")
+    if "timezone" in payload:
+        try:
+            ZoneInfo(payload["timezone"])
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("invalid timezone") from exc
+    rows = update_rows("profiles", payload, [("id", f"eq.{identifier(user_id)}")], access_token)
+    return ProfileRecord.model_validate(rows[0]) if rows else None

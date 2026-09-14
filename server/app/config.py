@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     supabase_publishable_key: str = Field(
         validation_alias=AliasChoices("SUPABASE_PUBLISHABLE_KEY", "SUPABASE_ANON_KEY")
     )
+    supabase_service_role_key: SecretStr | None = None
 
     system_collection_name: str = "system-docs"
     retrieval_top_k: int = 15

@@ -1,8 +1,9 @@
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.config import get_settings
 from app.ai.workflows.plan.prompts import REWRITE_SYSTEM_PROMPT
+from app.ai.workflows.plan.state import PlanState
 
 
 settings = get_settings()
@@ -14,7 +15,7 @@ rewrite_model = init_chat_model(
 )
 
 
-async def rewrite_node(state: dict) -> dict:
+async def rewrite_node(state: PlanState) -> dict:
     """rewrite the latest user request for planning terminology and clarity"""
 
     latest_user_message = next(
