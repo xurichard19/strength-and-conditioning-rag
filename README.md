@@ -6,6 +6,8 @@ Arcel is a full-stack assistant for hybrid athletes building strength and condit
 
 The Expo/React Native mobile client connects to the containerized FastAPI backend running on Google Cloud Run behind Google Cloud Load Balancing and Cloud Armor. The backend uses LangGraph for request-level workflow orchestration, a LangChain search agent for evidence gathering, OpenAI for model inference, Chroma Cloud for research retrieval, Tavily for web search, Cohere for reranking, and Supabase for authentication and application data.
 
+GitHub Actions builds the backend Docker image, pushes it to Google Artifact Registry, deploys it to Cloud Run, and checks the health endpoint when backend or deployment files change on main or the workflow is run manually.
+
 ---
 #### App Infrastructure
 ```mermaid
@@ -13,6 +15,10 @@ flowchart TB
     User(["User"]) --> FE["React Native mobile client<br/>Expo"]
     FE --> Edge["Google Cloud edge<br/>Load Balancer and<br/>Cloud Armor"]
     Edge --> API["FastAPI backend<br/>Cloud Run"]
+    github["GitHub<br/>main updates or manual run"] -.-> ci["GitHub Actions<br/>build and deploy"]
+    ci -.->|push image| registry["Artifact Registry<br/>backend images"]
+    registry -.->|container image| API
+    ci -.->|deploy and health check| API
     API --> Workflows["LangGraph workflows<br/>chat and plan"]
     API --> Supabase[("Supabase<br/>authentication<br/>and data")]
     API --> Sentry["Sentry<br/>monitoring"]
