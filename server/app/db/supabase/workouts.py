@@ -1,169 +1,82 @@
-# planned and completed workout queries and row mapping
+# calendar, planning history, and workout results
 
 from datetime import date, timedelta
 from uuid import UUID
 
-from app.contracts import PlannedWorkoutPlan, WorkoutRecord, WorkoutWriteResult
+from pydantic import TypeAdapter
+
+from app.contracts import ExerciseSetResult, WorkoutRecord, WorkoutStatus
+from app.db.supabase._queries import all_rows, date_range, identifier
 from app.db.supabase.transport import call_rpc, select_rows
 
 
 WORKOUT_COLUMNS = (
-    "id,user_id,created_by_change_id,scheduled_date,name,"
-    "status,notes,"
-    "started_at,completed_at,skipped_at,superseded_at,superseded_by_change_id,"
-    "created_at,updated_at,"
-    "exercises(id,workout_id,order_index,name,reps_per_side,weight_unit,"
-    "distance_unit,notes,created_at,updated_at,"
-    "sets:exercise_sets(id,exercise_id,order_index,planned_reps,planned_weight,"
-    "planned_distance,planned_duration_seconds,planned_rpe,planned_rest_seconds,"
-    "planned_notes,actual_reps,actual_weight,actual_distance,actual_duration_seconds,"
-    "actual_rpe,result_status,result_notes,completed_at,created_at,updated_at))"
+    "id,user_id,created_by_change_id,scheduled_date,name,status,notes,"
+    "started_at,completed_at,skipped_at,superseded_at,created_at,updated_at,"
+    "exercises(id,workout_id,order_index,name,reps_per_side,weight_unit,distance_unit,"
+    "notes,created_at,updated_at,sets:exercise_sets(*))"
 )
-NESTED_ORDER = [
-    ("exercises.order", "order_index.asc"),
-    ("exercises.sets.order", "order_index.asc"),
-]
+NESTED_ORDER = [("exercises.order", "order_index.asc"), ("exercises.sets.order", "order_index.asc")]
 
 
-def _validate_date_range(start_date: date, end_date: date) -> None:
-    if start_date > end_date:
-        raise ValueError("start date must not be after end date")
-    if (end_date - start_date).days > 366:
-        raise ValueError("date range must not exceed 366 days")
-
-
-def _workouts(rows: list[dict]) -> list[WorkoutRecord]:
-    return [WorkoutRecord.model_validate(row) for row in rows]
-
-
-def get_current_workout(
-    user_id: str,
-    access_token: str,
-    workout_id: str,
+def get_workout(
+    user_id: str | UUID, workout_id: str | UUID, access_token: str | None, *, current_only: bool = True,
 ) -> WorkoutRecord | None:
-    """return one unsuperseded user-owned workout"""
+    """read one workout; set current_only false to inspect a historical version"""
 
-    rows = select_rows(
-        "workouts",
-        [
-            ("select", WORKOUT_COLUMNS),
-            ("id", f"eq.{workout_id}"),
-            ("user_id", f"eq.{user_id}"),
-            ("superseded_at", "is.null"),
-            *NESTED_ORDER,
-            ("limit", "1"),
-        ],
-        access_token,
-    )
+    filters = [("select", WORKOUT_COLUMNS), ("user_id", f"eq.{identifier(user_id)}"),
+        ("id", f"eq.{identifier(workout_id)}"), *NESTED_ORDER, ("limit", "1")]
+    if current_only:
+        filters.append(("superseded_at", "is.null"))
+    rows = select_rows("workouts", filters, access_token)
     return WorkoutRecord.model_validate(rows[0]) if rows else None
 
 
+def get_workouts_by_ids(user_id: str | UUID, workout_ids: list[UUID], access_token: str | None) -> list[WorkoutRecord]:
+    """read current or historical versions in bounded batches for change previews"""
+
+    ids = list(dict.fromkeys(identifier(value) for value in workout_ids))
+    rows = []
+    for start in range(0, len(ids), 50):
+        rows.extend(all_rows("workouts", [("select", WORKOUT_COLUMNS),
+            ("user_id", f"eq.{identifier(user_id)}"), ("id", f"in.({','.join(ids[start:start + 50])})"),
+            *NESTED_ORDER, ("order", "scheduled_date.asc,id.asc")], access_token))
+    return sorted((WorkoutRecord.model_validate(row) for row in rows), key=lambda row: (row.scheduled_date, row.id))
+
+
 def get_workouts_in_range(
-    user_id: str,
-    access_token: str,
-    start_date: date,
-    end_date: date,
+    user_id: str | UUID, start_date: date, end_date: date, access_token: str | None,
+    *, planned_only: bool = False,
 ) -> list[WorkoutRecord]:
-    """return unsuperseded workouts for an inclusive calendar range"""
+    """read current calendar workouts in an inclusive range; optionally only planned ones"""
 
-    _validate_date_range(start_date, end_date)
-    rows = select_rows(
-        "workouts",
-        [
-            ("select", WORKOUT_COLUMNS),
-            ("user_id", f"eq.{user_id}"),
-            ("scheduled_date", f"gte.{start_date.isoformat()}"),
-            ("scheduled_date", f"lte.{end_date.isoformat()}"),
-            ("superseded_at", "is.null"),
-            *NESTED_ORDER,
-            ("order", "scheduled_date.asc,id.asc"),
-        ],
-        access_token,
-    )
-    return _workouts(rows)
-
-
-def get_planned_workouts_for_replanning(
-    user_id: str,
-    access_token: str,
-    effective_from: date,
-    horizon_end: date,
-) -> list[WorkoutRecord]:
-    """return replaceable future workouts inside the requested planning horizon"""
-
-    _validate_date_range(effective_from, horizon_end)
-    rows = select_rows(
-        "workouts",
-        [
-            ("select", WORKOUT_COLUMNS),
-            ("user_id", f"eq.{user_id}"),
-            ("status", "eq.planned"),
-            ("scheduled_date", f"gte.{effective_from.isoformat()}"),
-            ("scheduled_date", f"lte.{horizon_end.isoformat()}"),
-            ("superseded_at", "is.null"),
-            *NESTED_ORDER,
-            ("order", "scheduled_date.asc,id.asc"),
-        ],
-        access_token,
-    )
-    return _workouts(rows)
-
-
-def replace_planned_workouts(
-    access_token: str,
-    change_id: UUID,
-    reason: str,
-    effective_from: date,
-    horizon_end: date,
-    expected_workouts: list[WorkoutRecord],
-    plan: PlannedWorkoutPlan,
-) -> WorkoutWriteResult:
-    """atomically replace planned workouts in a date range"""
-
-    _validate_date_range(effective_from, horizon_end)
-    if not reason.strip():
-        raise ValueError("change reason is required")
-
-    result = call_rpc(
-        "replace_planned_workouts",
-        {
-            "p_change_id": str(change_id),
-            "p_reason": reason,
-            "p_effective_from": effective_from.isoformat(),
-            "p_horizon_end": horizon_end.isoformat(),
-            "p_expected_workout_ids": [str(workout.id) for workout in expected_workouts],
-            "p_workouts": [
-                workout.model_dump(mode="json", exclude_none=True)
-                for workout in plan.workouts
-            ],
-        },
-        access_token,
-    )
-    return WorkoutWriteResult.model_validate(result)
+    date_range(start_date, end_date)
+    filters = [("select", WORKOUT_COLUMNS), ("user_id", f"eq.{identifier(user_id)}"),
+        ("scheduled_date", f"gte.{start_date.isoformat()}"), ("scheduled_date", f"lte.{end_date.isoformat()}"),
+        ("superseded_at", "is.null"), *NESTED_ORDER, ("order", "scheduled_date.asc,id.asc")]
+    if planned_only:
+        filters.append(("status", "eq.planned"))
+    return [WorkoutRecord.model_validate(row) for row in all_rows("workouts", filters, access_token)]
 
 
 def get_recent_workouts(
-    user_id: str,
-    access_token: str,
-    before_date: date,
-    days: int = 30,
+    user_id: str | UUID, through_date: date, access_token: str | None, days: int = 30,
 ) -> list[WorkoutRecord]:
-    """return recent unsuperseded workouts for planning context"""
+    """read recent current workouts and results for planning context"""
 
     if not 1 <= days <= 366:
         raise ValueError("days must be between 1 and 366")
+    return get_workouts_in_range(user_id, through_date - timedelta(days=days - 1), through_date, access_token)
 
-    rows = select_rows(
-        "workouts",
-        [
-            ("select", WORKOUT_COLUMNS),
-            ("user_id", f"eq.{user_id}"),
-            ("scheduled_date", f"gte.{(before_date - timedelta(days=days - 1)).isoformat()}"),
-            ("scheduled_date", f"lte.{before_date.isoformat()}"),
-            ("superseded_at", "is.null"),
-            *NESTED_ORDER,
-            ("order", "scheduled_date.desc,id.desc"),
-        ],
-        access_token,
-    )
-    return _workouts(rows)
+
+def record_workout_results(
+    user_id: str | UUID, workout_id: str | UUID, expected_revision: int,
+    status: WorkoutStatus, sets: list[ExerciseSetResult] | None = None,
+) -> int:
+    """atomically save workout status and supplied set results; return the new revision"""
+
+    return TypeAdapter(int).validate_python(call_rpc("record_workout_results", {
+        "p_user_id": identifier(user_id), "p_workout_id": identifier(workout_id),
+        "p_expected_revision": expected_revision, "p_status": status,
+        "p_sets": [item.model_dump(mode="json") for item in sets or []],
+    }, None), strict=True)

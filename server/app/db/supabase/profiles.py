@@ -1,54 +1,31 @@
-# this file owns reusable profile table queries and row mapping
+# profile reads and updates
 
-from typing import Any
+from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from app.contracts import ProfileRecord
-from app.db.supabase.transport import SupabaseDataError, select_rows, update_rows, upsert_rows
-
-
-PROFILE_COLUMNS = "id,email,display_name,timezone,created_at,updated_at"
-PROFILE_UPDATE_FIELDS = {"display_name", "timezone"}
+from app.contracts import ProfileRecord, ProfileUpdate
+from app.db.supabase._queries import identifier
+from app.db.supabase.transport import select_rows, update_rows
 
 
-def get_profile(user_id: str, access_token: str) -> ProfileRecord | None:
-    """return the authenticated user's profile, or none when it does not exist"""
+def get_profile(user_id: str | UUID, access_token: str | None) -> ProfileRecord | None:
+    """read the profile created by the auth signup trigger"""
 
-    rows = select_rows(
-        "profiles",
-        [("select", PROFILE_COLUMNS), ("id", f"eq.{user_id}"), ("limit", "1")],
-        access_token,
-    )
+    rows = select_rows("profiles", [("select", "id,email,display_name,timezone,created_at,updated_at"),
+        ("id", f"eq.{identifier(user_id)}"), ("limit", "1")], access_token)
     return ProfileRecord.model_validate(rows[0]) if rows else None
 
 
-def ensure_profile(user_id: str, email: str | None, access_token: str) -> ProfileRecord:
-    """return a profile, creating a minimal row only when the row is unexpectedly missing"""
+def update_profile(user_id: str | UUID, values: ProfileUpdate, access_token: str) -> ProfileRecord | None:
+    """update supplied profile fields; omitted fields remain unchanged"""
 
-    profile = get_profile(user_id, access_token)
-    if profile:
-        return profile
-
-    rows = upsert_rows(
-        "profiles",
-        {"id": user_id, "email": email},
-        access_token,
-        on_conflict="id",
-    )
-    if not rows:
-        raise SupabaseDataError("profile write returned no rows")
-    return ProfileRecord.model_validate(rows[0])
-
-
-def update_profile(
-    user_id: str,
-    values: dict[str, Any],
-    access_token: str,
-) -> ProfileRecord | None:
-    """update allowed profile fields and return the updated row"""
-
-    unsupported = values.keys() - PROFILE_UPDATE_FIELDS
-    if not values or unsupported:
-        raise ValueError("invalid profile update fields")
-
-    rows = update_rows("profiles", values, [("id", f"eq.{user_id}")], access_token)
+    payload = values.model_dump(mode="json", exclude_unset=True)
+    if not payload:
+        raise ValueError("profile update is empty")
+    if "timezone" in payload:
+        try:
+            ZoneInfo(payload["timezone"])
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("invalid timezone") from exc
+    rows = update_rows("profiles", payload, [("id", f"eq.{identifier(user_id)}")], access_token)
     return ProfileRecord.model_validate(rows[0]) if rows else None

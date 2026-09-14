@@ -1,23 +1,10 @@
-from app.db.supabase.transport import (
-    SupabaseDataError,
-    call_rpc,
-    delete_rows,
-    insert_rows,
-    select_rows,
-    update_rows,
-    upsert_rows,
-)
-from app.db.supabase.planning_changes import rollback_planning_change
-from app.db.supabase.workouts import replace_planned_workouts
+# domain handlers are the public data interface; transport stays internal
+
+from app.db.supabase import calendar, messages, onboarding_responses, planning_changes
+from app.db.supabase import planning_schedules, profiles, replan_jobs, sports_workouts, workouts
+from app.db.supabase.transport import SupabaseDataError
 
 __all__ = [
-    "SupabaseDataError",
-    "call_rpc",
-    "delete_rows",
-    "insert_rows",
-    "select_rows",
-    "replace_planned_workouts",
-    "rollback_planning_change",
-    "update_rows",
-    "upsert_rows",
+    "SupabaseDataError", "calendar", "messages", "onboarding_responses", "planning_changes",
+    "planning_schedules", "profiles", "replan_jobs", "sports_workouts", "workouts",
 ]

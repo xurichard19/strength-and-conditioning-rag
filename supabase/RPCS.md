@@ -1,7 +1,7 @@
 # Planning RPCs
 
 Defined in `migrations/20260903000000_workout_rpcs.sql`. These replace the former
-replacement/copying-rollback functions. The Python handlers still require updating.
+replacement/copying-rollback functions. Typed Python wrappers live in `server/app/db/supabase`.
 
 All RPCs are backend-only (`service_role`). Authenticate and authorize the caller
 before passing a user ID. Never send the service-role credential to a client.

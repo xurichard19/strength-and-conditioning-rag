@@ -4,7 +4,7 @@ from io import BytesIO
 from urllib.error import HTTPError
 from unittest.mock import patch
 
-from app.db.supabase import (
+from app.db.supabase.transport import (
     SupabaseDataError,
     call_rpc,
     delete_rows,
@@ -92,13 +92,13 @@ class TransportTests(unittest.TestCase):
         settings.supabase_publishable_key = "publishable-key"
         urlopen.return_value = FakeResponse({"status": "applied"})
 
-        result = call_rpc("replace_planned_workouts", {"id": "123"}, "caller-jwt")
+        result = call_rpc("complete_replan_job", {"id": "123"}, "caller-jwt")
 
         self.assertEqual(result, {"status": "applied"})
         request = urlopen.call_args.args[0]
         self.assertEqual(
             request.full_url,
-            "https://project.supabase.co/rest/v1/rpc/replace_planned_workouts",
+            "https://project.supabase.co/rest/v1/rpc/complete_replan_job",
         )
 
     @patch("app.db.supabase.transport.urlopen")

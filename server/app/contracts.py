@@ -4,7 +4,7 @@ import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # -------------------- shared literals --------------------
@@ -249,8 +249,40 @@ class WorkoutRecord(BaseModel):
 class WorkoutWriteResult(BaseModel):
     """receipt returned after a replan or rollback commits successfully"""
 
-    change_id: UUID
+    change_id: UUID | None
     workout_ids: list[UUID]
+    revision: int = Field(ge=0)
+
+
+class ClaimedReplanJob(BaseModel):
+    job: ReplanJobRecord
+    effective_from: datetime.date
+    effective_through: datetime.date
+    horizon_end: datetime.date
+
+
+# -------------------- database write inputs --------------------
+
+class ProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(default=None, min_length=1, max_length=60)
+    timezone: str = Field(default="UTC", min_length=1)
+
+
+class ExerciseSetResult(BaseModel):
+    """complete result values for one set; omitted actual values are cleared"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    actual_reps: int | None = Field(default=None, ge=0)
+    actual_weight: float | None = Field(default=None, ge=0)
+    actual_distance: float | None = Field(default=None, ge=0)
+    actual_duration_seconds: int | None = Field(default=None, ge=0)
+    actual_rpe: float | None = Field(default=None, ge=1, le=10)
+    result_notes: str | None = None
+    result_status: SetResultStatus = "pending"
 
 
 # -------------------- message records --------------------
@@ -279,3 +311,47 @@ class SportsWorkoutRecord(BaseModel):
     cancelled_at: datetime.datetime | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
+
+
+class SportsWorkoutInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sport: str = Field(min_length=1)
+    scheduled_date: datetime.date
+    start_time: datetime.time | None = None
+    planned_duration_minutes: int | None = Field(default=None, gt=0)
+    intensity: SportsWorkoutIntensity | None = None
+    notes: str | None = None
+
+
+class SportsWorkoutUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sport: str | None = Field(default=None, min_length=1)
+    scheduled_date: datetime.date | None = None
+    start_time: datetime.time | None = None
+    planned_duration_minutes: int | None = Field(default=None, gt=0)
+    intensity: SportsWorkoutIntensity | None = None
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def check_required_fields(self):
+        for field in ("sport", "scheduled_date"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
+
+
+# -------------------- combined query results --------------------
+
+class CalendarRecords(BaseModel):
+    workouts: list[WorkoutRecord]
+    sports_workouts: list[SportsWorkoutRecord]
+
+
+class ReplanContext(BaseModel):
+    schedule: PlanningScheduleRecord
+    profile: ProfileRecord
+    onboarding: OnboardingResponseRecord | None
+    recent_workouts: list[WorkoutRecord]
+    calendar: CalendarRecords

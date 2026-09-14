@@ -29,7 +29,7 @@ settings = get_settings()
 def _request(
     path: str,
     method: str,
-    access_token: str,
+    access_token: str | None,
     query_params: list[tuple[str, str]] | None = None,
     body: dict[str, Any] | list[dict[str, Any]] | None = None,
     prefer: str | None = None,
@@ -38,6 +38,12 @@ def _request(
     if not re.fullmatch(r"[a-z_][a-z0-9_]*", path):
         raise ValueError("invalid supabase resource name")
 
+    api_key = settings.supabase_publishable_key
+    if access_token is None:
+        if settings.supabase_service_role_key is None:
+            raise SupabaseDataError("supabase service role key is not configured")
+        access_token = api_key = settings.supabase_service_role_key.get_secret_value()
+
     # build request
     resource = f"rpc/{path}" if rpc else path
     url = f'{settings.supabase_url.rstrip("/")}/rest/v1/{resource}'
@@ -45,7 +51,7 @@ def _request(
         url = f"{url}?{urlencode(query_params, safe=',().')}"
     headers = {
         "Authorization": f"Bearer {access_token}",
-        "apikey": settings.supabase_publishable_key,
+        "apikey": api_key,
         "Accept": "application/json",
     }
     if body is not None:
@@ -90,14 +96,14 @@ def _rows(payload: Any) -> list[dict[str, Any]]:
 def select_rows(
     table: str,
     query_params: list[tuple[str, str]],
-    access_token: str,
+    access_token: str | None,
 ) -> list[dict[str, Any]]:
     """
     select rows from supabase table using supabase rest api
 
     - **table**: table name
     - **query_params**: tuples representing query parameters for the request
-    - **access_token**: user jwt
+    - **access_token**: user jwt, or none for backend service-role reads
     """
 
     return _rows(_request(table, "GET", access_token, query_params))
@@ -106,7 +112,7 @@ def select_rows(
 def call_rpc(
     function_name: str,
     payload: dict[str, Any],
-    access_token: str,
+    access_token: str | None,
 ) -> Any:
     """
     call a postgres function using supabase rest api
@@ -116,7 +122,7 @@ def call_rpc(
 
     - **function_name**: name of postgres function
     - **payload**: arguments passed to the function
-    - **access_token**: user jwt
+    - **access_token**: user jwt, or none for backend service-role calls
     """
 
     return _request(function_name, "POST", access_token, body=payload, rpc=True)

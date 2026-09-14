@@ -1,150 +1,76 @@
-# sports workout queries and row mapping
+# user-entered sports commitments
 
-import datetime
-from typing import Any
+from datetime import date, datetime, UTC
+from uuid import UUID
 
-from app.contracts import SportsWorkoutIntensity, SportsWorkoutRecord
-from app.db.supabase.transport import (
-    SupabaseDataError,
-    delete_rows,
-    insert_rows,
-    select_rows,
-    update_rows,
-)
+from app.contracts import SportsWorkoutInput, SportsWorkoutRecord, SportsWorkoutStatus, SportsWorkoutUpdate
+from app.db.supabase._queries import all_rows, date_range, identifier
+from app.db.supabase.transport import SupabaseDataError, delete_rows, insert_rows, select_rows, update_rows
 
 
-SPORTS_WORKOUT_COLUMNS = (
-    "id,user_id,sport,scheduled_date,start_time,planned_duration_minutes,intensity,"
-    "status,notes,completed_at,cancelled_at,created_at,updated_at"
-)
-SPORTS_WORKOUT_UPDATE_FIELDS = {
-    "sport",
-    "scheduled_date",
-    "start_time",
-    "planned_duration_minutes",
-    "intensity",
-    "status",
-    "notes",
-    "completed_at",
-    "cancelled_at",
-}
+SPORTS_COLUMNS = "id,user_id,sport,scheduled_date,start_time,planned_duration_minutes,intensity,status,notes,completed_at,cancelled_at,created_at,updated_at"
 
 
-def get_sports_workout(
-    user_id: str,
-    access_token: str,
-    workout_id: str,
-) -> SportsWorkoutRecord | None:
-    """return one user-owned sports workout"""
+def get_sports_workout(user_id: str | UUID, workout_id: str | UUID, access_token: str | None) -> SportsWorkoutRecord | None:
+    """read one user-owned sports commitment"""
 
-    rows = select_rows(
-        "sports_workouts",
-        [
-            ("select", SPORTS_WORKOUT_COLUMNS),
-            ("id", f"eq.{workout_id}"),
-            ("user_id", f"eq.{user_id}"),
-            ("limit", "1"),
-        ],
-        access_token,
-    )
+    rows = select_rows("sports_workouts", [("select", SPORTS_COLUMNS), ("user_id", f"eq.{identifier(user_id)}"),
+        ("id", f"eq.{identifier(workout_id)}"), ("limit", "1")], access_token)
     return SportsWorkoutRecord.model_validate(rows[0]) if rows else None
 
 
 def get_sports_workouts_in_range(
-    user_id: str,
-    access_token: str,
-    start_date: datetime.date,
-    end_date: datetime.date,
+    user_id: str | UUID, start_date: date, end_date: date, access_token: str | None,
 ) -> list[SportsWorkoutRecord]:
-    """return non-cancelled sports workouts in an inclusive planning range"""
+    """read non-cancelled sports commitments in an inclusive calendar range"""
 
-    if start_date > end_date:
-        raise ValueError("start date must not be after end date")
-    if (end_date - start_date).days > 366:
-        raise ValueError("date range must not exceed 366 days")
-
-    rows = select_rows(
-        "sports_workouts",
-        [
-            ("select", SPORTS_WORKOUT_COLUMNS),
-            ("user_id", f"eq.{user_id}"),
-            ("scheduled_date", f"gte.{start_date.isoformat()}"),
-            ("scheduled_date", f"lte.{end_date.isoformat()}"),
-            ("status", "neq.cancelled"),
-            ("order", "scheduled_date.asc,start_time.asc.nullslast,id.asc"),
-        ],
-        access_token,
-    )
+    date_range(start_date, end_date)
+    rows = all_rows("sports_workouts", [("select", SPORTS_COLUMNS), ("user_id", f"eq.{identifier(user_id)}"),
+        ("scheduled_date", f"gte.{start_date.isoformat()}"), ("scheduled_date", f"lte.{end_date.isoformat()}"),
+        ("status", "neq.cancelled"), ("order", "scheduled_date.asc,start_time.asc.nullslast,id.asc")], access_token)
     return [SportsWorkoutRecord.model_validate(row) for row in rows]
 
 
-def create_sports_workout(
-    user_id: str,
-    access_token: str,
-    sport: str,
-    scheduled_date: datetime.date,
-    start_time: datetime.time | None = None,
-    planned_duration_minutes: int | None = None,
-    intensity: SportsWorkoutIntensity | None = None,
-    notes: str | None = None,
-) -> SportsWorkoutRecord:
-    """create a sports workout that can be used as a planning constraint"""
+def create_sports_workout(user_id: str | UUID, values: SportsWorkoutInput, access_token: str) -> SportsWorkoutRecord:
+    """save a sports commitment and invalidate in-flight planning through the database trigger"""
 
-    rows = insert_rows(
-        "sports_workouts",
-        {
-            "user_id": user_id,
-            "sport": sport,
-            "scheduled_date": scheduled_date.isoformat(),
-            "start_time": start_time.isoformat() if start_time else None,
-            "planned_duration_minutes": planned_duration_minutes,
-            "intensity": intensity,
-            "notes": notes,
-        },
-        access_token,
-    )
+    rows = insert_rows("sports_workouts", {"user_id": identifier(user_id), **values.model_dump(mode="json")}, access_token)
     if not rows:
         raise SupabaseDataError("sports workout write returned no rows")
     return SportsWorkoutRecord.model_validate(rows[0])
 
 
 def update_sports_workout(
-    user_id: str,
-    access_token: str,
-    workout_id: str,
-    values: dict[str, Any],
+    user_id: str | UUID, workout_id: str | UUID, values: SportsWorkoutUpdate, access_token: str,
 ) -> SportsWorkoutRecord | None:
-    """update allowed sports workout fields and return the updated workout"""
+    """update supplied commitment fields, including explicit nulls to clear optional values"""
 
-    unsupported = values.keys() - SPORTS_WORKOUT_UPDATE_FIELDS
-    if not values or unsupported:
-        raise ValueError("invalid sports workout update fields")
-
-    serialized = {
-        key: value.isoformat()
-        if isinstance(value, (datetime.date, datetime.datetime, datetime.time))
-        else value
-        for key, value in values.items()
-    }
-    rows = update_rows(
-        "sports_workouts",
-        serialized,
-        [("id", f"eq.{workout_id}"), ("user_id", f"eq.{user_id}")],
-        access_token,
-    )
+    payload = values.model_dump(mode="json", exclude_unset=True)
+    if not payload:
+        raise ValueError("sports workout update is empty")
+    rows = update_rows("sports_workouts", payload, [("id", f"eq.{identifier(workout_id)}"),
+        ("user_id", f"eq.{identifier(user_id)}")], access_token)
     return SportsWorkoutRecord.model_validate(rows[0]) if rows else None
 
 
-def delete_sports_workout(
-    user_id: str,
-    access_token: str,
-    workout_id: str,
+def set_sports_workout_status(
+    user_id: str | UUID, workout_id: str | UUID, status: SportsWorkoutStatus, access_token: str,
 ) -> SportsWorkoutRecord | None:
-    """delete one user-owned sports workout and return the deleted row"""
+    """set commitment status and keep completion/cancellation timestamps consistent"""
 
-    rows = delete_rows(
-        "sports_workouts",
-        [("id", f"eq.{workout_id}"), ("user_id", f"eq.{user_id}")],
-        access_token,
-    )
+    if status not in ("planned", "completed", "cancelled"):
+        raise ValueError("invalid sports workout status")
+    now = datetime.now(UTC).isoformat()
+    rows = update_rows("sports_workouts", {"status": status,
+        "completed_at": now if status == "completed" else None,
+        "cancelled_at": now if status == "cancelled" else None},
+        [("id", f"eq.{identifier(workout_id)}"), ("user_id", f"eq.{identifier(user_id)}")], access_token)
+    return SportsWorkoutRecord.model_validate(rows[0]) if rows else None
+
+
+def delete_sports_workout(user_id: str | UUID, workout_id: str | UUID, access_token: str) -> SportsWorkoutRecord | None:
+    """delete one user-owned sports commitment"""
+
+    rows = delete_rows("sports_workouts", [("id", f"eq.{identifier(workout_id)}"),
+        ("user_id", f"eq.{identifier(user_id)}")], access_token)
     return SportsWorkoutRecord.model_validate(rows[0]) if rows else None
