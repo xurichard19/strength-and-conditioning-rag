@@ -5,8 +5,8 @@ from uuid import UUID
 
 from pydantic import TypeAdapter
 
-from app.contracts import ExerciseSetResult, WorkoutRecord, WorkoutStatus
-from app.db.supabase._queries import all_rows, date_range, identifier
+from app.contracts import ExerciseSetResult, WorkoutRecord, WorkoutSnapshot, WorkoutStatus
+from app.db.supabase._queries import all_rows, date_range, identifier, read_with_revision
 from app.db.supabase.transport import call_rpc, select_rows
 
 
@@ -43,6 +43,21 @@ def get_workout(
         filters.append(("superseded_at", "is.null"))
     rows = select_rows("workouts", filters, access_token)
     return WorkoutRecord.model_validate(rows[0]) if rows else None
+
+
+def get_workout_snapshot(user_id: str | UUID, workout_id: UUID, access_token: str | None) -> WorkoutSnapshot | None:
+    """
+    read a current workout and the matching revision for submitting its results
+
+    - **user_id**: authenticated owner
+    - **workout_id**: current workout version to display
+    - **access_token**: caller jwt or none for backend access
+    - **returns**: workout/revision, none if missing, or a 409 if inputs changed during reading
+    """
+
+    workout, revision = read_with_revision(user_id, access_token,
+        lambda: get_workout(user_id, workout_id, access_token))
+    return WorkoutSnapshot(workout=workout, revision=revision) if workout else None
 
 
 def get_workouts_by_ids(user_id: str | UUID, workout_ids: list[UUID], access_token: str | None) -> list[WorkoutRecord]:

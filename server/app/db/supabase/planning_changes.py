@@ -2,12 +2,57 @@
 
 from uuid import UUID
 
-from app.contracts import PlanningChangeRecord, PlanningChangeWorkoutRecord, WorkoutWriteResult
-from app.db.supabase._queries import all_rows, identifier, page_limit
+from app.contracts import PlanningChangePreview, PlanningChangeRecord, PlanningChangeWorkoutRecord, PlanningHistoryPage, WorkoutWriteResult
+from app.db.supabase._queries import all_rows, identifier, page_limit, read_with_revision
+from app.db.supabase.workouts import get_workouts_by_ids
 from app.db.supabase.transport import call_rpc, select_rows
 
 
 CHANGE_COLUMNS = "id,user_id,revision,kind,status,reason,effective_from,effective_through,horizon_end_before,horizon_end_after,created_at"
+
+
+def get_history_page(user_id: str | UUID, access_token: str, limit: int = 20, before_revision: int | None = None) -> PlanningHistoryPage:
+    """
+    read history with the current revision needed to request undo/redo
+
+    - **user_id**: authenticated owner
+    - **access_token**: caller jwt enforcing rls
+    - **limit**: page size, 1-100
+    - **before_revision**: exclusive original change revision cursor, not schedule revision
+    - **returns**: newest-first changes/current revision; 409 if state changes during reading
+    """
+
+    changes, revision = read_with_revision(user_id, access_token,
+        lambda: get_recent_planning_changes(user_id, access_token, limit, before_revision=before_revision))
+    return PlanningHistoryPage(changes=changes, revision=revision)
+
+
+def get_change_preview(user_id: str | UUID, change_id: UUID, access_token: str) -> PlanningChangePreview | None:
+    """
+    resolve the original before/after versions for a change, including superseded workouts
+
+    the preview does not guarantee undo eligibility: ordering and recorded results
+    are checked by the mutation rpc. unchanged workouts are absent from both sides.
+
+    - **user_id**: authenticated owner
+    - **change_id**: owned planning change to inspect
+    - **access_token**: caller jwt enforcing rls
+    - **returns**: change and workout trees with current revision, or none when missing
+    """
+
+    def read():
+        change = get_planning_change(user_id, change_id, access_token)
+        if change is None:
+            return None
+        links = get_change_workouts(user_id, change_id, access_token)
+        versions = get_workouts_by_ids(user_id, [link.workout_id for link in links], access_token)
+        before_ids = {link.workout_id for link in links if link.side == "before"}
+        return PlanningChangePreview(change=change,
+            before=[row for row in versions if row.id in before_ids],
+            after=[row for row in versions if row.id not in before_ids])
+
+    preview, revision = read_with_revision(user_id, access_token, read)
+    return preview.model_copy(update={"revision": revision}) if preview else None
 
 
 def get_planning_change(user_id: str | UUID, change_id: str | UUID, access_token: str | None) -> PlanningChangeRecord | None:

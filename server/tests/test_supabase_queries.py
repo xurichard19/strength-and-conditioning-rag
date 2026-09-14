@@ -10,7 +10,8 @@ from pydantic import SecretStr, ValidationError
 
 from app.contracts import (
     ClaimedReplanJob, ExerciseSetResult, PlannedExercise, PlannedExerciseSet,
-    PlannedWorkout, PlannedWorkoutPlan, ProfileUpdate, SportsWorkoutUpdate,
+    PlannedWorkout, PlannedWorkoutPlan, PlanningChangeRecord, PlanningChangeWorkoutRecord,
+    ProfileUpdate, SportsWorkoutUpdate, WorkoutRecord,
 )
 from app.db.supabase import calendar, messages, onboarding_responses, planning_changes
 from app.db.supabase import planning_schedules, profiles, replan_jobs, sports_workouts, workouts
@@ -205,6 +206,29 @@ class HandlerTests(unittest.TestCase):
         self.assertEqual(result.answers, {'goal': 'hybrid'})
         self.assertEqual(payload, {'user_id': str(USER), 'answers': {'goal': 'hybrid'}})
 
+    def test_completion_conditionally_sets_only_timestamp(self):
+        row = dict(user_id=str(USER), answers={'goal': 'hybrid'}, completed_at=NOW.isoformat(),
+            created_at=NOW.isoformat(), updated_at=NOW.isoformat())
+        self.response([row])
+        result = onboarding_responses.complete_onboarding_response(USER, 'user-jwt')
+        request = self.http.call_args.args[0]
+        self.assertEqual(set(json.loads(request.data)), {'completed_at'})
+        self.assertIn('completed_at=is.null', request.full_url)
+        self.assertIn('user_id=eq.' + str(USER), request.full_url)
+        self.assertEqual(result.completed_at, NOW)
+
+    def test_repeated_or_concurrent_completion_reads_existing_timestamp(self):
+        row = dict(user_id=str(USER), answers={}, completed_at=NOW.isoformat(),
+            created_at=NOW.isoformat(), updated_at=NOW.isoformat())
+        self.http.side_effect = [FakeResponse([]), FakeResponse([row])]
+        result = onboarding_responses.complete_onboarding_response(USER, 'user-jwt')
+        self.assertEqual(result.completed_at, NOW)
+        self.assertEqual(self.http.call_args.args[0].get_method(), 'GET')
+
+    def test_completion_missing_response_returns_none(self):
+        self.response([])
+        self.assertIsNone(onboarding_responses.complete_onboarding_response(USER, 'user-jwt'))
+
     def test_calendar_combines_current_workouts_and_sports(self):
         sport = dict(id=str(TOKEN), user_id=str(USER), sport='basketball', scheduled_date=str(DAY),
             created_at=NOW.isoformat(), updated_at=NOW.isoformat())
@@ -214,6 +238,46 @@ class HandlerTests(unittest.TestCase):
         self.assertEqual(result.workouts[0].id, WORKOUT)
         self.assertEqual(result.sports_workouts[0].sport, 'basketball')
         self.assertIn('status=neq.cancelled', self.http.call_args.args[0].full_url)
+
+    def test_calendar_snapshot_matches_revision_and_preserves_unconfigured_state(self):
+        for revision_rows, expected in (([{'revision': 3}], 3), ([], None)):
+            with self.subTest(revision=expected):
+                self.http.side_effect = [FakeResponse(revision_rows), FakeResponse([workout_row()]),
+                    FakeResponse([]), FakeResponse([]), FakeResponse(revision_rows)]
+                result = calendar.get_calendar_snapshot(USER, DAY, DAY, 'user-jwt')
+                self.assertEqual(result.revision, expected)
+                self.assertEqual(result.workouts[0].id, WORKOUT)
+
+    def test_workout_snapshot_rejects_a_concurrent_revision_change(self):
+        self.http.side_effect = [FakeResponse([{'revision': 3}]), FakeResponse([workout_row()]),
+            FakeResponse([{'revision': 4}])]
+        with self.assertRaises(SupabaseDataError) as error:
+            workouts.get_workout_snapshot(USER, WORKOUT, 'user-jwt')
+        self.assertEqual(error.exception.status_code, 409)
+
+    def test_change_preview_keeps_original_before_and_after_versions(self):
+        change = PlanningChangeRecord(id=JOB, user_id=USER, revision=2, kind='adjustment', reason='sleep',
+            effective_from=DAY, effective_through=DAY, horizon_end_before=DAY, horizon_end_after=DAY, created_at=NOW)
+        old = WorkoutRecord.model_validate({**workout_row(), 'superseded_at': NOW})
+        new = old.model_copy(update={'id': TOKEN, 'superseded_at': None})
+        links = [PlanningChangeWorkoutRecord(change_id=JOB, workout_id=row.id, user_id=USER, side=side)
+            for row, side in ((old, 'before'), (new, 'after'))]
+        self.response([{'revision': 5}])
+        with patch.object(planning_changes, 'get_planning_change', return_value=change), \
+             patch.object(planning_changes, 'get_change_workouts', return_value=links), \
+             patch.object(planning_changes, 'get_workouts_by_ids', return_value=[new, old]) as read:
+            preview = planning_changes.get_change_preview(USER, JOB, 'user-jwt')
+        self.assertEqual(preview.before, [old])
+        self.assertEqual(preview.after, [new])
+        self.assertEqual(preview.revision, 5)
+        read.assert_called_once_with(USER, [WORKOUT, TOKEN], 'user-jwt')
+
+    def test_history_page_keeps_change_cursor_separate_from_current_revision(self):
+        self.http.side_effect = [FakeResponse([{'revision': 9}]), FakeResponse([]), FakeResponse([{'revision': 9}])]
+        page = planning_changes.get_history_page(USER, 'user-jwt', before_revision=5)
+        self.assertEqual(page.revision, 9)
+        self.assertEqual(page.changes, [])
+        self.assertIn('revision=lt.5', self.http.call_args_list[1].args[0].full_url)
 
 
 if __name__ == '__main__':

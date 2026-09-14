@@ -16,15 +16,22 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app.config import get_settings
-from app.ai.workflows.chat.graph import build_chat_workflow
-from app.ai.workflows.plan.graph import build_plan_workflow
 
 # import routers
-from app.api.routers import chat, plan, profile, workouts
+from app.api.routers import calendar, chat, health, onboarding, planning, profile, sports_workouts, workouts
+from app.api.schemas import AppResponse
 
 
 settings = get_settings()
 logger = logging.getLogger("uvicorn.error")
+
+
+def build_chat_workflow():
+    """initialize ai dependencies during startup, not while importing api routes; return the compiled chat graph"""
+
+    from app.ai.workflows.chat.graph import build_chat_workflow as build
+
+    return build()
 
 if settings.sentry_dsn:
     sentry_sdk.init(
@@ -49,8 +56,6 @@ async def lifespan(app: FastAPI):
 
     app.state.chat_graph = build_chat_workflow()
     logger.info("chat workflow successfully initialized")
-    app.state.plan_graph = build_plan_workflow()
-    logger.info("plan workflow successfully initialized")
     yield
 
     logger.info("app shutdown...")
@@ -58,9 +63,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.include_router(chat.router)
-app.include_router(plan.router)
+app.include_router(planning.router)
 app.include_router(profile.router)
+app.include_router(onboarding.router)
 app.include_router(workouts.router)
+app.include_router(calendar.router)
+app.include_router(sports_workouts.router)
+app.include_router(health.router)
 
 
 app.add_middleware(
@@ -72,14 +81,9 @@ app.add_middleware(
 )
 
 
-@app.get("/")
-async def root():
-    return {"app": settings.app_name}
-
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
+@app.get("/", response_model=AppResponse)
+async def root() -> AppResponse:
+    return AppResponse(app=settings.app_name)
 
 
 if settings.environment == "development":

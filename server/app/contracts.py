@@ -357,6 +357,27 @@ class CalendarRecords(BaseModel):
     sports_workouts: list[SportsWorkoutRecord]
 
 
+class CalendarSnapshot(CalendarRecords):
+    revision: int | None = Field(default=None, ge=0)
+
+
+class WorkoutSnapshot(BaseModel):
+    workout: WorkoutRecord
+    revision: int | None = Field(default=None, ge=0)
+
+
+class PlanningHistoryPage(BaseModel):
+    changes: list[PlanningChangeRecord]
+    revision: int | None = Field(default=None, ge=0)
+
+
+class PlanningChangePreview(BaseModel):
+    change: PlanningChangeRecord
+    before: list[WorkoutRecord]
+    after: list[WorkoutRecord]
+    revision: int | None = Field(default=None, ge=0)
+
+
 class ReplanContext(BaseModel):
     schedule: PlanningScheduleRecord
     profile: ProfileRecord
