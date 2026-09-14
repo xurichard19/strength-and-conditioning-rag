@@ -14,10 +14,14 @@ flowchart TB
     FE --> Edge["Google Cloud edge<br/>Load Balancer and<br/>Cloud Armor"]
     Edge --> API["FastAPI backend<br/>Cloud Run"]
     API --> Workflows["LangGraph workflows<br/>chat and plan"]
+    API --> Supabase[("Supabase<br/>authentication<br/>and data")]
+    API --> Sentry["Sentry<br/>monitoring"]
     Workflows --> OpenAI["OpenAI"]
     Workflows --> Chroma[("Chroma Cloud<br/>research index")]
     Workflows --> SearchServices["Tavily and<br/>Cohere"]
-    API --> Supabase[("Supabase<br/>authentication<br/>and data")]
+    Workflows --> LangSmith["LangSmith<br/>tracing"]
+    Docs[("GCS source<br/>documents")] --> Index["Offline<br/>indexing"]
+    Index --> Chroma
     API -.- ci["GitHub Actions<br/>deployment"]
 ```
 
