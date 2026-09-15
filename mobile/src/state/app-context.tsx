@@ -478,7 +478,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const now = new Date();
       const pad = (value: number) => String(value).padStart(2, '0');
       setChatTitle(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`);
-      setActiveConversationId(selectedId);
     }
     const controller = new AbortController();
     stream.current = controller;
@@ -495,13 +494,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (epoch.current === generation && chatEpoch.current === selection) setChatMessages(current => current.map(row => row.id === id ? { ...row, text: row.text + delta } : row));
       }, sources => update({ sources }), controller.signal, selectedId);
       update({ id: savedId, pending: false });
-      // Reconcile the immediate device title with the database's first-message timestamp.
-      const saved = await backendFor(userId).getConversation(selectedId).catch(() => null);
-      if (saved && epoch.current === generation && chatEpoch.current === selection) setChatTitle(saved.title);
+      if (epoch.current === generation && chatEpoch.current === selection) setActiveConversationId(selectedId);
     } catch (error) {
       update({ pending: false, basis: 'Reply not confirmed saved.' });
       if (epoch.current === generation && chatEpoch.current === selection) setChatError(errorMessage(error, 'Chat failed. Refresh history before sending again.'));
     } finally {
+      // A failed stream may still have saved the human message. Confirm the thread
+      // without replaying the write or letting an old request change another chat.
+      if (epoch.current === generation && chatEpoch.current === selection) {
+        const saved = await backendFor(userId).getConversation(selectedId).catch(() => null);
+        if (saved && epoch.current === generation && chatEpoch.current === selection) {
+          setActiveConversationId(selectedId);
+          setChatTitle(saved.title);
+        }
+      }
       if (epoch.current === generation && chatEpoch.current === selection) { stream.current = null; setChatBusy(false); }
     }
   };

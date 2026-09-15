@@ -14,6 +14,11 @@ do $$ begin
   if (select title from public.conversations) <> to_char(now() at time zone 'America/New_York', 'YYYY-MM-DD HH24:MI')
     then raise exception 'wrong title timezone'; end if;
   update public.conversations set title = 'My training questions';
+  begin
+    update public.conversations set title = repeat(' ', 121) || 'name';
+    raise exception 'oversized padded title allowed';
+  exception when check_violation then null;
+  end;
   if (select title from public.conversations) <> 'My training questions' then raise exception 'rename failed'; end if;
   begin
     update public.conversations set user_id = '22222222-2222-4222-8222-222222222222';

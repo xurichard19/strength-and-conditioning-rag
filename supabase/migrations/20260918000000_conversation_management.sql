@@ -25,3 +25,9 @@ begin
 end;
 $$;
 revoke all on function public.ensure_message_conversation() from public, anon, authenticated;
+
+-- Bound the stored value, not just its trimmed content, for direct owner writes too.
+-- NOT VALID avoids scanning old rows under a write-blocking lock; all new inserts
+-- and updates are checked. Existing rows can be validated separately.
+alter table public.conversations add constraint conversations_stored_title_length_check
+  check (char_length(title) <= 120) not valid;

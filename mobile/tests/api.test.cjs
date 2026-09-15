@@ -345,8 +345,62 @@ test('first send changes heading before the reply completes', async () => {
   await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
   const pending = f.value.sendChat('hello'); await f.flush();
   assert.match(f.value.chatTitle, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+  assert.equal(f.value.activeConversationId, null);
   finish('saved'); await pending; await f.flush();
   assert.equal(f.value.chatTitle, '2026-09-15 09:30');
+  assert.notEqual(f.value.activeConversationId, null);
+});
+
+test('offline first send never enables saved-conversation actions and preserves its retry id', async () => {
+  const ids = [];
+  const f = providerFixture({
+    streamChat: async (_text, _delta, _sources, _signal, id) => { ids.push(id); throw new Error('offline'); },
+    getConversation: async () => { throw new Error('offline'); },
+  });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  await f.value.sendChat('hello'); await f.flush();
+  assert.equal(f.value.activeConversationId, null);
+  assert.equal(f.value.chatBusy, false);
+  await f.value.sendChat('retry'); await f.flush();
+  assert.equal(ids[0], ids[1]);
+  assert.equal(f.value.activeConversationId, null);
+});
+
+test('failed reply still recognizes a persisted conversation without retrying the send', async () => {
+  let sends = 0;
+  const f = providerFixture({ streamChat: async () => { sends++; throw new Error('interrupted'); } });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  await f.value.sendChat('hello'); await f.flush();
+  assert.equal(sends, 1);
+  assert.notEqual(f.value.activeConversationId, null);
+  assert.equal(f.value.chatTitle, '2026-09-15 09:30');
+  assert.match(f.value.chatError, /interrupted/);
+});
+
+test('saved reply confirms the conversation even when the title lookup fails', async () => {
+  const f = providerFixture({
+    streamChat: async () => 'saved-message',
+    getConversation: async () => { throw new Error('offline'); },
+  });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  await f.value.sendChat('hello'); await f.flush();
+  assert.notEqual(f.value.activeConversationId, null);
+  assert.equal(f.value.chatError, null);
+  assert.equal(f.value.chatBusy, false);
+});
+
+test('late conversation confirmation cannot activate a newly opened empty chat', async () => {
+  let finish;
+  const f = providerFixture({
+    streamChat: async () => { throw new Error('interrupted'); },
+    getConversation: () => new Promise(resolve => { finish = resolve; }),
+  });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  const pending = f.value.sendChat('hello'); await f.flush();
+  f.value.openConversation(); await f.flush();
+  finish({ id: 'old-thread', title: 'Old title' }); await pending; await f.flush();
+  assert.equal(f.value.activeConversationId, null);
+  assert.equal(f.value.chatTitle, 'Ask Arcel');
 });
 
 test('failed rename/delete preserves the current heading and conversation', async () => {
