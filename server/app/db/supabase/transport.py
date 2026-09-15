@@ -53,8 +53,8 @@ def _request(
 
     synchronous call with a 10-second urlopen timeout, not an overall multi-query
     handler deadline. use a worker thread when called from an async route. a user
-    token uses the publishable api key; none selects the backend service-role jwt
-    for both authorization and apikey. this does not authenticate the application
+    token uses the publishable api key; none selects the backend secret API key
+    for apikey only. this does not authenticate the application
     caller or authorize a user id on their behalf.
 
     invalid resource names raise valueerror before network access. missing backend
@@ -78,9 +78,9 @@ def _request(
 
     api_key = settings.supabase_publishable_key
     if access_token is None:
-        if settings.supabase_service_role_key is None:
-            raise SupabaseDataError("supabase service role key is not configured")
-        access_token = api_key = settings.supabase_service_role_key.get_secret_value()
+        if settings.supabase_secret_key is None:
+            raise SupabaseDataError("supabase secret key is not configured")
+        api_key = settings.supabase_secret_key.get_secret_value()
 
     # build request
     resource = f"rpc/{path}" if rpc else path
@@ -88,10 +88,11 @@ def _request(
     if query_params:
         url = f"{url}?{urlencode(query_params, safe=',().')}"
     headers = {
-        "Authorization": f"Bearer {access_token}",
         "apikey": api_key,
         "Accept": "application/json",
     }
+    if access_token is not None:
+        headers["Authorization"] = f"Bearer {access_token}"
     if body is not None:
         headers["Content-Type"] = "application/json"
     if prefer:

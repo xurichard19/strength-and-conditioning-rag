@@ -37,10 +37,10 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: |
-          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF SUPABASE_SERVICE_ROLE_KEY; do
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_ID SUPABASE_SECRET_KEY; do
             if [[ -z "${!name}" ]]; then
               echo "::error::missing ${name}"
               exit 1
@@ -94,9 +94,9 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID }}
         run: |
-          supabase link --project-ref "${SUPABASE_PROJECT_REF}"
+          supabase link --project-ref "${SUPABASE_PROJECT_ID}"
           supabase db push --linked --yes
 
       - name: deploy backend to cloud run
@@ -119,7 +119,7 @@ jobs:
             SENTRY_TRACES_SAMPLE_RATE=0.1
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}
             SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-            SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+            SUPABASE_SECRET_KEY=${{ secrets.SUPABASE_SECRET_KEY }}
           flags: >-
             --port=8000
             --memory=2Gi

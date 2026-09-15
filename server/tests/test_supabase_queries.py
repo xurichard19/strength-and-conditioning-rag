@@ -63,7 +63,7 @@ class HandlerTests(unittest.TestCase):
         self.addCleanup(patch.stopall)
         self.settings.supabase_url = 'https://test.invalid'
         self.settings.supabase_publishable_key = 'public-key'
-        self.settings.supabase_service_role_key = SecretStr('backend-key')
+        self.settings.supabase_secret_key = SecretStr('sb_secret_test-key')
 
     def response(self, payload):
         self.http.return_value = FakeResponse(payload)
@@ -99,8 +99,8 @@ class HandlerTests(unittest.TestCase):
                 signature = re.search(r'function public\.' + name + r'\((.*?)\)\s*returns', migration, re.S).group(1)
                 parameters = set(re.findall(r'\bp_\w+', signature))
                 self.assertEqual(set(json.loads(request.data)), parameters)
-                self.assertEqual(request.get_header('Authorization'), 'Bearer backend-key')
-                self.assertEqual(request.get_header('Apikey'), 'backend-key')
+                self.assertIsNone(request.get_header('Authorization'))
+                self.assertEqual(request.get_header('Apikey'), 'sb_secret_test-key')
 
     def test_user_read_keeps_caller_jwt_and_explicit_owner(self):
         self.response([workout_row()])
@@ -118,12 +118,12 @@ class HandlerTests(unittest.TestCase):
         message = messages.append_message(USER, 'assistant', 'reply', None)
         request = self.http.call_args.args[0]
         self.assertEqual(message.role, 'assistant')
-        self.assertEqual(request.get_header('Authorization'), 'Bearer backend-key')
+        self.assertIsNone(request.get_header('Authorization'))
         self.assertEqual(json.loads(request.data)['user_id'], str(USER))
 
     def test_backend_key_missing_fails_before_network(self):
-        self.settings.supabase_service_role_key = None
-        with self.assertRaisesRegex(SupabaseDataError, 'service role key'):
+        self.settings.supabase_secret_key = None
+        with self.assertRaisesRegex(SupabaseDataError, 'secret key'):
             replan_jobs.claim_replan_job()
         self.http.assert_not_called()
 
