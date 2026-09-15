@@ -6,6 +6,14 @@ Arcel is a full-stack assistant for hybrid athletes building strength and condit
 
 The Expo/React Native mobile client connects to the containerized FastAPI backend running on Google Cloud Run behind Google Cloud Load Balancing and Cloud Armor. The backend uses LangGraph for request-level workflow orchestration, a LangChain search agent for evidence gathering, OpenAI for model inference, Chroma Cloud for research retrieval, Tavily for web search, Cohere for reranking, and Supabase for authentication and application data. GitHub Actions builds and pushes backend images to Google Artifact Registry, deploys them to Cloud Run, and verifies backend health.
 
+#### Table of Contents
+
+- [App Infrastructure](#app-infrastructure)
+- [Chat LangGraph Workflow](#chat-langgraph-workflow)
+- [Workout Programming LangGraph Workflow](#workout-programming-langgraph-workflow)
+- [Database Infrastructure](#database-infrastructure)
+- [Local Development Services](#local-development-services)
+
 ---
 
 #### App Infrastructure
@@ -57,7 +65,7 @@ flowchart TB
 
 #### Database Infrastructure
 
-[![Hierarchical database schema with all tables, columns, and parent-to-child connections](docs/database-schema.svg)](docs/database-schema.svg)
+[![Hierarchical database schema with all tables, columns, and parent-to-child connections](docs/database-schema.svg?v=7db3009)](docs/database-schema.svg?v=7db3009)
 
 ---
 
