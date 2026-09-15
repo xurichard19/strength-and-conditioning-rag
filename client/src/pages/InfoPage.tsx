@@ -6,7 +6,7 @@ type InfoPageProps = {
     page: Extract<Page, "about" | "terms" | "privacy" | "disclaimer" | "accessibility">
 }
 
-const pageContent: Record<InfoPageProps["page"], {
+export const pageContent: Record<InfoPageProps["page"], {
     eyebrow: string
     title: string
     sections: Array<{
@@ -20,11 +20,11 @@ const pageContent: Record<InfoPageProps["page"], {
         sections: [
             {
                 heading: "Purpose",
-                body: "Arcel helps hybrid athletes explore research-backed training insights across strength, endurance, conditioning, and recovery.",
+                body: "Arcel is a strength and conditioning companion for hybrid athletes. We’re building a mobile experience that connects research, training goals, and the realities of your week.",
             },
             {
                 heading: "How it works",
-                body: "A LangGraph workflow coordinates research and response generation. Its search agent gathers evidence from scientific papers and current web sources, then uses that evidence to generate practical educational guidance.",
+                body: "Our backend combines a library of more than 300 openly licensed research papers with live web search to inform training answers. The mobile app is in development: accounts, onboarding, and chat are connected; workout planning and progress screens are currently previews.",
             },
         ],
     },
@@ -98,7 +98,7 @@ const pageContent: Record<InfoPageProps["page"], {
     },
 }
 
-const teamIntroductions = [
+export const teamIntroductions = [
     {
         name: "richard xu",
         body: "AI/Cloud/Backend",
@@ -116,26 +116,38 @@ const teamIntroductions = [
     }
 ]
 
-const architectureSteps = [
-    { label: "Client", detail: "React + Vite on Vercel" },
+export const architectureSteps = [
+    { label: "Mobile", detail: "Expo + React Native" },
     { label: "Edge", detail: "Cloud Load Balancing + Cloud Armor" },
     { label: "API", detail: "FastAPI on Cloud Run" },
     { label: "Workflow", detail: "LangGraph orchestration" },
     { label: "Search", detail: "LangChain + source tools (Chroma/Tavily/Cohere)" },
 ]
 
-const technologyGroups = [
+export const technologyGroups = [
     {
-        heading: "Application",
-        body: "React, TypeScript, Vite, Tailwind CSS, FastAPI, and LangGraph",
+        heading: "Mobile experience",
+        body: "Expo, React Native, TypeScript, and Expo Router. Rubik typography, native haptics, and Reanimated motion.",
     },
     {
-        heading: "AI and data",
-        body: "LangChain, OpenAI, Chroma Cloud, Tavily, Cohere, Supabase, and Google Cloud Storage",
+        heading: "API and workflows",
+        body: "Python and FastAPI, with LangGraph coordinating chat and workout planning. LangChain agents gather evidence; OpenAI models generate responses.",
     },
     {
-        heading: "Infrastructure",
-        body: "Vercel, Google Cloud Run, Cloud Load Balancing, Cloud Armor, LangSmith, and Sentry",
+        heading: "Research and retrieval",
+        body: "Chroma Cloud indexes research, Tavily searches the web, and Cohere reranks research results. Source documents are stored in Google Cloud Storage.",
+    },
+    {
+        heading: "Accounts and data",
+        body: "Supabase Authentication and Postgres support accounts, profiles, onboarding, conversations, and training data.",
+    },
+    {
+        heading: "Cloud and delivery",
+        body: "Docker on Google Cloud Run, behind Cloud Load Balancing and Cloud Armor. GitHub Actions builds images in Artifact Registry and deploys the backend.",
+    },
+    {
+        heading: "Web and observability",
+        body: "React, TypeScript, and Vite power this public website. LangSmith traces AI workflows, while Sentry monitors backend errors and performance.",
     },
 ]
 
