@@ -1,10 +1,10 @@
 import {
   Check,
+  Sparkles,
   Dumbbell,
   Moon,
   MoveRight,
   Smartphone,
-  Sparkles,
   Timer,
 } from 'lucide-react'
 
@@ -44,19 +44,15 @@ export function ComingSoonPage() {
 
         <section className="launch-hero" aria-labelledby="launch-title">
           <div className="hero-copy">
-            <div className="hero-kicker">
-              <Sparkles size={16} strokeWidth={1.9} aria-hidden="true" />
-              <span>A new home for Arcel</span>
-            </div>
-
             <h1 id="launch-title">
-              Training that
-              <span className="title-accent"> moves with you.</span>
+              AI-powered
+              <span className="title-accent"> S&amp;C programming.</span>
             </h1>
 
             <p className="hero-description">
-              Thoughtful strength and conditioning, adaptive planning, and a calmer way to
-              make progress—almost ready for your pocket.
+              Turn training research into a plan you can follow. We’re building AI-powered
+              workouts, exercises, and set targets around your goals and sport—with rolling
+              programming designed to adapt to your readiness, results, and schedule.
             </p>
 
             <div className="app-store-notice" role="status">
@@ -86,7 +82,7 @@ export function ComingSoonPage() {
             </div>
           </div>
 
-          <div className="app-preview" aria-label="A preview of the Arcel mobile experience">
+          <div className="app-preview" aria-label="Concept preview of Arcel’s upcoming AI-powered rolling programming">
             <div className="preview-orbit preview-orbit-outer" aria-hidden="true" />
             <div className="preview-orbit preview-orbit-inner" aria-hidden="true" />
 
@@ -100,27 +96,27 @@ export function ComingSoonPage() {
             <article className="session-card">
               <div className="session-card-topline">
                 <div>
-                  <p className="preview-eyebrow">Today</p>
-                  <h2>Full body strength</h2>
+                  <p className="preview-eyebrow">AI planning preview</p>
+                  <h2>Your AI-powered plan</h2>
                 </div>
                 <span className="session-icon">
-                  <Dumbbell size={20} strokeWidth={1.9} aria-hidden="true" />
+                  <Sparkles size={20} strokeWidth={1.9} aria-hidden="true" />
                 </span>
               </div>
 
-              <div className="session-meta" aria-label="42 minutes, 6 exercises">
-                <span><Timer size={14} aria-hidden="true" /> 42 min</span>
-                <span>6 exercises</span>
+              <div className="session-meta">
+                <span>Research-informed</span>
+                <span>Rolling programming</span>
               </div>
 
-              <div className="exercise-list" aria-hidden="true">
-                <div><span className="exercise-dot exercise-dot-blue" />Squat pattern<strong>4 × 6</strong></div>
-                <div><span className="exercise-dot exercise-dot-violet" />Horizontal press<strong>3 × 8</strong></div>
-                <div><span className="exercise-dot exercise-dot-teal" />Loaded carry<strong>3 rounds</strong></div>
+              <div className="exercise-list">
+                <div><span className="exercise-dot exercise-dot-blue" />Training research<strong>The evidence</strong></div>
+                <div><span className="exercise-dot exercise-dot-violet" />Your goals & history<strong>The context</strong></div>
+                <div><span className="exercise-dot exercise-dot-teal" />Upcoming workouts<strong>AI-planned</strong></div>
               </div>
 
               <div className="session-button" aria-hidden="true">
-                <span>Ready when you are</span>
+                <span>Same goal. An evolving plan.</span>
                 <MoveRight size={18} />
               </div>
             </article>
@@ -130,8 +126,8 @@ export function ComingSoonPage() {
                 <Check size={15} strokeWidth={2.4} />
               </span>
               <span>
-                <strong>Plan adjusted</strong>
-                <small>Moved, never lost.</small>
+                <strong>AI-assisted adjustments</strong>
+                <small>Keep the work you’ve done.</small>
               </span>
             </aside>
           </div>
@@ -152,18 +148,19 @@ export function ComingSoonPage() {
           <div className="about-number" aria-hidden="true">01</div>
           <div className="about-heading">
             <p className="preview-eyebrow">About Arcel</p>
-            <h2 id="about-title">Progress without the punishment.</h2>
+            <h2 id="about-title">A long-term goal. A plan that keeps up.</h2>
             <span className="about-link-label">More about us <MoveRight size={18} aria-hidden="true" /></span>
           </div>
           <p className="about-copy">
-            We’re building a training companion that keeps the signal clear: what to do,
-            why it matters, and how to adapt when life happens. Serious programming,
-            without taking itself too seriously.
+            More than a one-off workout or a chat answer. Arcel is being built around a
+            living training calendar: regular refreshes plan further ahead, while changes
+            in readiness, performance, or sport commitments reshape upcoming sessions.
+            Your completed workouts and results stay intact.
           </p>
           <div className="about-principles" aria-label="Arcel principles">
-            <span>Keep the goal</span>
-            <span>Adjust the route</span>
-            <span>Respect recovery</span>
+            <span>Grounded in research</span>
+            <span>Adapt what’s ahead</span>
+            <span>Keep your history</span>
           </div>
         </a>
 

@@ -1,14 +1,15 @@
 import { useEffect } from 'react'
-import { ArrowLeft, ArrowUpRight, BookOpen, Code2, Layers, ShieldCheck, Sparkles } from 'lucide-react'
-import { architectureSteps, pageContent, teamIntroductions, technologyGroups } from '../pages/InfoPage'
+import { ArrowLeft, ArrowUpRight, BookOpen, Code2, History, Layers, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react'
+import { architectureSteps, pageContent, teamIntroductions, technologyGroups } from '../pages/info-content'
 import { getPathForPage, type InfoPageName } from '../routing'
 import appIcon from '../../../mobile/assets/images/splash-icon.png'
+import linkedinLogo from '../assets/linkedinlogo.png'
 import { LaunchFooter } from './LaunchFooter'
 import './ComingSoonPage.css'
 import './PublicInfoPage.css'
 
 const descriptions: Record<InfoPageName, string> = {
-  about: 'A little about the people, purpose, and technology behind your next training companion.',
+  about: 'Research-backed planning is the core of Arcel. We’re building an actionable training calendar that evolves with you, supported by chat to help you understand your training and communicate what’s changed.',
   terms: 'The terms that shape your use of Arcel.',
   privacy: 'How information is handled, and the choices available to you.',
   disclaimer: 'A clear understanding of training information and its limits.',
@@ -21,6 +22,8 @@ const policyLinks = [
   { page: 'disclaimer', label: 'Fitness Disclaimer' },
   { page: 'accessibility', label: 'Accessibility' },
 ] as const
+
+const purposeIcons = [BookOpen, RefreshCw, Sparkles, History]
 
 export default function PublicInfoPage({ page }: { page: InfoPageName }) {
   const content = pageContent[page]
@@ -44,31 +47,35 @@ export default function PublicInfoPage({ page }: { page: InfoPageName }) {
       </header>
       <main className="launch-shell info-main">
         <header className="info-hero">
-          <div className="hero-kicker">
-            {isAbout ? <Sparkles size={16} aria-hidden="true" /> : <ShieldCheck size={16} aria-hidden="true" />}
-            <span>{isAbout ? 'The story behind Arcel' : `${content.eyebrow} & information`}</span>
-          </div>
-          <h1>{isAbout ? <>Built for the way <span>you train.</span></> : content.title}</h1>
+          {!isAbout && <div className="hero-kicker">
+            <ShieldCheck size={16} aria-hidden="true" />
+            <span>{content.eyebrow} & information</span>
+          </div>}
+          <h1>{isAbout ? <>Training evolves.<br /><span>Your program should too.</span></> : content.title}</h1>
           <p>{descriptions[page]}</p>
         </header>
         {isAbout ? (
           <>
             <section className="info-purpose-grid" aria-label="About Arcel">
-              {content.sections.map((section, index) => (
+              {content.sections.map((section, index) => {
+                const Icon = purposeIcons[index % purposeIcons.length]
+                return (
                 <article className="info-surface purpose-card" key={section.heading}>
-                  <span className={`info-icon info-icon-${index}`} aria-hidden="true">{index === 0 ? <Sparkles size={22} /> : <BookOpen size={22} />}</span>
+                  <span className={`info-icon info-icon-${index % 3}`} aria-hidden="true"><Icon size={22} /></span>
                   <h2>{section.heading}</h2><p>{section.body}</p>
                 </article>
-              ))}
+                )
+              })}
             </section>
+            <div className="info-development-note"><Code2 size={19} aria-hidden="true" /><p>Rolling programming is in development. Automatic refresh and adjustment generation are not live yet; the mobile planning screens are previews.</p></div>
             <section className="info-section" aria-labelledby="team-heading">
-              <div className="info-section-heading"><span>01 / The people</span><h2 id="team-heading">A small team. A shared direction.</h2></div>
+              <div className="info-section-heading"><h2 id="team-heading">Our team</h2></div>
               <div className="info-team-grid">
                 {teamIntroductions.map((person, index) => (
                   <article className="info-surface team-card" key={person.name}>
                     <div className="team-card-top">
                       <span className={`team-monogram info-icon-${index}`} aria-hidden="true">{person.name.split(' ').map(part => part[0]).join('')}</span>
-                      <a href={person.linkedinUrl} target="_blank" rel="noreferrer" aria-label={`${person.name} on LinkedIn`}><ArrowUpRight size={21} aria-hidden="true" /></a>
+                      <a href={person.linkedinUrl} target="_blank" rel="noreferrer" aria-label={`${person.name} on LinkedIn`}><span className="team-linkedin-logo"><img src={linkedinLogo} alt="" /></span></a>
                     </div>
                     <h3>{person.name}</h3><p>{person.body.replaceAll('/', ' / ')}</p>
                   </article>
@@ -76,7 +83,7 @@ export default function PublicInfoPage({ page }: { page: InfoPageName }) {
               </div>
             </section>
             <section className="info-section" aria-labelledby="technology-heading">
-              <div className="info-section-heading"><span>02 / Under the hood</span><h2 id="technology-heading">From a good question to useful evidence.</h2></div>
+              <div className="info-section-heading"><span>02 / Under the hood</span><h2 id="technology-heading">From research to your next session.</h2></div>
               <div className="info-surface architecture-card">
                 <div className="architecture-intro"><Layers size={22} aria-hidden="true" /><p>A mobile app, a research pipeline, and a backend built to bring them together.</p></div>
                 <ol className="architecture-flow" aria-label="Request flow from the mobile app to research tools">

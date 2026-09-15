@@ -26,6 +26,8 @@
 .team-monogram { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; font-size: 1rem; font-weight: 600; text-transform: uppercase; }
 .team-card a { display: grid; place-items: center; width: 44px; height: 44px; color: var(--launch-secondary); border: 1px solid rgba(255,255,255,.12); border-radius: 50%; transition: color 160ms, background 160ms; }
 .team-card a:hover { color: var(--launch-text); background: var(--launch-elevated); }
+.team-linkedin-logo { display: block; width: 24px; height: 24px; overflow: hidden; border-radius: 5px; }
+.team-linkedin-logo img { display: block; width: 30px; height: 32.432px; max-width: none; transform: translate(-3px, -5.184px); }
 .team-card h3 { font-size: 1.125rem; text-transform: capitalize; letter-spacing: -.02em; }
 .team-card p { margin-top: 7px; color: var(--launch-secondary); font-size: .875rem; line-height: 1.6; }
 .architecture-card { padding: 28px; }

@@ -1,11 +1,7 @@
-import { lazy, StrictMode, Suspense } from 'react'
+import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import { ComingSoonPage } from './launch/ComingSoonPage'
-import { getPageFromPath, isInfoPage } from './routing'
-
-const PublicInfoPage = lazy(() => import('./launch/PublicInfoPage'))
-const currentPage = getPageFromPath(window.location.pathname)
+import { PublicApp } from './launch/PublicApp'
 
 const rootElement = document.getElementById('root')
 
@@ -15,8 +11,6 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <Suspense fallback={<p role="status">Loading page…</p>}>
-      {isInfoPage(currentPage) ? <PublicInfoPage page={currentPage} /> : <ComingSoonPage />}
-    </Suspense>
+    <PublicApp />
   </StrictMode>,
 )

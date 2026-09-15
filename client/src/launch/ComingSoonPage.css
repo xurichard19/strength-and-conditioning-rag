@@ -245,7 +245,9 @@
 .hero-copy {
   position: relative;
   z-index: 2;
+  min-width: 0;
   max-width: 660px;
+  container-type: inline-size;
   animation: launch-rise 720ms 80ms both cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -267,17 +269,17 @@
 .hero-copy h1 {
   max-width: 690px;
   color: var(--launch-text);
-  font-size: clamp(3.6rem, 6.6vw, 6.6rem);
+  font-size: clamp(1.75rem, 14cqw, 5.75rem);
   font-weight: 700;
   letter-spacing: -0.07em;
-  line-height: 0.92;
+  line-height: 1.06;
+  overflow-wrap: anywhere;
 }
 
 .title-accent {
   display: block;
-  width: max-content;
-  max-width: 100%;
-  padding-right: 0.08em;
+  padding: 0.03em 0.08em 0.12em 0;
+  margin-bottom: -0.12em;
   background: linear-gradient(100deg, #f6ece7 4%, #b9d8ff 42%, #a78bfa 92%);
   background-clip: text;
   color: transparent;
@@ -857,10 +859,6 @@
     gap: 30px;
   }
 
-  .hero-copy h1 {
-    font-size: clamp(3.25rem, 7vw, 5.6rem);
-  }
-
   .about-card {
     grid-template-columns: 42px 1fr 1fr;
   }
@@ -889,10 +887,6 @@
 
   .hero-copy {
     max-width: 610px;
-  }
-
-  .hero-copy h1 {
-    font-size: clamp(3.15rem, 14vw, 5rem);
   }
 
   .app-preview {
@@ -957,11 +951,6 @@
 
   .hero-kicker {
     margin-bottom: 19px;
-  }
-
-  .hero-copy h1 {
-    font-size: clamp(2.8rem, 14.5vw, 4.2rem);
-    line-height: 0.95;
   }
 
   .hero-description {

@@ -195,13 +195,15 @@ export function SecondaryButton({
   );
 }
 
-export function OutlineButton({ children, style, ...props }: PressableProps & { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+export function OutlineButton({ children, style, disabled, ...props }: PressableProps & { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const { colors } = useApp();
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(disabled) }}
+      disabled={disabled}
       {...props}
-      style={({ pressed }) => [styles.outlineButton, { backgroundColor: colors.card, borderColor: colors.separator }, pressed && styles.pressed, style]}>
+      style={({ pressed }) => [styles.outlineButton, { backgroundColor: colors.card, borderColor: colors.separator }, pressed && styles.pressed, style, disabled && styles.disabled]}>
       <AppText weight="semibold" style={styles.buttonText}>{children}</AppText>
     </Pressable>
   );
