@@ -141,7 +141,8 @@ export default function ChatScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [draft, setDraft] = useState('');
-  useFocusEffect(useCallback(() => { openConversation(); setDraft(''); setMenuOpen(false); setOptionsOpen(false); }, [openConversation]));
+  // Keep the selected conversation and draft across tab visits; only dismiss menus.
+  useFocusEffect(useCallback(() => { setMenuOpen(false); setOptionsOpen(false); }, []));
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => { scrollRef.current?.scrollToEnd({ animated: true }); }, [chatMessages]);
   const selectConversation = (id?: string, title?: string) => {

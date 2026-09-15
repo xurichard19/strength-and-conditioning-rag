@@ -4,6 +4,8 @@ import { architectureSteps, pageContent, teamIntroductions, technologyGroups } f
 import { getPathForPage, type InfoPageName } from '../routing'
 import appIcon from '../../../mobile/assets/images/splash-icon.png'
 import linkedinLogo from '../assets/linkedinlogo.png'
+import richardPortrait from '../assets/richard-xu.jpg'
+import dimitriosPortrait from '../assets/dimitrios-mahairas.jpg'
 import { LaunchFooter } from './LaunchFooter'
 import './ComingSoonPage.css'
 import './PublicInfoPage.css'
@@ -24,6 +26,11 @@ const policyLinks = [
 ] as const
 
 const purposeIcons = [BookOpen, RefreshCw, Sparkles, History]
+
+const teamPortraits: Record<string, string | undefined> = {
+  'richard xu': richardPortrait,
+  'dimitrios mahairas': dimitriosPortrait,
+}
 
 export default function PublicInfoPage({ page }: { page: InfoPageName }) {
   const content = pageContent[page]
@@ -74,7 +81,11 @@ export default function PublicInfoPage({ page }: { page: InfoPageName }) {
                 {teamIntroductions.map((person, index) => (
                   <article className="info-surface team-card" key={person.name}>
                     <div className="team-card-top">
-                      <span className={`team-monogram info-icon-${index}`} aria-hidden="true">{person.name.split(' ').map(part => part[0]).join('')}</span>
+                      {teamPortraits[person.name] ? (
+                        <img className="team-portrait" src={teamPortraits[person.name]} alt={person.name} width={80} height={80} loading="lazy" />
+                      ) : (
+                        <span className={`team-monogram info-icon-${index}`} aria-hidden="true">{person.name.split(' ').map(part => part[0]).join('')}</span>
+                      )}
                       <a href={person.linkedinUrl} target="_blank" rel="noreferrer" aria-label={`${person.name} on LinkedIn`}><span className="team-linkedin-logo"><img src={linkedinLogo} alt="" /></span></a>
                     </div>
                     <h3>{person.name}</h3><p>{person.body.replaceAll('/', ' / ')}</p>

@@ -23,7 +23,8 @@
 .info-team-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 18px; }
 .team-card { padding: 25px; }
 .team-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-.team-monogram { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; font-size: 1rem; font-weight: 600; text-transform: uppercase; }
+.team-monogram { display: grid; place-items: center; width: 80px; height: 80px; border-radius: 50%; font-size: 1rem; font-weight: 600; text-transform: uppercase; }
+.team-portrait { display: block; width: 80px; height: 80px; flex-shrink: 0; border-radius: 50%; object-fit: cover; border: 1px solid rgba(255,255,255,.16); }
 .team-card a { display: grid; place-items: center; width: 44px; height: 44px; color: var(--launch-secondary); border: 1px solid rgba(255,255,255,.12); border-radius: 50%; transition: color 160ms, background 160ms; }
 .team-card a:hover { color: var(--launch-text); background: var(--launch-elevated); }
 .team-linkedin-logo { display: block; width: 24px; height: 24px; overflow: hidden; border-radius: 5px; }
