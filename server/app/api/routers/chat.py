@@ -4,12 +4,12 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from app.ai.workflows.chat.state import WorkflowContext
 from app.api.errors import PRIVATE_HEADERS, database_errors, private_response
 from app.api.parameters import message_cursor
-from app.api.schemas import ConversationResponse, ChatDoneEvent, ChatErrorEvent, ChatRequest, ChatSourcesEvent, ChatTextEvent, MessageResponse
+from app.api.schemas import ConversationUpdate, ConversationResponse, ChatDoneEvent, ChatErrorEvent, ChatRequest, ChatSourcesEvent, ChatTextEvent, MessageResponse
 from app.auth.supabase import AuthUser, require_user
 from app.db.supabase import messages
 
@@ -24,6 +24,34 @@ def get_conversations(before: UUID | None = None, user: AuthUser = Depends(requi
     with database_errors():
         return [ConversationResponse.model_validate(row) for row in
             messages.get_conversations(user.id, user.access_token, before=before)]
+
+
+@router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
+def get_conversation(conversation_id: UUID, user: AuthUser = Depends(require_user)):
+    """read an owned conversation's title and creation time; return 404 if inaccessible"""
+    with database_errors():
+        row = messages.get_conversation(user.id, conversation_id, user.access_token)
+        if row is None:
+            raise HTTPException(404, "conversation not found", headers=PRIVATE_HEADERS)
+        return ConversationResponse.model_validate(row)
+
+
+@router.patch("/conversations/{conversation_id}", response_model=ConversationResponse)
+def rename_conversation(conversation_id: UUID, payload: ConversationUpdate, user: AuthUser = Depends(require_user)):
+    """rename an owned conversation using payload.title; return its saved record or 404"""
+    with database_errors():
+        row = messages.rename_conversation(user.id, conversation_id, payload.title, user.access_token)
+        if row is None:
+            raise HTTPException(404, "conversation not found", headers=PRIVATE_HEADERS)
+        return ConversationResponse.model_validate(row)
+
+
+@router.delete("/conversations/{conversation_id}", status_code=204)
+def delete_conversation(conversation_id: UUID, user: AuthUser = Depends(require_user)):
+    """permanently delete an owned thread and all its messages; missing threads are a no-op"""
+    with database_errors():
+        messages.delete_conversation(user.id, conversation_id, user.access_token)
+    return Response(status_code=204, headers=PRIVATE_HEADERS)
 
 
 async def stream_workflow(graph, **kwargs):

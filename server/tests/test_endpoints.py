@@ -157,6 +157,25 @@ class EndpointTests(unittest.TestCase):
             self.assertEqual(self.client.get('/chat/messages?before_id=' + str(ID) + '&before_created_at=2026-09-14T12:00:00').status_code, 422)
             handler.assert_not_called()
 
+    def test_conversation_management_scopes_owner_and_validates_title(self):
+        row = dict(id=ID, user_id=USER.id, title='Named chat', created_at=NOW)
+        path = f'/chat/conversations/{ID}'
+        with patch.object(chat.messages, 'rename_conversation', return_value=row) as rename:
+            response = self.client.patch(path, json={'title': '  Named chat  '})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()['title'], 'Named chat')
+            rename.assert_called_once_with(USER.id, ID, 'Named chat', USER.access_token)
+            for title in (' ', 'x' * 121):
+                self.assertEqual(self.client.patch(path, json={'title': title}).status_code, 422)
+        with patch.object(chat.messages, 'get_conversation', return_value=None):
+            self.assertEqual(self.client.get(path).status_code, 404)
+        with patch.object(chat.messages, 'delete_conversation') as delete:
+            self.assertEqual(self.client.delete(path).status_code, 204)
+            delete.assert_called_once_with(USER.id, ID, USER.access_token)
+        with client(auth=False) as anonymous:
+            self.assertEqual(anonymous.patch(path, json={'title': 'name'}).status_code, 401)
+            self.assertEqual(anonymous.delete(path).status_code, 401)
+
     def test_chat_persists_only_user_and_completed_assistant_then_signals_done(self):
         prior = MessageRecord(conversation_id=ID, id=ID, user_id=USER.id, role='assistant', content='previous', created_at=NOW)
         async def stream(graph, **kwargs):

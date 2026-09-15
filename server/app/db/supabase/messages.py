@@ -5,10 +5,55 @@ from uuid import UUID
 
 from app.contracts import ConversationRecord, MessageRecord, MessageRole
 from app.db.supabase._queries import identifier, page_limit
-from app.db.supabase.transport import SupabaseDataError, insert_rows, select_rows
+from app.db.supabase.transport import SupabaseDataError, insert_rows, select_rows, update_rows, delete_rows
 
 
 MESSAGE_COLUMNS = "conversation_id,id,user_id,role,content,created_at"
+
+
+def get_conversation(user_id: str | UUID, conversation_id: UUID, access_token: str) -> ConversationRecord | None:
+    """
+    read a single owned thread, including its persisted title
+
+    - **user_id**: verified owner
+    - **conversation_id**: thread to read
+    - **access_token**: owner's jwt for rls
+    - **returns**: saved thread, or none when missing or owned by someone else
+    """
+    rows = select_rows("conversations", [("select", "id,user_id,title,created_at"),
+        ("user_id", f"eq.{identifier(user_id)}"), ("id", f"eq.{identifier(conversation_id)}")], access_token)
+    return ConversationRecord.model_validate(rows[0]) if rows else None
+
+
+def rename_conversation(user_id: str | UUID, conversation_id: UUID, title: str, access_token: str) -> ConversationRecord | None:
+    """
+    update only the title of an owned thread; messages and timestamps stay unchanged
+
+    - **user_id**: verified owner
+    - **conversation_id**: thread to rename
+    - **title**: nonblank display name, at most 120 characters after trimming
+    - **access_token**: owner's jwt for rls
+    - **returns**: updated thread, or none when missing or inaccessible
+    """
+    title = title.strip()
+    if not title or len(title) > 120:
+        raise ValueError("title must contain 1 to 120 characters")
+    rows = update_rows("conversations", {"title": title},
+        [("user_id", f"eq.{identifier(user_id)}"), ("id", f"eq.{identifier(conversation_id)}")], access_token)
+    return ConversationRecord.model_validate(rows[0]) if rows else None
+
+
+def delete_conversation(user_id: str | UUID, conversation_id: UUID, access_token: str) -> None:
+    """
+    permanently delete an owned thread and its messages through the foreign-key cascade
+
+    - **user_id**: verified owner
+    - **conversation_id**: thread to delete; a missing or inaccessible thread is a no-op
+    - **access_token**: owner's jwt for rls
+    - **returns**: none; no automatic retries are performed
+    """
+    delete_rows("conversations",
+        [("user_id", f"eq.{identifier(user_id)}"), ("id", f"eq.{identifier(conversation_id)}")], access_token)
 
 
 def get_conversations(user_id: str | UUID, access_token: str, *, before: UUID | None = None) -> list[ConversationRecord]:
