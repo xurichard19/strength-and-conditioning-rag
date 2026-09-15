@@ -55,7 +55,7 @@ flowchart TB
     Generate --> Plan["Structured<br/>WorkoutPlan"]
 ```
 
-### Database Infrastructure
+#### Database Infrastructure
 
 [![Complete database schema with all tables, columns, and foreign-key connections](docs/database-schema.svg)](docs/database-schema.svg)
 
