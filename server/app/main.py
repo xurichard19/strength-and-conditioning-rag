@@ -36,7 +36,9 @@ if settings.sentry_dsn:
     sentry_sdk.init(
         dsn=settings.sentry_dsn,
         environment=settings.environment,
-        send_default_pii=True,
+        send_default_pii=False,
+        max_request_body_size="never",
+        include_local_variables=False,
         traces_sample_rate=settings.sentry_traces_sample_rate,
         integrations=[
             StarletteIntegration(transaction_style="endpoint"),

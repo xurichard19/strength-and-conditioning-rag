@@ -38,7 +38,10 @@ database passwords, or management tokens in the mobile app.
   profile timezone. Existing history is preserved as one conversation per user.
 - `GET /chat/messages?conversation_id=UUID` loads chronological pages of 20 messages.
   Older pages use timestamp and ID cursors. Foreground refresh stays in the selected thread.
-- `POST /chat` accepts `{text, conversation_id}` and streams NDJSON. Text is provisional until `done.message_id` confirms
+- `POST /chat` accepts `{text, conversation_id}` and streams NDJSON. A `saved` event
+  contains the persisted human message; `done.message` contains the saved assistant
+  record so the cache can merge exact IDs and timestamps without reloading history.
+  Text is provisional until `done.message_id` confirms
   persistence. Only the backend saves human/assistant messages; mobile never inserts
   assistant rows or automatically retries a failed send.
 - Account changes clear in-memory state and abort the local chat stream. Late responses
@@ -57,12 +60,39 @@ Saved history is displayed in the client but is not passed into AI generation.
 History retrieval will be implemented inside workflow nodes separately.
 Run setup again opens a local draft; its X exits without saving or clearing completion.
 
-The server still generates chat inside the streaming request. Switching threads aborts
-the local stream. Closing the app or
+The server still generates chat inside the streaming request. Switching threads no longer
+aborts generation: up to three requests can run independently and update their originating
+conversation. Logout or provider teardown aborts all requests. Closing the app or
 losing the connection can leave a saved human message without a saved reply.
 Refreshing history retrieves whatever the server saved; this does not provide
 durable background generation. Source citations are currently streamed only, not
 stored in the messages table, so they may not appear after restarting the app.
+
+## Chat cache
+
+`src/state/chat-cache.ts` is the account-scoped, memory-only storage boundary.
+No SQLite, disk persistence, background worker, or additional dependency is required.
+It can be replaced by a persistent implementation later; cache data is never AI context.
+
+- Sidebar: reuse even empty lists for 60 seconds; retain up to 500 loaded records.
+  Stale newest pages refresh behind the displayed data; older pages stay available.
+  If the new page no longer overlaps cached history, drop the disconnected window.
+- Metadata: one shared record per conversation serves the list and heading.
+  Records have independent 60-second freshness; selecting an older thread revalidates
+  its title when needed. Confirmed renames update the record without refreshing list age.
+- Messages: newest-page freshness is 60 seconds; retain five least-recently-used
+  conversation windows, at most 200 rows each and about 5 MB of content combined.
+  Older scrolling evicts the opposite end when necessary. Oversized responses can be
+  displayed without being retained; the budget does not include UI/runtime or live-stream memory.
+- Reads for the same key share an in-flight request. Confirmed writes merge by ID;
+  deletes evict metadata/messages. Mutations and logout fence off older responses.
+- Cache survives tab switches, not process restarts. Failures keep stale data visible.
+  Pagination may refetch evicted windows; this does not delete anything from Supabase.
+
+Mobile opts into saved-human stream events with `X-Chat-Saved-Events: 1`.
+The backend omits that event for older clients; new clients fall back to one history
+read when an older backend does not provide saved records. Backend/mobile releases
+do not need to happen simultaneously for this stream change.
 
 ## Auth callback configuration
 

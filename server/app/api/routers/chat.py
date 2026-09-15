@@ -3,13 +3,13 @@ from datetime import datetime
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 
 from app.ai.workflows.chat.state import WorkflowContext
 from app.api.errors import PRIVATE_HEADERS, database_errors, private_response
 from app.api.parameters import message_cursor
-from app.api.schemas import ConversationUpdate, ConversationResponse, ChatDoneEvent, ChatErrorEvent, ChatRequest, ChatSourcesEvent, ChatTextEvent, MessageResponse
+from app.api.schemas import ConversationUpdate, ConversationResponse, ChatSavedEvent, ChatDoneEvent, ChatErrorEvent, ChatRequest, ChatSourcesEvent, ChatTextEvent, MessageResponse
 from app.auth.supabase import AuthUser, require_user
 from app.db.supabase import messages
 
@@ -87,10 +87,11 @@ def get_messages(
 
 @router.post("", response_class=StreamingResponse, responses={200: {
     "content": {"application/x-ndjson": {"schema": {"type": "string"}}},
-    "description": "newline-separated ChatStreamEvent objects: text, sources, then done or error",
+    "description": "newline-separated ChatStreamEvent objects: saved human message, text, sources, then done or error",
 }})
 async def chat_reply(
     payload: ChatRequest, request: Request, user: AuthUser = Depends(require_user),
+    x_chat_saved_events: str | None = Header(None),
 ) -> StreamingResponse:
     """
     persist a user turn, stream the existing chat workflow, and save the completed reply
@@ -104,8 +105,11 @@ async def chat_reply(
     - **payload**: nonblank text and conversation_id; use a fresh uuid for a new thread,
       or the saved thread id to continue it. clients cannot submit assistant/system roles
     - **request**: application with initialized chat_graph
+    - **x_chat_saved_events**: set to "1" to receive the saved-human event; omitted
+      for older clients that accept only text, sources, done, and error
     - **user**: verified owner; human writes use the jwt and assistant writes use backend credentials
-    - **returns**: ndjson text/sources events, then done with saved message_id;
+    - **returns**: saved human record, text/sources events, then done with saved
+      message_id and assistant record for client cache reconciliation;
       errors after streaming starts are error events, not a new http status
     """
 
@@ -113,12 +117,14 @@ async def chat_reply(
     if graph is None:
         raise HTTPException(503, "chat unavailable", headers=PRIVATE_HEADERS)
     with database_errors():
-        await asyncio.to_thread(messages.append_message, user.id, "user", payload.text, user.access_token, conversation_id=payload.conversation_id)
+        human = await asyncio.to_thread(messages.append_message, user.id, "user", payload.text, user.access_token, conversation_id=payload.conversation_id)
     context = WorkflowContext(user_id=user.id, access_token=user.access_token)
 
     async def events():
         chunks = []
         try:
+            if x_chat_saved_events == "1":
+                yield ChatSavedEvent(message=MessageResponse.model_validate(human)).model_dump_json() + "\n"
             async for event in stream_workflow(graph, message=payload.text, context=context):
                 if event["type"] == "done":
                     continue
@@ -132,7 +138,7 @@ async def chat_reply(
             if not text.strip():
                 raise ValueError("empty assistant reply")
             saved = await asyncio.to_thread(messages.append_message, user.id, "assistant", text, None, conversation_id=payload.conversation_id)
-            yield ChatDoneEvent(message_id=saved.id).model_dump_json() + "\n"
+            yield ChatDoneEvent(message_id=saved.id, message=MessageResponse.model_validate(saved)).model_dump_json() + "\n"
         except Exception as exc:
             logger.warning("chat failed user_id=%s error_type=%s", user.id, type(exc).__name__)
             yield ChatErrorEvent(message="chat response could not be completed").model_dump_json() + "\n"

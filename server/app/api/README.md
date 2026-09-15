@@ -68,7 +68,7 @@ History pagination uses `limit` (1–100) and `before_revision` from the last ch
 
 ## chat
 
-`POST /chat` accepts `{"text": "..."}` and returns `application/x-ndjson`. Parse complete newline-separated objects, not individual network chunks. Event schemas are `ChatStreamEvent` in `schemas.py`:
+`POST /chat` accepts `{"text": "...", "conversation_id": "<uuid>"}` and returns `application/x-ndjson`. Parse complete newline-separated objects, not individual network chunks. Event schemas are `ChatStreamEvent` in `schemas.py`:
 
 ```json
 {"type":"text","delta":"hello"}
@@ -76,9 +76,14 @@ History pagination uses `limit` (1–100) and `before_revision` from the last ch
 {"type":"done","message_id":"22222222-2222-4222-8222-222222222222"}
 ```
 
+The `done` event also includes the persisted assistant record as `message`. Clients
+that send `X-Chat-Saved-Events: 1` receive an initial `saved` event containing the
+persisted human record as `message`. This opt-in keeps older clients compatible;
+both records provide exact IDs/timestamps for cache reconciliation.
+
 After headers are sent, failures arrive as `{"type":"error","message":"chat response could not be completed"}`. Only `done` confirms assistant persistence. A failed/disconnected stream may leave the saved user turn without an assistant reply. There is no background completion guarantee, concurrent-turn serialization, or message request key: send one turn at a time and do not blindly replay POST requests. Sources are streamed but not stored in message history.
 
-History accepts `limit` (1–100). For an older page, supply both `before_created_at` (offset-aware timestamp) and `before_id` from the first/oldest message of the previous page. Pages are returned oldest to newest.
+History requires `conversation_id` and accepts `limit` (1–100). For an older page, supply both `before_created_at` (offset-aware timestamp) and `before_id` from the first/oldest message of the previous page. Pages are returned oldest to newest.
 
 ## failures and remaining integration
 

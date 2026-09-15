@@ -188,14 +188,30 @@ class EndpointTests(unittest.TestCase):
         with patch.object(chat, 'stream_workflow', side_effect=stream), \
              patch.object(chat.messages, 'get_recent_messages', return_value=[prior]) as history, \
              patch.object(chat.messages, 'append_message', return_value=prior) as save:
-            response = self.client.post('/chat', json={'text': 'hi', 'conversation_id': str(ID)})
+            response = self.client.post('/chat', json={'text': 'hi', 'conversation_id': str(ID)},
+                headers={'X-Chat-Saved-Events': '1'})
             history.assert_not_called()
             events = [json.loads(line) for line in response.text.splitlines()]
-            self.assertEqual(events[-1], {'type': 'done', 'message_id': str(ID)})
+            self.assertEqual(events[0]['type'], 'saved')
+            self.assertEqual(events[0]['message']['id'], str(ID))
+            self.assertEqual(events[-1]['type'], 'done')
+            self.assertEqual(events[-1]['message_id'], str(ID))
+            self.assertEqual(events[-1]['message']['id'], str(ID))
             self.assertEqual([call.args[1:3] for call in save.call_args_list], [('user', 'hi'), ('assistant', 'hello')])
             self.assertEqual(save.call_args_list[0].args[-1], USER.access_token)
             self.assertIsNone(save.call_args_list[1].args[-1])
             self.assertTrue(all(call.kwargs['conversation_id'] == ID for call in save.call_args_list))
+
+    def test_older_clients_do_not_receive_an_unknown_saved_event(self):
+        row = MessageRecord(conversation_id=ID, id=ID, user_id=USER.id, role='assistant', content='hi', created_at=NOW)
+        async def stream(graph, **kwargs):
+            yield {'type': 'text', 'delta': 'hello'}
+        with patch.object(chat, 'stream_workflow', side_effect=stream), \
+             patch.object(chat.messages, 'append_message', return_value=row):
+            response = self.client.post('/chat', json={'text': 'hi', 'conversation_id': str(ID)})
+        events = [json.loads(line) for line in response.text.splitlines()]
+        self.assertEqual([event['type'] for event in events], ['text', 'done'])
+        self.assertEqual(events[-1]['message_id'], str(ID))
 
     def test_chat_failure_does_not_save_partial_reply_or_send_done(self):
         async def stream(graph, **kwargs):
@@ -203,7 +219,8 @@ class EndpointTests(unittest.TestCase):
             raise RuntimeError('private provider error')
         with patch.object(chat, 'stream_workflow', side_effect=stream), \
              patch.object(chat.messages, 'get_recent_messages', return_value=[]), \
-             patch.object(chat.messages, 'append_message') as save:
+             patch.object(chat.messages, 'append_message', return_value=MessageRecord(
+                 id=ID, conversation_id=ID, user_id=USER.id, role='user', content='hi', created_at=NOW)) as save:
             response = self.client.post('/chat', json={'text': 'hi', 'conversation_id': str(ID)})
             events = [json.loads(line) for line in response.text.splitlines()]
             self.assertEqual(events[-1]['type'], 'error')

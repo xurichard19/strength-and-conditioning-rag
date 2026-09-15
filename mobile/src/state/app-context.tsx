@@ -16,7 +16,10 @@ import {
   supabase, updatePassword as apiUpdatePassword, type Answers, type SavedMessage,
 } from '@/services/api';
 
+import { createChatCache } from './chat-cache';
 import type { Conversation } from '@/services/backend';
+
+type ChatRun = { controller: AbortController; rows: ChatMessage[]; title: string; error: string | null; confirmed: boolean };
 
 type AuthActionResult = { ok: true; message?: string } | { ok: false; message: string };
 
@@ -106,13 +109,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [chatTitle, setChatTitle] = useState('Ask Arcel');
   const chatEpoch = useRef(0);
-  const conversationCursor = useRef<string | undefined>(undefined);
   const listRequest = useRef(0);
   const owner = useRef<string | null>(null);
   const epoch = useRef(0);
-  const stream = useRef<AbortController | null>(null);
+  const [cache] = useState(() => createChatCache());
+  const runs = useRef(new Map<string, ChatRun>());
   const historyBusy = useRef(false);
-  const oldest = useRef<SavedMessage | undefined>(undefined);
   const accountRequest = useRef(0);
   const colorScheme: ColorScheme = profile.theme === 'system'
     ? systemScheme === 'dark' ? 'dark' : 'light' : profile.theme;
@@ -128,17 +130,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setChatTitle('Ask Arcel');
       chatEpoch.current += 1;
       listRequest.current += 1;
-      conversationCursor.current = undefined;
+      cache.clear();
       setConversations([]);
       setConversationsLoading(false);
       setConversationsError(null);
       setHasOlderConversations(false);
       epoch.current += 1;
       accountRequest.current += 1;
-      stream.current?.abort();
-      stream.current = null;
+      runs.current.forEach(run => run.controller.abort());
+      runs.current.clear();
       historyBusy.current = false;
-      oldest.current = undefined;
       setProfile(emptyProfile);
       setOnboardingAnswers({});
       setSessions(initialWeek);
@@ -154,9 +155,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAccountReady(!userId);
     }
     setAuthSession(session);
-  }, []);
+  }, [cache]);
 
   useEffect(() => {
+    const activeRuns = runs.current;
     let active = true;
     let observedAuth = false;
     const subscription = supabase?.auth.onAuthStateChange((event, session) => {
@@ -181,8 +183,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     void Linking.getInitialURL().then(handleLink).catch(() => undefined);
     const links = Linking.addEventListener('url', ({ url }) => { void handleLink(url); });
-    return () => { active = false; subscription?.data.subscription.unsubscribe(); links.remove(); stream.current?.abort(); };
-  }, [acceptSession]);
+    return () => { active = false; subscription?.data.subscription.unsubscribe(); links.remove(); activeRuns.forEach(run => run.controller.abort()); activeRuns.clear(); cache.clear(); };
+  }, [acceptSession, cache]);
 
   const refreshLiveData = useCallback(async () => {
     const userId = owner.current;
@@ -210,79 +212,104 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => { if (authSession?.user.id) void refreshLiveData(); }, [authSession?.user.id, refreshLiveData]);
 
+  // Rendering selection and running requests are independent.
+  const publishChat = useCallback(() => {
+    const id = conversation.current;
+    const run = id ? runs.current.get(id) : undefined;
+    const metadata = id ? cache.peekConversation(id) : undefined;
+    const window = id ? cache.peekMessages(id) : undefined;
+    const rows = [...new Map([...(window?.rows.map(asMessage) ?? []), ...(run?.rows ?? [])].map(row => [row.id, row])).values()];
+    setChatMessages(current => {
+      const sources = new Map(current.map(row => [row.id, row.sources]));
+      return rows.map(row => ({ ...row, sources: row.sources ?? sources.get(row.id) }));
+    });
+    setChatTitle(previous => metadata?.title ?? run?.title ?? (id ? previous : 'Ask Arcel'));
+    setActiveConversationId(previous => metadata || run?.confirmed ? id : run || !id ? null : previous);
+    setHasOlderMessages(window?.more ?? false);
+    setChatBusy(Boolean(run));
+    setChatError(run?.error ?? null);
+  }, [cache]);
+
+  const publishList = useCallback(() => {
+    const snapshot = cache.peekList();
+    setConversations(snapshot?.rows ?? []);
+    setHasOlderConversations(snapshot?.more ?? false);
+    const metadata = conversation.current ? cache.peekConversation(conversation.current) : undefined;
+    if (metadata) { setChatTitle(metadata.title); setActiveConversationId(metadata.id); }
+  }, [cache]);
+
   const refreshChat = useCallback(async (older = false) => {
     const userId = owner.current;
-    if (!userId || !conversation.current || stream.current || historyBusy.current) return;
+    const id = conversation.current;
+    if (!userId || !id || runs.current.has(id) || historyBusy.current) return;
     const generation = epoch.current;
     const selection = chatEpoch.current;
-    const selectedId = conversation.current;
     historyBusy.current = true;
-    setChatLoading(true);
+    setChatLoading(!cache.peekMessages(id));
     setChatError(null);
     try {
-      const rows = await backendFor(userId).getMessages(selectedId, older ? oldest.current : undefined);
+      const api = backendFor(userId);
+      const [window] = await Promise.all([
+        cache.loadMessages(api, id, older),
+        cache.loadConversation(api, id).catch(() => undefined),
+      ]);
       if (epoch.current !== generation || chatEpoch.current !== selection) return;
-      oldest.current = rows[0] ?? oldest.current;
-      setHasOlderMessages(rows.length === 20);
-      setChatMessages(current => older
-        ? [...rows.map(asMessage).filter(row => !current.some(item => item.id === row.id)), ...current]
-        : rows.map(row => ({ ...asMessage(row), sources: current.find(item => item.id === row.id)?.sources })));
+      publishChat();
+      // Oversized pages may be displayed without retaining them in the cache.
+      if (window && !cache.peekMessages(id)) {
+        setChatMessages(window.rows.map(asMessage)); setHasOlderMessages(window.more);
+      }
     } catch (error) {
       if (epoch.current === generation && chatEpoch.current === selection) setChatError(errorMessage(error, 'Could not load chat history.'));
     } finally {
       if (epoch.current === generation && chatEpoch.current === selection) { historyBusy.current = false; setChatLoading(false); }
     }
-  }, []);
+  }, [cache, publishChat]);
   useEffect(() => {
     if (!authSession?.user.id) return;
-    void refreshChat();
     const listener = AppState.addEventListener('change', state => {
       if (state === 'active') void refreshChat();
     });
     return () => listener.remove();
   }, [authSession?.user.id, refreshChat]);
 
-  // Switching threads invalidates only chat work, never account loading.
   const openConversation = useCallback((id?: string, title?: string) => {
     chatEpoch.current += 1;
-    stream.current?.abort();
-    stream.current = null;
     conversation.current = id ?? null;
-    setActiveConversationId(id ?? null);
-    setChatTitle(title ?? 'Ask Arcel');
     historyBusy.current = false;
-    oldest.current = undefined;
-    setChatMessages([]);
-    setChatBusy(false);
     setChatLoading(false);
-    setChatError(null);
-    setHasOlderMessages(false);
+    publishChat();
+    if (id && !cache.peekConversation(id) && !runs.current.has(id)) {
+      setChatTitle(title ?? 'Ask Arcel');
+      setActiveConversationId(id);
+    }
     if (id) void refreshChat();
-  }, [refreshChat]);
+  }, [cache, publishChat, refreshChat]);
 
   const renameConversation = async (title: string) => {
     const userId = owner.current;
     const id = conversation.current;
-    if (!userId || !id || stream.current) throw new Error('Wait for the reply to finish.');
+    if (!userId || !id || runs.current.has(id)) throw new Error('Wait for the reply to finish.');
     const generation = epoch.current;
     const saved = await backendFor(userId).renameConversation(id, title);
     if (epoch.current !== generation) return;
+    cache.putConversation(saved);
     listRequest.current += 1;
     setConversationsLoading(false);
-    setConversations(current => current.map(row => row.id === id ? saved : row));
-    if (conversation.current === id) setChatTitle(saved.title);
+    publishList();
   };
 
   const deleteConversation = async () => {
     const userId = owner.current;
     const id = conversation.current;
-    if (!userId || !id || stream.current) throw new Error('Wait for the reply to finish.');
+    if (!userId || !id || runs.current.has(id)) throw new Error('Wait for the reply to finish.');
     const generation = epoch.current;
     await backendFor(userId).deleteConversation(id);
     if (epoch.current !== generation) return;
+    cache.removeConversation(id);
     listRequest.current += 1;
     setConversationsLoading(false);
-    setConversations(current => current.filter(row => row.id !== id));
+    publishList();
     if (conversation.current === id) openConversation();
   };
 
@@ -291,26 +318,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
     const generation = epoch.current;
     const request = ++listRequest.current;
+    publishList();
     setConversationsLoading(true);
     setConversationsError(null);
     try {
-      const rows = await backendFor(userId).getConversations(older ? conversationCursor.current : undefined);
+      await cache.loadList(backendFor(userId), older);
       if (epoch.current !== generation || listRequest.current !== request) return;
-      conversationCursor.current = rows.at(-1)?.id;
-      setHasOlderConversations(rows.length === 50);
-      setConversations(current => older
-        ? [...current, ...rows.filter(row => !current.some(item => item.id === row.id))] : rows);
+      publishList();
     } catch (error) {
       if (epoch.current === generation && listRequest.current === request) setConversationsError(errorMessage(error, 'Could not load conversations.'));
     } finally {
       if (epoch.current === generation && listRequest.current === request) setConversationsLoading(false);
     }
-  }, []);
+  }, [cache, publishList]);
 
   const finishOnboarding = async (nextProfile: Profile, answers: Answers): Promise<boolean> => {
     const userId = owner.current;
     if (!userId) { setNotice('Please sign in first.'); return false; }
     const generation = epoch.current;
+    accountRequest.current += 1; // Earlier account reads must not overwrite this save.
     try {
       const api = backendFor(userId);
       const identity = await api.getProfile();
@@ -466,49 +492,81 @@ export function AppProvider({ children }: { children: ReactNode }) {
     catch (error) { return { ok: false, message: errorMessage(error, 'Could not update password.') }; }
   };
 
+  /** Reconcile a finished stream without replaying its write or touching another account/selection. */
+  const reconcileChat = async (id: string, run: ChatRun, client: ReturnType<typeof backendFor>,
+    current: () => boolean, savedReply: boolean) => {
+    if (!current()) return;
+    const metadata = await cache.loadConversation(client, id).catch(() => undefined);
+    if (!current()) return;
+    if (metadata) { cache.putConversation(metadata); run.confirmed = true; publishList(); }
+    // Older servers and ambiguous failures need one read; confirmed saved rows need none.
+    if (!cache.peekMessages(id)?.rows.some(row => row.id === run.rows[1].id) || !savedReply) {
+      const window = await cache.loadMessages(client, id, false, true).catch(() => undefined);
+      if (!current()) return;
+      // A confirmed reply in history makes that page authoritative; don't show its
+      // human turn twice just because an older server didn't send the human's id.
+      const reply = run.rows[1];
+      if (savedReply && window?.rows.some(row => row.id === reply.id)) run.rows = [reply];
+    }
+    if (!current()) return;
+    if (conversation.current === id) publishChat();
+    runs.current.delete(id);
+    if (conversation.current === id) setChatBusy(false);
+  };
+
   const sendChat = async (rawQuestion: string, _context?: string) => {
     const question = rawQuestion.trim();
     const userId = owner.current;
-    if (!question || !userId || stream.current || historyBusy.current) return;
+    if (!question || !userId || historyBusy.current || (conversation.current && runs.current.has(conversation.current))) return;
+    // Bound concurrent work independently from how many chats the user opens.
+    if (runs.current.size >= 3) { setChatError('Wait for one of your other replies to finish.'); return; }
     const generation = epoch.current;
-    const selection = chatEpoch.current;
+    const isNew = !conversation.current;
     conversation.current ??= randomUUID();
-    const selectedId = conversation.current;
-    if (!activeConversationId) {
-      const now = new Date();
-      const pad = (value: number) => String(value).padStart(2, '0');
-      setChatTitle(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`);
-    }
-    const controller = new AbortController();
-    stream.current = controller;
-    setChatBusy(true);
-    setChatError(null);
-    const id = `pending-${Date.now()}`;
-    setChatMessages(current => [...current, { id: `${id}-user`, role: 'user', text: question },
-      { id, role: 'assistant', text: '', pending: true }]);
-    const update = (changes: Partial<ChatMessage>) => {
-      if (epoch.current === generation && chatEpoch.current === selection) setChatMessages(current => current.map(row => row.id === id ? { ...row, ...changes } : row));
+    const id = conversation.current;
+    const client = backendFor(userId);
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const title = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const pendingId = randomUUID();
+    const run: ChatRun = { controller: new AbortController(), title, error: null, confirmed: false,
+      rows: [{ id: pendingId + '-user', role: 'user', text: question },
+        { id: pendingId, role: 'assistant', text: '', pending: true }] };
+    runs.current.set(id, run);
+    cache.beginTurn(id, isNew);
+    const current = () => epoch.current === generation && runs.current.get(id) === run;
+    const publish = () => { if (current() && conversation.current === id) publishChat(); };
+    const savedMessage = (row: SavedMessage) => {
+      if (!current()) return;
+      run.confirmed = true;
+      const index = row.role === 'user' ? 0 : 1;
+      run.rows[index] = { ...run.rows[index], ...asMessage(row), pending: false };
+      cache.putMessages(id, [row]);
+      publish();
     };
+    publish();
+    let savedReply = false;
     try {
-      const savedId = await backendFor(userId).streamChat(question, delta => {
-        if (epoch.current === generation && chatEpoch.current === selection) setChatMessages(current => current.map(row => row.id === id ? { ...row, text: row.text + delta } : row));
-      }, sources => update({ sources }), controller.signal, selectedId);
-      update({ id: savedId, pending: false });
-      if (epoch.current === generation && chatEpoch.current === selection) setActiveConversationId(selectedId);
+      const savedId = await client.streamChat(question, delta => {
+        if (!current()) return;
+        run.rows[1] = { ...run.rows[1], text: run.rows[1].text + delta };
+        publish();
+      }, sources => {
+        if (!current()) return;
+        run.rows[1] = { ...run.rows[1], sources };
+        publish();
+      }, run.controller.signal, id, savedMessage);
+      if (!current()) return;
+      savedReply = true;
+      run.confirmed = true;
+      run.rows[1] = { ...run.rows[1], id: savedId, pending: false };
     } catch (error) {
-      update({ pending: false, basis: 'Reply not confirmed saved.' });
-      if (epoch.current === generation && chatEpoch.current === selection) setChatError(errorMessage(error, 'Chat failed. Refresh history before sending again.'));
+      if (!current()) return;
+      run.error = errorMessage(error, 'Chat failed. Reopen the conversation to load saved messages.');
+      cache.invalidateMessages(id);
+      run.rows[1] = { ...run.rows[1], pending: false, basis: 'Reply not confirmed saved.' };
     } finally {
-      // A failed stream may still have saved the human message. Confirm the thread
-      // without replaying the write or letting an old request change another chat.
-      if (epoch.current === generation && chatEpoch.current === selection) {
-        const saved = await backendFor(userId).getConversation(selectedId).catch(() => null);
-        if (saved && epoch.current === generation && chatEpoch.current === selection) {
-          setActiveConversationId(selectedId);
-          setChatTitle(saved.title);
-        }
-      }
-      if (epoch.current === generation && chatEpoch.current === selection) { stream.current = null; setChatBusy(false); }
+      await reconcileChat(id, run, client, current, savedReply);
     }
   };
 

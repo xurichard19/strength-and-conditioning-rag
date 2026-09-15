@@ -10,12 +10,32 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from app.api import schemas
 from app.api.routers import profile, sports_workouts, workouts
-from app.contracts import ExerciseSetResult, ProfileUpdate, SportsWorkoutInput, SportsWorkoutUpdate
+from app.contracts import ExerciseSetResult, ProfileUpdate, Source, SportsWorkoutInput, SportsWorkoutUpdate
 from server.tests.test_endpoints import DAY, ID, SPORT, client
 from server.tests.test_profile import PROFILE
 
 
 class ApiSchemaTests(unittest.TestCase):
+    def test_source_identifiers_remain_required_and_mutually_exclusive(self):
+        for kind, required, excluded in [('research', 'doi', 'url'), ('web', 'url', 'doi')]:
+            with self.subTest(kind=kind):
+                Source(source_type=kind, content='evidence', **{required: 'identifier'})
+                with self.assertRaises(ValidationError):
+                    Source(source_type=kind, content='evidence')
+                with self.assertRaises(ValidationError):
+                    Source(source_type=kind, content='evidence', **{required: 'identifier', excluded: 'other'})
+
+    def test_error_reporting_disables_body_pii_and_local_variable_capture(self):
+        settings = SimpleNamespace(sentry_dsn='https://public@sentry.test/1', sentry_traces_sample_rate=0,
+            app_name='test api', cors_origins=[], environment='test')
+        with patch('app.config.get_settings', return_value=settings), patch('dotenv.load_dotenv'), \
+             patch('sentry_sdk.init') as initialize:
+            importlib.reload(importlib.import_module('app.main'))
+        options = initialize.call_args.kwargs
+        self.assertFalse(options['send_default_pii'])
+        self.assertFalse(options['include_local_variables'])
+        self.assertEqual(options['max_request_body_size'], 'never')
+
     def test_api_models_do_not_inherit_business_models(self):
         for name, model in vars(schemas).items():
             if isinstance(model, type) and issubclass(model, BaseModel):

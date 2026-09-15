@@ -105,26 +105,3 @@ export type ChatMessage = {
   sources?: ChatSource[];
   pending?: boolean;
 };
-
-export type ApiWorkoutExercise = {
-  id: string;
-  workout_id: string;
-  order_index: number;
-  name: string;
-  sets: number | null;
-  reps: string | null;
-  duration: string | null;
-  rest: string | null;
-  notes: string | null;
-  metadata: Record<string, unknown>;
-  completed_at: string | null;
-};
-
-export type ApiWorkout = {
-  id: string;
-  scheduled_date: string;
-  title: string | null;
-  goal: string | null;
-  notes: string | null;
-  exercises: ApiWorkoutExercise[];
-};
