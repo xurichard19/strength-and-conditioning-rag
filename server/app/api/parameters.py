@@ -9,12 +9,12 @@ def calendar_range(start_date: date, end_date: date) -> tuple[date, date]:
     validate inclusive local calendar dates before calling range handlers
 
     - **start_date**: first date requested by the client
-    - **end_date**: last date, no more than 366 days after start
+    - **end_date**: inclusive last date; at most 31 dates per frontend preload
     - **returns**: ordered date pair; invalid windows produce http 422
     """
 
-    if not 0 <= (end_date - start_date).days <= 366:
-        raise HTTPException(422, "date range must be ordered and no longer than 366 days")
+    if not 0 <= (end_date - start_date).days < 31:
+        raise HTTPException(422, "calendar range must contain 1 to 31 days")
     return start_date, end_date
 
 

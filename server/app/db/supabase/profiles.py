@@ -34,7 +34,8 @@ def update_profile(user_id: str | UUID, values: ProfileUpdate, access_token: str
     only fields allowed by ProfileUpdate can be changed; user id and email are not
     write inputs. exclude_unset preserves omitted fields; explicit null can clear
     display_name but not timezone. validates the timezone using the timezone database.
-    a database trigger bumps the planning revision, but this does not enqueue a replan.
+    a database trigger bumps revision only when timezone changes; display-name edits
+    and identical saves do not invalidate planning. this does not enqueue a replan.
     an empty update or invalid timezone raises valueerror before any write.
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user

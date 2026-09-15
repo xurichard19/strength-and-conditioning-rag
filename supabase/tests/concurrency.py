@@ -55,5 +55,15 @@ assert sql(f"select count(*) from public.workouts where created_by_change_id = '
 assert sql(f"select count(*) from public.planning_changes where id = '{job['id']}';").strip() == '1'
 print('concurrent claims and duplicate publication passed')
 
+# Identical concurrent onboarding saves must not invalidate the same input twice.
+user = users[0]
+revision = int(sql(f"select revision from public.planning_schedules where user_id = '{user}';").strip())
+statement = ("set role service_role; insert into public.onboarding_responses(user_id, answers) "
+             f"values ('{user}', '{{}}') on conflict(user_id) do update set answers = excluded.answers;")
+with ThreadPoolExecutor(max_workers=2) as pool:
+    list(pool.map(sql, [statement, statement]))
+assert int(sql(f"select revision from public.planning_schedules where user_id = '{user}';").strip()) == revision + 1
+print('concurrent identical onboarding saves invalidate once')
+
 for user in users:
     sql(f"delete from auth.users where id = '{user}';")

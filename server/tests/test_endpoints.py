@@ -172,6 +172,8 @@ class EndpointTests(unittest.TestCase):
             events = [json.loads(line) for line in response.text.splitlines()]
             self.assertEqual(events[-1], {'type': 'done', 'message_id': str(ID)})
             self.assertEqual([call.args[1:3] for call in save.call_args_list], [('user', 'hi'), ('assistant', 'hello')])
+            self.assertEqual(save.call_args_list[0].args[-1], USER.access_token)
+            self.assertIsNone(save.call_args_list[1].args[-1])
 
     def test_chat_failure_does_not_save_partial_reply_or_send_done(self):
         async def stream(graph, **kwargs):

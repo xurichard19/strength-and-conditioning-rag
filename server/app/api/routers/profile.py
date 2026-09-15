@@ -40,7 +40,7 @@ def update_profile(
 
     omitted fields remain unchanged. explicit null clears display_name, but
     timezone cannot be null. invalid/empty input is rejected with 422 before
-    persistence. the database invalidates planning inputs; no job is queued here.
+    persistence. changed timezones invalidate planning; name edits do not. no job is queued here.
 
     - **payload**: validated editable fields; email, owner, and legacy answers are forbidden
     - **response**: receives private/no-store caching headers

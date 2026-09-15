@@ -44,6 +44,14 @@ class WorkoutRouteTests(unittest.TestCase):
             self.assertEqual(self.client.get("/calendar?" + query).status_code, 422)
         handler.assert_not_called()
 
+    @patch("app.api.routers.calendar.calendar.get_calendar_snapshot")
+    def test_calendar_preloads_at_most_31_inclusive_dates(self, handler):
+        handler.return_value = CalendarSnapshot(workouts=[], sports_workouts=[], revision=None)
+        self.assertEqual(self.client.get('/calendar?start_date=2026-10-01&end_date=2026-10-31').status_code, 200)
+        handler.reset_mock()
+        self.assertEqual(self.client.get('/calendar?start_date=2026-10-01&end_date=2026-11-01').status_code, 422)
+        handler.assert_not_called()
+
     @patch("app.api.routers.workouts.workouts.get_workout_snapshot")
     def test_workout_detail_and_missing(self, handler):
         handler.return_value = WorkoutSnapshot(workout=WORKOUT, revision=4)

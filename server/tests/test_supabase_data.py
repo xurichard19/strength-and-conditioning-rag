@@ -1,6 +1,7 @@
 import json
 import unittest
 from io import BytesIO
+from http.client import IncompleteRead, RemoteDisconnected
 from urllib.error import HTTPError
 from unittest.mock import patch
 
@@ -85,6 +86,25 @@ class UpdateRowsTests(unittest.TestCase):
 
 
 class TransportTests(unittest.TestCase):
+    @patch("app.db.supabase.transport.urlopen")
+    def test_network_failures_are_structured_and_never_retried(self, urlopen):
+        for error in (TimeoutError(), ConnectionResetError(), RemoteDisconnected(), IncompleteRead(b'partial')):
+            with self.subTest(error=type(error).__name__):
+                urlopen.reset_mock()
+                urlopen.side_effect = error
+                with self.assertRaises(SupabaseDataError):
+                    insert_rows('messages', {'content': 'hello'}, 'caller-jwt')
+                urlopen.assert_called_once()
+
+    @patch("app.db.supabase.transport.urlopen")
+    def test_broken_error_body_keeps_the_http_status(self, urlopen):
+        body = unittest.mock.Mock()
+        body.read.side_effect = ConnectionResetError()
+        urlopen.side_effect = HTTPError('https://test.invalid', 409, 'conflict', {}, body)
+        with self.assertRaises(SupabaseDataError) as caught:
+            select_rows('profiles', [], 'caller-jwt')
+        self.assertEqual(caught.exception.status_code, 409)
+
     @patch("app.db.supabase.transport.urlopen")
     @patch("app.db.supabase.transport.settings")
     def test_rpc_uses_rpc_path(self, settings, urlopen) -> None:

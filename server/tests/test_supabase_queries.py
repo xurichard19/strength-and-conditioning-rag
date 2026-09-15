@@ -113,6 +113,14 @@ class HandlerTests(unittest.TestCase):
         self.assertIn('superseded_at=is.null', request.full_url)
         self.assertNotIn('superseded_by_change_id', request.full_url)
 
+    def test_assistant_message_write_uses_explicit_backend_credentials(self):
+        self.response([dict(id=str(JOB), user_id=str(USER), role='assistant', content='reply', created_at=NOW.isoformat())])
+        message = messages.append_message(USER, 'assistant', 'reply', None)
+        request = self.http.call_args.args[0]
+        self.assertEqual(message.role, 'assistant')
+        self.assertEqual(request.get_header('Authorization'), 'Bearer backend-key')
+        self.assertEqual(json.loads(request.data)['user_id'], str(USER))
+
     def test_backend_key_missing_fails_before_network(self):
         self.settings.supabase_service_role_key = None
         with self.assertRaisesRegex(SupabaseDataError, 'service role key'):

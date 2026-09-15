@@ -14,7 +14,6 @@ def build_chat_workflow():
 
     graph = StateGraph(ChatState, context_schema=WorkflowContext)
 
-    # graph.add_node("load_history", load_history_node)
     graph.add_node("search", search_node)
     graph.add_node("generate", generate_node)
 
@@ -48,8 +47,8 @@ async def stream_chat(
     sources = []
 
     async for part in graph.astream(
-        {"messages": [*[{"role": item.role, "content": item.content} for item in history or []],
-            {"role": "user", "content": message}]},
+        {"messages": [{"role": item.role, "content": item.content} for item in history or []]
+            + [{"role": "user", "content": message}]},
         context=context,
         stream_mode=["messages", "updates"],
         version="v2",

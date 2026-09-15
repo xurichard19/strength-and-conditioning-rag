@@ -2,8 +2,9 @@
 
 import json
 import re
+from http.client import HTTPException as HTTPProtocolError
 from typing import Any
-from urllib.error import HTTPError, URLError
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
@@ -110,7 +111,7 @@ def _request(
     except HTTPError as exc:
         try:
             error = json.loads(exc.read().decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError, HTTPProtocolError):
             error = {}
         if not isinstance(error, dict):
             error = {}
@@ -120,7 +121,7 @@ def _request(
             exc.code,
             code if isinstance(code, str) else None,
         ) from exc
-    except (json.JSONDecodeError, TimeoutError, UnicodeDecodeError, URLError) as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError, HTTPProtocolError) as exc:
         raise SupabaseDataError("supabase data api is unavailable") from exc
 
 
@@ -187,7 +188,7 @@ def call_rpc(
 def insert_rows(
     table: str,
     rows: dict[str, Any] | list[dict[str, Any]],
-    access_token: str,
+    access_token: str | None,
 ) -> list[dict[str, Any]]:
     """
     insert rows into supabase table using supabase rest api
@@ -199,7 +200,7 @@ def insert_rows(
 
     - **table**: supabase table name
     - **rows**: json-compatible row or rows to save
-    - **access_token**: verified user jwt used to enforce rls
+    - **access_token**: verified user jwt for rls; none uses trusted backend credentials
     - **returns**: inserted row dictionaries including database defaults
     """
 

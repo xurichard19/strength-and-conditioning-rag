@@ -65,7 +65,7 @@ async def chat_reply(
 
     - **payload**: nonblank user text; clients cannot submit assistant/system roles
     - **request**: application with initialized chat_graph
-    - **user**: verified owner and jwt used by persistence handlers
+    - **user**: verified owner; human writes use the jwt and assistant writes use backend credentials
     - **returns**: ndjson text/sources events, then done with saved message_id;
       errors after streaming starts are error events, not a new http status
     """
@@ -93,7 +93,7 @@ async def chat_reply(
             text = "".join(chunks)
             if not text.strip():
                 raise ValueError("empty assistant reply")
-            saved = await asyncio.to_thread(messages.append_message, user.id, "assistant", text, user.access_token)
+            saved = await asyncio.to_thread(messages.append_message, user.id, "assistant", text, None)
             yield ChatDoneEvent(message_id=saved.id).model_dump_json() + "\n"
         except Exception as exc:
             logger.warning("chat failed user_id=%s error_type=%s", user.id, type(exc).__name__)

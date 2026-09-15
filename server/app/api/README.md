@@ -38,7 +38,7 @@ Use `/docs` or `/openapi.json` for exact JSON fields. Requests reject unknown fi
 
 ## calendar and result writes
 
-`GET /calendar?start_date=2026-09-14&end_date=2026-09-20` uses inclusive local calendar dates, with at most 366 days between endpoints. Current means `superseded_at` is null, not just status planned: completed and skipped workouts remain visible. Sports start times are local wall-clock times without offsets.
+`GET /calendar?start_date=2026-09-14&end_date=2026-09-20` preloads full workout details for up to 31 inclusive local dates. Keep that response in the frontend for opening details without another fetch. Current means `superseded_at` is null, not just status planned: completed and skipped workouts remain visible. Sports start times are local wall-clock times without offsets. Internal planning readers retain their wider date-range support.
 
 Calendar, workout detail, and history reads check the planning revision before and after reading. A concurrent change returns 409 rather than labelling older data with a newer revision. This is optimistic checking, not a database snapshot. A null revision means no schedule exists; never substitute zero.
 
@@ -84,6 +84,6 @@ History accepts `limit` (1–100). For an older page, supply both `before_create
 
 401 means missing/expired authentication; 403 means denied access; 404 means missing or invisible data; 409 means a revision/state conflict; 422 means invalid input/operation; 502 means an upstream data failure. Raw database/provider errors are not returned. Writes are never automatically retried. Sports creation has no request key; reload commitments after an uncertain response before creating again.
 
-The scheduler and replan worker are still skeletons. Queueing a job does not execute generation until those are implemented. Automatic trigger orchestration for sports edits, results, surveys, chat, and profile/onboarding changes is not wired: current writes invalidate planning inputs, and `/planning/adjustments` is the explicit request path. Onboarding completion alone does not configure or generate a plan. Background work also needs the outstanding scheduler timezone-validation and due-batch fairness fixes before production use.
+The scheduler and replan worker are still skeletons. Queueing a job does not execute generation until those are implemented. Automatic trigger orchestration for sports edits, results, surveys, chat, and profile/onboarding changes is not wired: meaningful input changes invalidate planning, and `/planning/adjustments` is the explicit request path. Onboarding completion alone does not configure or generate a plan. Apply the hardening migration before deploying: it validates editable timezones, fixes scheduler fairness, avoids duplicate upsert invalidations, and restricts assistant-message writes to the backend. Assistant persistence requires the service-role credential; it no longer depends on the user's token still being valid after generation.
 
 The old `/plan` routes and fixed-question onboarding API are intentionally removed. Frontend callers must migrate to this surface. Endpoint tests mock external services; live Supabase/AI integration and frontend end-to-end tests remain necessary before release.

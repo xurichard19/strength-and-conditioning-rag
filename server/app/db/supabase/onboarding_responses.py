@@ -49,7 +49,8 @@ def save_onboarding_response(
     individual answers. supply the full desired object when saving an edit. omitted
     completed_at preserves the previous timestamp; this interface cannot clear it.
     a supplied timestamp must be timezone-aware. the database trigger bumps the
-    planning revision but does not enqueue a job. concurrent saves are last-write-wins,
+    planning revision once for actual changes, not identical saves; no job is queued.
+    concurrent saves are last-write-wins,
     so repeating an old save can overwrite a newer response.
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
