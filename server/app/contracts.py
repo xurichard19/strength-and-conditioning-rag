@@ -32,16 +32,11 @@ class Source(BaseModel):
 
     @model_validator(mode="after")
     def check_source_identifier(self):
-        if self.source_type == "research":
-            if not self.doi:
-                raise ValueError("doi is required for research sources")
-            if self.url:
-                raise ValueError("url should not be provided for research sources")
-        elif self.source_type == "web":
-            if not self.url:
-                raise ValueError("url is required for web sources")
-            if self.doi:
-                raise ValueError("doi should not be provided for web sources")
+        required, excluded = ("doi", "url") if self.source_type == "research" else ("url", "doi")
+        if not getattr(self, required):
+            raise ValueError(f"{required} is required for {self.source_type} sources")
+        if getattr(self, excluded):
+            raise ValueError(f"{excluded} should not be provided for {self.source_type} sources")
         return self
 
 

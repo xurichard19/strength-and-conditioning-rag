@@ -6,8 +6,7 @@ import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
-# remove later, temporary disable for sentry tracing
-from sentry_sdk.integrations.httpx import HttpxIntegration
+# database spans use stable action names instead of outgoing urls/filters
 from sentry_sdk.integrations.stdlib import StdlibIntegration
 
 # import env variables
@@ -36,14 +35,17 @@ if settings.sentry_dsn:
     sentry_sdk.init(
         dsn=settings.sentry_dsn,
         environment=settings.environment,
-        send_default_pii=True,
+        send_default_pii=False,
+        max_request_body_size="never",
+        include_local_variables=False,
         traces_sample_rate=settings.sentry_traces_sample_rate,
+        # langsmith owns detailed ai traces; only enable the explicit web integrations
+        auto_enabling_integrations=False,
         integrations=[
             StarletteIntegration(transaction_style="endpoint"),
             FastApiIntegration(transaction_style="endpoint"),
         ],
         disabled_integrations=[
-            HttpxIntegration(),
             StdlibIntegration(),
         ],
     )

@@ -78,20 +78,31 @@ export function createBackend(request: ApiRequest) {
       return json<SavedMessage[]>(`/chat/messages?${query}`);
     },
     streamChat: async (text: string, onText: (delta: string) => void,
-      onSources: (sources: ChatSource[]) => void, signal: AbortSignal | undefined, conversationId: string) => {
+      onSources: (sources: ChatSource[]) => void, signal: AbortSignal | undefined, conversationId: string,
+      onSaved?: (message: SavedMessage) => void) => {
       const response = await checked(await request('/chat', {
         method: 'POST', body: JSON.stringify({ text, conversation_id: conversationId }), signal,
-        headers: { Accept: 'application/x-ndjson' },
+        headers: { Accept: 'application/x-ndjson', 'X-Chat-Saved-Events': '1' },
       }));
       if (!response.body) throw new Error('Chat stream is unavailable.');
-      return readChatStream(response.body, onText, onSources);
+      return readChatStream(response.body, onText, onSources, onSaved);
     },
   };
 }
 
+/** Check persistence receipts before their server-owned ids enter the message cache. */
+function savedRecord(value: Partial<SavedMessage> | null | undefined, role: SavedMessage['role']): SavedMessage {
+  if (!value || typeof value.id !== 'string' || !value.id || typeof value.created_at !== 'string'
+    || !Number.isFinite(Date.parse(value.created_at)) || value.role !== role || typeof value.content !== 'string') {
+    throw new Error('Invalid saved message.');
+  }
+  return value as SavedMessage;
+}
+
 /** Return only after the server confirms persistence; EOF alone is not success. */
 export async function readChatStream(body: ReadableStream<Uint8Array>,
-  onText: (delta: string) => void, onSources: (sources: ChatSource[]) => void): Promise<string> {
+  onText: (delta: string) => void, onSources: (sources: ChatSource[]) => void,
+  onSaved?: (message: SavedMessage) => void): Promise<string> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -99,11 +110,28 @@ export async function readChatStream(body: ReadableStream<Uint8Array>,
   function dispatch(line: string) {
     if (!line.trim()) return;
     const event = JSON.parse(line);
-    if (event.type === 'error') throw new Error(event.message ?? 'Chat failed.');
-    if (event.type === 'text' && typeof event.delta === 'string') onText(event.delta);
-    else if (event.type === 'sources' && Array.isArray(event.sources)) onSources(event.sources);
-    else if (event.type === 'done' && typeof event.message_id === 'string') messageId = event.message_id;
-    else throw new Error('Invalid chat stream event.');
+    switch (event?.type) {
+      case 'error': throw new Error(event.message ?? 'Chat failed.');
+      case 'text':
+        if (typeof event.delta !== 'string') break;
+        onText(event.delta); return;
+      case 'sources':
+        if (!Array.isArray(event.sources)) break;
+        onSources(event.sources); return;
+      case 'saved': {
+        const row = savedRecord(event.message, 'user');
+        onSaved?.(row); return;
+      }
+      case 'done':
+        if (typeof event.message_id !== 'string') break;
+        if (event.message) {
+          const row = savedRecord(event.message, 'assistant');
+          if (row.id !== event.message_id) throw new Error('Invalid saved reply.');
+          onSaved?.(row);
+        }
+        messageId = event.message_id; return;
+    }
+    throw new Error('Invalid chat stream event.');
   }
   try {
     while (!messageId) {

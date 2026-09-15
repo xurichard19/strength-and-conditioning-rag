@@ -47,6 +47,16 @@ jobs:
             fi
           done
 
+      - name: validate optional langsmith configuration
+        env:
+          LANGSMITH_TRACING: ${{ vars.LANGSMITH_TRACING || 'false' }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+        run: |
+          if [[ "${LANGSMITH_TRACING}" == "true" && -z "${LANGSMITH_API_KEY}" ]]; then
+            echo "::error::missing LANGSMITH_API_KEY while tracing is enabled"
+            exit 1
+          fi
+
       - name: authenticate to google cloud
         uses: google-github-actions/auth@v3
         with:
@@ -117,6 +127,17 @@ jobs:
             TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
             SENTRY_DSN=${{ secrets.SENTRY_DSN }}
             SENTRY_TRACES_SAMPLE_RATE=0.1
+            SENTRY_RELEASE=${{ github.sha }}
+            LANGSMITH_TRACING=${{ vars.LANGSMITH_TRACING || 'false' }}
+            LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}
+            LANGSMITH_PROJECT=${{ vars.LANGSMITH_PROJECT || 'arcel' }}
+            LANGSMITH_ENDPOINT=${{ vars.LANGSMITH_ENDPOINT || 'https://api.smith.langchain.com' }}
+            LANGSMITH_WORKSPACE_ID=${{ vars.LANGSMITH_WORKSPACE_ID }}
+            LANGSMITH_TRACING_SAMPLING_RATE=${{ vars.LANGSMITH_TRACING_SAMPLING_RATE || '0.1' }}
+            LANGSMITH_HIDE_INPUTS=true
+            LANGSMITH_HIDE_OUTPUTS=true
+            LANGSMITH_HIDE_METADATA=true
+            LANGCHAIN_CALLBACKS_BACKGROUND=false
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}
             SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
             SUPABASE_SECRET_KEY=${{ secrets.SUPABASE_SECRET_KEY }}

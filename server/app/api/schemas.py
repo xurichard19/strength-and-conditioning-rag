@@ -411,9 +411,15 @@ class ChatSourcesEvent(ResponseModel):
     sources: list[SourceResponse]
 
 
+class ChatSavedEvent(ResponseModel):
+    type: Literal["saved"] = "saved"
+    message: MessageResponse
+
+
 class ChatDoneEvent(ResponseModel):
     type: Literal["done"] = "done"
     message_id: UUID
+    message: MessageResponse
 
 
 class ChatErrorEvent(ResponseModel):
@@ -422,6 +428,6 @@ class ChatErrorEvent(ResponseModel):
 
 
 ChatStreamEvent = Annotated[
-    ChatTextEvent | ChatSourcesEvent | ChatDoneEvent | ChatErrorEvent,
+    ChatSavedEvent | ChatTextEvent | ChatSourcesEvent | ChatDoneEvent | ChatErrorEvent,
     Field(discriminator="type"),
 ]

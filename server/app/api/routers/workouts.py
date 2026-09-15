@@ -22,7 +22,7 @@ def get_workout(workout_id: UUID, user: AuthUser = Depends(require_user)) -> Wor
     - **returns**: workout with nested exercises/sets and revision, or 404 when not current/visible
     """
 
-    with database_errors():
+    with database_errors("workouts.get_workout"):
         result = workouts.get_workout_snapshot(user.id, workout_id, user.access_token)
         if result is None:
             raise HTTPException(404, "workout not found", headers=PRIVATE_HEADERS)
@@ -46,7 +46,7 @@ def save_results(
     - **returns**: new revision after saving; 409 on stale revision, 404 if not current/visible
     """
 
-    with database_errors():
+    with database_errors("workouts.save_results"):
         revision = workouts.record_workout_results(user.id, workout_id,
             payload.expected_revision, payload.status,
             [ExerciseSetResult.model_validate(item.model_dump()) for item in payload.sets])

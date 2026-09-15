@@ -24,7 +24,7 @@ def get_profile(response: Response, user: AuthUser = Depends(require_user)) -> P
     """
 
     response.headers.update(PRIVATE_HEADERS)
-    with database_errors():
+    with database_errors("profile.get_profile"):
         result = profiles.get_profile(user.id, user.access_token)
         if result is None:
             raise HTTPException(404, "profile not found", headers=PRIVATE_HEADERS)
@@ -49,7 +49,7 @@ def update_profile(
     """
 
     response.headers.update(PRIVATE_HEADERS)
-    with database_errors():
+    with database_errors("profile.update_profile"):
         result = profiles.update_profile(user.id,
             ProfileFields.model_validate(payload.model_dump(exclude_unset=True)), user.access_token)
         if result is None:

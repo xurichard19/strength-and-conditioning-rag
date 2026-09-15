@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { fonts, radius, type Palette } from '@/design/tokens';
+import { webUrl } from '@/lib/links';
 import { useApp } from '@/state/app-context';
 
 const inlinePattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)]+\)|\*[^*]+\*)/g;
@@ -13,7 +14,9 @@ function renderInlineToken(token: string, key: number, colors: Palette) {
   if (token.startsWith('*')) return <Text key={key} style={{ fontStyle: 'italic' }}>{token.slice(1, -1)}</Text>;
 
   const [, label, url] = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/) ?? [];
-  return <Text accessibilityRole="link" key={key} onPress={() => void Linking.openURL(url)} style={[styles.link, { color: colors.tintText }]}>{label}</Text>;
+  const safeUrl = webUrl(url);
+  if (!safeUrl) return label;
+  return <Text accessibilityRole="link" key={key} onPress={() => void Linking.openURL(safeUrl).catch(() => undefined)} style={[styles.link, { color: colors.tintText }]}>{label}</Text>;
 }
 
 function inlineParts(text: string, colors: Palette) {

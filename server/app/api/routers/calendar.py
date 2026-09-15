@@ -25,5 +25,5 @@ def get_calendar(dates: tuple[date, date] = Depends(calendar_range), user: AuthU
     - **returns**: separately ordered workout/sports lists and matching planning revision
     """
 
-    with database_errors():
+    with database_errors("calendar.get_calendar"):
         return CalendarResponse.model_validate(calendar.get_calendar_snapshot(user.id, *dates, user.access_token))

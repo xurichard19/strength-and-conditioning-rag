@@ -1,0 +1,90 @@
+import { SquarePen, X } from 'lucide-react-native';
+import { useState } from 'react';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { errorMessage } from '@/lib/errors';
+import { useApp } from '@/state/app-context';
+import { AppText } from './ui';
+
+type Action = 'menu' | 'rename' | 'delete';
+const headings: Record<Action, string> = {
+  menu: 'Conversation options', rename: 'Rename conversation', delete: 'Delete conversation?',
+};
+
+function ActionFields({ action, busy, name, setName, setAction }: {
+  action: Action; busy: boolean; name: string; setName: (name: string) => void; setAction: (action: Action) => void;
+}) {
+  const { colors, chatBusy, chatTitle } = useApp();
+  if (action === 'menu') return <>
+    <Pressable disabled={chatBusy} onPress={() => { setName(chatTitle); setAction('rename'); }}><AppText>Rename conversation</AppText></Pressable>
+    <Pressable disabled={chatBusy} onPress={() => setAction('delete')}><AppText>Delete conversation</AppText></Pressable>
+    {chatBusy ? <AppText tone="secondary">Available after the reply finishes.</AppText> : null}
+  </>;
+  if (action === 'delete') return <AppText>This permanently deletes this conversation and all its messages. This cannot be undone.</AppText>;
+  return <TextInput accessibilityLabel="Conversation name" autoFocus value={name} onChangeText={setName} maxLength={120} editable={!busy}
+    style={{ color: colors.text, backgroundColor: colors.fill, padding: 14, borderRadius: 12 }} />;
+}
+
+/** Keep transient rename/delete form state separate from the streaming conversation view. */
+export function ConversationActions({ onClose }: { onClose: () => void }) {
+  const { colors, renameConversation, deleteConversation } = useApp();
+  const [action, setAction] = useState<Action>('menu');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const perform = async () => {
+    if (busy || action === 'menu') return;
+    setBusy(true); setError(null);
+    try {
+      if (action === 'rename') await renameConversation(name);
+      else await deleteConversation();
+      onClose();
+    } catch (failure) { setError(errorMessage(failure, 'Could not update conversation.')); }
+    finally { setBusy(false); }
+  };
+  return <Modal transparent visible animationType="fade" onRequestClose={() => { if (!busy) onClose(); }}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#0008' }} accessibilityViewIsModal>
+      <View style={{ backgroundColor: colors.elevated, borderRadius: 20, padding: 20, gap: 18 }}>
+        <AppText weight="bold">{headings[action]}</AppText>
+        {error ? <AppText>{error}</AppText> : null}
+        <ActionFields action={action} busy={busy} name={name} setName={setName} setAction={setAction} />
+        {action !== 'menu' ? <Pressable accessibilityRole="button" disabled={busy || (action === 'rename' && !name.trim())}
+          onPress={() => void perform()} style={{ paddingVertical: 10 }}>
+          <AppText weight="bold">{busy ? 'Saving…' : action === 'rename' ? 'Save name' : 'Delete conversation'}</AppText>
+        </Pressable> : null}
+        <Pressable accessibilityRole="button" disabled={busy} onPress={onClose} style={{ paddingVertical: 10 }}><AppText tone="secondary">Cancel</AppText></Pressable>
+      </View>
+    </KeyboardAvoidingView>
+  </Modal>;
+}
+
+/** Render only nearby sidebar rows; opening/closing leaves the account's bounded cache intact. */
+export function ConversationSidebar({ onClose, onSelect }: { onClose: () => void; onSelect: (id?: string, title?: string) => void }) {
+  const { colors, conversations, conversationsLoading, conversationsError, hasOlderConversations, refreshConversations } = useApp();
+  return <Modal transparent visible animationType="fade" onRequestClose={onClose}>
+    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: '#0008' }} accessibilityViewIsModal>
+      <SafeAreaView style={{ width: '85%', maxWidth: 340, backgroundColor: colors.background, padding: 20 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <AppText weight="bold">Conversations</AppText>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close conversations" onPress={onClose} style={{ padding: 12 }}><X color={colors.text} size={22} /></Pressable>
+        </View>
+        <Pressable accessibilityRole="button" onPress={() => onSelect()} style={{ flexDirection: 'row', gap: 12, paddingVertical: 20 }}>
+          <SquarePen color={colors.text} size={20} /><AppText weight="medium">New chat</AppText>
+        </Pressable>
+        <FlatList data={conversations} keyExtractor={item => item.id}
+          renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => onSelect(item.id, item.title)} style={{ paddingVertical: 16 }}>
+            <AppText weight="medium">{item.title}</AppText>
+          </Pressable>}
+          ListHeaderComponent={conversationsError ? <Pressable onPress={() => void refreshConversations()}><AppText>{conversationsError} Tap to retry.</AppText></Pressable> : null}
+          ListEmptyComponent={!conversationsLoading && !conversationsError ? <AppText tone="secondary">Your conversations appear here after your first message.</AppText> : null}
+          ListFooterComponent={<>
+            {conversationsLoading ? <ActivityIndicator color={colors.tint} /> : null}
+            {hasOlderConversations ? <Pressable disabled={conversationsLoading} onPress={() => void refreshConversations(true)} style={{ paddingVertical: 16 }}><AppText tone="tint">Load older conversations</AppText></Pressable> : null}
+          </>} />
+      </SafeAreaView>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close conversations" style={{ flex: 1 }} onPress={onClose} />
+    </View>
+  </Modal>;
+}
