@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as Linking from 'expo-linking';
-import { ArrowUp, BookOpen, ChevronRight, ExternalLink, Globe2, Menu, SquarePen, X } from 'lucide-react-native';
+import { ArrowUp, BookOpen, ChevronRight, ExternalLink, Globe2, Menu, MoreHorizontal, SquarePen, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -136,16 +136,51 @@ function Composer({ draft, busy, onChange, onSubmit }: { draft: string; busy: bo
 export default function ChatScreen() {
   const params = useLocalSearchParams<{ context?: string }>();
   const context = Array.isArray(params.context) ? params.context[0] : params.context;
-  const { colors, chatMessages, chatBusy, chatLoading, chatError, hasOlderMessages, refreshChat, sendChat, conversations, conversationsLoading, conversationsError, hasOlderConversations, refreshConversations, openConversation } = useApp();
+  const { colors, chatMessages, chatBusy, chatLoading, chatError, hasOlderMessages, refreshChat, sendChat, conversations, conversationsLoading, conversationsError, hasOlderConversations, refreshConversations, openConversation, chatTitle, activeConversationId, renameConversation, deleteConversation } = useApp();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [action, setAction] = useState<'menu' | 'rename' | 'delete' | null>(null);
+  const [name, setName] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
-  useFocusEffect(useCallback(() => { openConversation(); setDraft(''); setMenuOpen(false); }, [openConversation]));
+  useFocusEffect(useCallback(() => { openConversation(); setDraft(''); setMenuOpen(false); setAction(null); }, [openConversation]));
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => { scrollRef.current?.scrollToEnd({ animated: true }); }, [chatMessages]);
+  const performAction = async () => {
+    if (actionBusy) return;
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      if (action === 'rename') await renameConversation(name);
+      else if (action === 'delete') await deleteConversation();
+      setAction(null);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not update conversation.');
+    } finally { setActionBusy(false); }
+  };
   const submit = () => { if (!draft.trim() || chatBusy || chatLoading) return; const message = draft; setDraft(''); void sendChat(message, context); };
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top']}>
+      <Modal transparent visible={action !== null} animationType="fade" onRequestClose={() => { if (!actionBusy) setAction(null); }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#0008' }} accessibilityViewIsModal>
+          <View style={{ backgroundColor: colors.elevated, borderRadius: 20, padding: 20, gap: 18 }}>
+            <AppText weight="bold">{action === 'rename' ? 'Rename conversation' : action === 'delete' ? 'Delete conversation?' : 'Conversation options'}</AppText>
+            {actionError ? <AppText>{actionError}</AppText> : null}
+            {action === 'menu' ? <>
+              <Pressable disabled={chatBusy} onPress={() => { setName(chatTitle); setAction('rename'); }}><AppText>Rename conversation</AppText></Pressable>
+              <Pressable disabled={chatBusy} onPress={() => setAction('delete')}><AppText>Delete conversation</AppText></Pressable>
+              {chatBusy ? <AppText tone="secondary">Available after the reply finishes.</AppText> : null}
+            </> : null}
+            {action === 'rename' ? <TextInput accessibilityLabel="Conversation name" autoFocus value={name} onChangeText={setName} maxLength={120} editable={!actionBusy} style={{ color: colors.text, backgroundColor: colors.fill, padding: 14, borderRadius: 12 }} /> : null}
+            {action === 'delete' ? <AppText>This permanently deletes this conversation and all its messages. This cannot be undone.</AppText> : null}
+            {action !== 'menu' ? <Pressable accessibilityRole="button" disabled={actionBusy || (action === 'rename' && !name.trim())} onPress={() => void performAction()} style={{ paddingVertical: 10 }}>
+              <AppText weight="bold">{actionBusy ? 'Saving…' : action === 'rename' ? 'Save name' : 'Delete conversation'}</AppText>
+            </Pressable> : null}
+            <Pressable accessibilityRole="button" disabled={actionBusy} onPress={() => setAction(null)} style={{ paddingVertical: 10 }}><AppText tone="secondary">Cancel</AppText></Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
       <Modal transparent visible={menuOpen} animationType="fade" onRequestClose={() => setMenuOpen(false)}>
         <View style={{ flex: 1, flexDirection: 'row', backgroundColor: '#0008' }} accessibilityViewIsModal>
           <SafeAreaView style={{ width: '85%', maxWidth: 340, backgroundColor: colors.background, padding: 20 }}>
@@ -159,7 +194,7 @@ export default function ChatScreen() {
             <ScrollView>
               {conversationsError ? <Pressable onPress={() => void refreshConversations()}><AppText>{conversationsError} Tap to retry.</AppText></Pressable> : null}
               {!conversationsLoading && !conversationsError && !conversations.length ? <AppText tone="secondary">Your conversations appear here after your first message.</AppText> : null}
-              {conversations.map(item => <Pressable key={item.id} accessibilityRole="button" onPress={() => { openConversation(item.id); setDraft(''); setMenuOpen(false); }} style={{ paddingVertical: 16 }}>
+              {conversations.map(item => <Pressable key={item.id} accessibilityRole="button" onPress={() => { openConversation(item.id, item.title); setDraft(''); setMenuOpen(false); }} style={{ paddingVertical: 16 }}>
                 <AppText weight="medium">{item.title}</AppText>
               </Pressable>)}
               {conversationsLoading ? <ActivityIndicator color={colors.tint} /> : null}
@@ -172,11 +207,11 @@ export default function ChatScreen() {
       <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={80}>
         <View style={[styles.header, { borderBottomColor: colors.separator }]}>
           <Pressable accessibilityRole="button" accessibilityLabel="Open conversations" onPress={() => { setMenuOpen(true); void refreshConversations(); }} style={styles.spark}><Menu color={colors.text} size={24} /></Pressable>
-          <View style={styles.headerCopy}><AppText weight="bold" style={styles.title}>Ask Arcel</AppText><AppText tone="secondary" style={styles.subtitle}>Training questions · live</AppText></View>
+          <View style={styles.headerCopy}><AppText weight="bold" style={styles.title} numberOfLines={2}>{chatTitle}</AppText><AppText tone="secondary" style={styles.subtitle}>Training questions · live</AppText></View>
+          {activeConversationId ? <Pressable accessibilityRole="button" accessibilityLabel="Conversation options" onPress={() => { setActionError(null); setAction('menu'); }} style={styles.spark}><MoreHorizontal color={colors.text} size={24} /></Pressable> : null}
         </View>
         <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.messages} showsVerticalScrollIndicator={false}>
-          {chatError ? <AppText>{chatError}</AppText> : null}
-          <Pressable disabled={chatBusy || chatLoading} onPress={() => void refreshChat()}><AppText tone="tint">Refresh saved messages</AppText></Pressable>
+          {chatError ? <Pressable disabled={chatBusy || chatLoading} onPress={() => void refreshChat()}><AppText>{chatError} Tap to reload.</AppText></Pressable> : null}
           {hasOlderMessages ? <Pressable disabled={chatBusy || chatLoading} onPress={() => void refreshChat(true)}><AppText tone="tint">Load older messages</AppText></Pressable> : null}
           {chatLoading ? <ActivityIndicator color={colors.tint} /> : null}
           {chatMessages.map((message) => <ChatBubble key={message.id} message={message} />)}

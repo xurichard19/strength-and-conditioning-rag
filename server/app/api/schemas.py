@@ -161,6 +161,17 @@ class SportsStatusRequest(RequestModel):
 
 # -------------------- chat --------------------
 
+class ConversationUpdate(RequestModel):
+    title: str = Field(min_length=1, max_length=120)
+
+    @field_validator("title")
+    @classmethod
+    def nonblank_title(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("title must not be blank")
+        return value.strip()
+
+
 class ChatRequest(RequestModel):
     conversation_id: UUID
     text: str = Field(min_length=1, max_length=4000)

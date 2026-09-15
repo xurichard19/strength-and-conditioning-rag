@@ -34,7 +34,7 @@ database passwords, or management tokens in the mobile app.
   Display name is saved separately; theme and completion flags are not survey answers.
 - Opening Chat starts a fresh, unsaved conversation. The hamburger menu loads
   `GET /chat/conversations` in pages of 50, with the last ID as the `before` cursor.
-  The first human message atomically creates the thread, titled YYYY-MM-DD in the
+  The first human message atomically creates the thread, titled YYYY-MM-DD HH:MM in the
   profile timezone. Existing history is preserved as one conversation per user.
 - `GET /chat/messages?conversation_id=UUID` loads chronological pages of 20 messages.
   Older pages use timestamp and ID cursors. Foreground refresh stays in the selected thread.
@@ -48,6 +48,11 @@ database passwords, or management tokens in the mobile app.
   The older prototype snapshot cache is no longer read or written.
 
 Deploy the conversation migration and backend before running this mobile version.
+The chat heading starts as Ask Arcel and switches to the title on first send.
+The top-right menu renames or permanently deletes the selected conversation and its messages.
+Rename/delete wait for its current reply to finish. Apply the conversation-management migration
+for these permissions and minute-precision default titles; existing titles are unchanged.
+History loads automatically on selection and app foreground; only errors expose a reload control.
 Saved history is displayed in the client but is not passed into AI generation.
 History retrieval will be implemented inside workflow nodes separately.
 Run setup again opens a local draft; its X exits without saving or clearing completion.

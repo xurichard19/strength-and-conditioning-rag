@@ -64,6 +64,13 @@ export function createBackend(request: ApiRequest) {
       method: 'PUT', body: JSON.stringify({ answers }),
     }),
     completeOnboarding: () => json<Onboarding>('/onboarding/complete', { method: 'POST' }),
+    getConversation: (id: string) => json<Conversation>(`/chat/conversations/${encodeURIComponent(id)}`),
+    renameConversation: (id: string, title: string) => json<Conversation>(`/chat/conversations/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify({ title: title.trim() }),
+    }),
+    deleteConversation: async (id: string) => {
+      await checked(await request(`/chat/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' }));
+    },
     getConversations: (before?: string) => json<Conversation[]>(`/chat/conversations${before ? `?before=${encodeURIComponent(before)}` : ''}`),
     getMessages: (conversationId: string, before?: SavedMessage) => {
       const query = new URLSearchParams({ limit: '20', conversation_id: conversationId });

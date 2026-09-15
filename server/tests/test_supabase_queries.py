@@ -122,6 +122,20 @@ class HandlerTests(unittest.TestCase):
         self.assertIsNone(request.get_header('Authorization'))
         self.assertEqual(json.loads(request.data)['user_id'], str(USER))
 
+    def test_conversation_mutations_filter_owner_and_only_write_title(self):
+        self.response([dict(id=str(JOB), user_id=str(USER), title='New title', created_at=NOW.isoformat())])
+        saved = messages.rename_conversation(USER, JOB, ' New title ', 'user-jwt')
+        request = self.http.call_args.args[0]
+        self.assertEqual(saved.title, 'New title')
+        self.assertEqual(json.loads(request.data), {'title': 'New title'})
+        self.assertIn('user_id=eq.' + str(USER), request.full_url)
+        self.assertIn('id=eq.' + str(JOB), request.full_url)
+        self.assertEqual(request.get_method(), 'PATCH')
+        messages.delete_conversation(USER, JOB, 'user-jwt')
+        request = self.http.call_args.args[0]
+        self.assertEqual(request.get_method(), 'DELETE')
+        self.assertIn('user_id=eq.' + str(USER), request.full_url)
+
     def test_backend_key_missing_fails_before_network(self):
         self.settings.supabase_secret_key = None
         with self.assertRaisesRegex(SupabaseDataError, 'secret key'):

@@ -26,7 +26,11 @@ type AppContextValue = {
   conversationsError: string | null;
   hasOlderConversations: boolean;
   refreshConversations: (older?: boolean) => Promise<void>;
-  openConversation: (id?: string) => void;
+  openConversation: (id?: string, title?: string) => void;
+  chatTitle: string;
+  activeConversationId: string | null;
+  renameConversation: (title: string) => Promise<void>;
+  deleteConversation: () => Promise<void>;
   hydrated: boolean;
   accountReady: boolean;
   passwordRecovery: boolean;
@@ -99,6 +103,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [conversationsError, setConversationsError] = useState<string | null>(null);
   const [hasOlderConversations, setHasOlderConversations] = useState(false);
   const conversation = useRef<string | null>(null);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [chatTitle, setChatTitle] = useState('Ask Arcel');
   const chatEpoch = useRef(0);
   const conversationCursor = useRef<string | undefined>(undefined);
   const listRequest = useRef(0);
@@ -118,6 +124,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (owner.current !== userId) {
       owner.current = userId;
       conversation.current = null;
+      setActiveConversationId(null);
+      setChatTitle('Ask Arcel');
       chatEpoch.current += 1;
       listRequest.current += 1;
       conversationCursor.current = undefined;
@@ -235,11 +243,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [authSession?.user.id, refreshChat]);
 
   // Switching threads invalidates only chat work, never account loading.
-  const openConversation = useCallback((id?: string) => {
+  const openConversation = useCallback((id?: string, title?: string) => {
     chatEpoch.current += 1;
     stream.current?.abort();
     stream.current = null;
     conversation.current = id ?? null;
+    setActiveConversationId(id ?? null);
+    setChatTitle(title ?? 'Ask Arcel');
     historyBusy.current = false;
     oldest.current = undefined;
     setChatMessages([]);
@@ -249,6 +259,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setHasOlderMessages(false);
     if (id) void refreshChat();
   }, [refreshChat]);
+
+  const renameConversation = async (title: string) => {
+    const userId = owner.current;
+    const id = conversation.current;
+    if (!userId || !id || stream.current) throw new Error('Wait for the reply to finish.');
+    const generation = epoch.current;
+    const saved = await backendFor(userId).renameConversation(id, title);
+    if (epoch.current !== generation) return;
+    listRequest.current += 1;
+    setConversationsLoading(false);
+    setConversations(current => current.map(row => row.id === id ? saved : row));
+    if (conversation.current === id) setChatTitle(saved.title);
+  };
+
+  const deleteConversation = async () => {
+    const userId = owner.current;
+    const id = conversation.current;
+    if (!userId || !id || stream.current) throw new Error('Wait for the reply to finish.');
+    const generation = epoch.current;
+    await backendFor(userId).deleteConversation(id);
+    if (epoch.current !== generation) return;
+    listRequest.current += 1;
+    setConversationsLoading(false);
+    setConversations(current => current.filter(row => row.id !== id));
+    if (conversation.current === id) openConversation();
+  };
 
   const refreshConversations = useCallback(async (older = false) => {
     const userId = owner.current;
@@ -438,6 +474,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const selection = chatEpoch.current;
     conversation.current ??= randomUUID();
     const selectedId = conversation.current;
+    if (!activeConversationId) {
+      const now = new Date();
+      const pad = (value: number) => String(value).padStart(2, '0');
+      setChatTitle(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`);
+      setActiveConversationId(selectedId);
+    }
     const controller = new AbortController();
     stream.current = controller;
     setChatBusy(true);
@@ -453,6 +495,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (epoch.current === generation && chatEpoch.current === selection) setChatMessages(current => current.map(row => row.id === id ? { ...row, text: row.text + delta } : row));
       }, sources => update({ sources }), controller.signal, selectedId);
       update({ id: savedId, pending: false });
+      // Reconcile the immediate device title with the database's first-message timestamp.
+      const saved = await backendFor(userId).getConversation(selectedId).catch(() => null);
+      if (saved && epoch.current === generation && chatEpoch.current === selection) setChatTitle(saved.title);
     } catch (error) {
       update({ pending: false, basis: 'Reply not confirmed saved.' });
       if (epoch.current === generation && chatEpoch.current === selection) setChatError(errorMessage(error, 'Chat failed. Refresh history before sending again.'));
@@ -467,6 +512,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     previewMode: true, colors, colorScheme, notice, chatMessages, chatBusy, chatError,
     chatLoading, hasOlderMessages, refreshChat, finishOnboarding,
     conversations, conversationsLoading, conversationsError, hasOlderConversations, refreshConversations, openConversation,
+    chatTitle, activeConversationId, renameConversation, deleteConversation,
     setThemeMode, updateProfile, acceptProposal, declineProposal, shortenToday,
     updateSet, addSet, removeSet, skipExercise, setEffort, finishSession,
     signIn, signInWithGoogle, signUp, requestPasswordReset, updatePassword,
