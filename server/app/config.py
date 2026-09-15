@@ -1,6 +1,7 @@
 from functools import lru_cache
+from urllib.parse import urlsplit
 
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,6 +45,21 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("SUPABASE_PUBLISHABLE_KEY", "SUPABASE_ANON_KEY")
     )
     supabase_secret_key: SecretStr | None = None
+
+    @field_validator("supabase_url")
+    @classmethod
+    def validate_supabase_url(cls, value: str) -> str:
+        """
+        require https before auth or database requests can send credentials
+
+        - **value**: configured supabase project URL
+        - **returns**: validated URL without a trailing slash
+        """
+        url = urlsplit(value)
+        if (url.scheme != "https" or not url.hostname or url.username is not None
+                or url.password is not None or url.query or url.fragment):
+            raise ValueError("supabase url must be an https url without credentials, query, or fragment")
+        return value.rstrip("/")
 
     system_collection_name: str = "system-docs"
     retrieval_top_k: int = 15
