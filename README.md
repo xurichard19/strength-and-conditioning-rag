@@ -57,7 +57,7 @@ flowchart TB
 
 #### Database Infrastructure
 
-[![Complete database schema with all tables, columns, and foreign-key connections](docs/database-schema.svg)](docs/database-schema.svg)
+[![Hierarchical database schema with all tables, columns, and parent-to-child connections](docs/database-schema.svg)](docs/database-schema.svg)
 
 ---
 
