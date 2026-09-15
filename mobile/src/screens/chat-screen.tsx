@@ -153,7 +153,7 @@ export default function ChatScreen() {
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top']}>
       {optionsOpen ? <ConversationActions onClose={() => setOptionsOpen(false)} /> : null}
       {menuOpen ? <ConversationSidebar onClose={() => setMenuOpen(false)} onSelect={selectConversation} /> : null}
-      <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={80}>
+      <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={[styles.header, { borderBottomColor: colors.separator }]}>
           <Pressable accessibilityRole="button" accessibilityLabel="Open conversations" onPress={() => { setMenuOpen(true); void refreshConversations(); }} style={styles.spark}><Menu color={colors.text} size={24} /></Pressable>
           <View style={styles.headerCopy}><AppText weight="bold" style={styles.title} numberOfLines={2}>{chatTitle}</AppText><AppText tone="secondary" style={styles.subtitle}>Training questions · live</AppText></View>

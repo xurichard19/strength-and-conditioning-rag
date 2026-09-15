@@ -1,11 +1,11 @@
 import { SquarePen, X } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/app-context';
-import { AppText } from './ui';
+import { AppText, OutlineButton } from './ui';
 
 type Action = 'menu' | 'rename' | 'delete';
 const headings: Record<Action, string> = {
@@ -16,9 +16,10 @@ function ActionFields({ action, busy, name, setName, setAction }: {
   action: Action; busy: boolean; name: string; setName: (name: string) => void; setAction: (action: Action) => void;
 }) {
   const { colors, chatBusy, chatTitle } = useApp();
+  const buttonStyle = { minHeight: 44, borderRadius: 10, paddingHorizontal: 12, borderWidth: 2, borderColor: colors.textTertiary, backgroundColor: 'transparent' };
   if (action === 'menu') return <>
-    <Pressable disabled={chatBusy} onPress={() => { setName(chatTitle); setAction('rename'); }}><AppText>Rename conversation</AppText></Pressable>
-    <Pressable disabled={chatBusy} onPress={() => setAction('delete')}><AppText>Delete conversation</AppText></Pressable>
+    <OutlineButton style={buttonStyle} disabled={chatBusy} onPress={() => { setName(chatTitle); setAction('rename'); }}>Rename conversation</OutlineButton>
+    <OutlineButton style={[buttonStyle, { borderColor: colors.danger }]} disabled={chatBusy} onPress={() => setAction('delete')}>Delete conversation</OutlineButton>
     {chatBusy ? <AppText tone="secondary">Available after the reply finishes.</AppText> : null}
   </>;
   if (action === 'delete') return <AppText>This permanently deletes this conversation and all its messages. This cannot be undone.</AppText>;
@@ -29,6 +30,7 @@ function ActionFields({ action, busy, name, setName, setAction }: {
 /** Keep transient rename/delete form state separate from the streaming conversation view. */
 export function ConversationActions({ onClose }: { onClose: () => void }) {
   const { colors, renameConversation, deleteConversation } = useApp();
+  const buttonStyle = { minHeight: 44, borderRadius: 10, paddingHorizontal: 12, borderWidth: 2, borderColor: colors.textTertiary, backgroundColor: 'transparent' };
   const [action, setAction] = useState<Action>('menu');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -46,15 +48,17 @@ export function ConversationActions({ onClose }: { onClose: () => void }) {
   return <Modal transparent visible animationType="fade" onRequestClose={() => { if (!busy) onClose(); }}>
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#0008' }} accessibilityViewIsModal>
-      <View style={{ backgroundColor: colors.elevated, borderRadius: 20, padding: 20, gap: 18 }}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close conversation options" disabled={busy}
+        onPress={onClose} style={StyleSheet.absoluteFill} />
+      <View style={{ backgroundColor: colors.elevated, borderRadius: 20, padding: 20, gap: 12 }}>
         <AppText weight="bold">{headings[action]}</AppText>
         {error ? <AppText>{error}</AppText> : null}
         <ActionFields action={action} busy={busy} name={name} setName={setName} setAction={setAction} />
-        {action !== 'menu' ? <Pressable accessibilityRole="button" disabled={busy || (action === 'rename' && !name.trim())}
-          onPress={() => void perform()} style={{ paddingVertical: 10 }}>
-          <AppText weight="bold">{busy ? 'Saving…' : action === 'rename' ? 'Save name' : 'Delete conversation'}</AppText>
-        </Pressable> : null}
-        <Pressable accessibilityRole="button" disabled={busy} onPress={onClose} style={{ paddingVertical: 10 }}><AppText tone="secondary">Cancel</AppText></Pressable>
+        {action !== 'menu' ? <OutlineButton disabled={busy || (action === 'rename' && !name.trim())}
+          onPress={() => void perform()} style={[buttonStyle, action === 'delete' && { borderColor: colors.danger }]}>
+          {busy ? 'Saving…' : action === 'rename' ? 'Save name' : 'Delete conversation'}
+        </OutlineButton> : null}
+        <OutlineButton disabled={busy} onPress={onClose} style={buttonStyle}>Cancel</OutlineButton>
       </View>
     </KeyboardAvoidingView>
   </Modal>;
