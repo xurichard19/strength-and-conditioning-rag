@@ -96,6 +96,8 @@ export default function WeekScreen() {
   const [selectedDate, setSelectedDate] = useState(initial);
   const selected = useMemo(() => sessions.find((item) => item.date === selectedDate), [selectedDate, sessions]);
 
+  if (!sessions.length) return <Screen title="Week" wash="week"><Card><AppText>No workouts yet. Planning and calendar syncing will be connected later.</AppText></Card></Screen>;
+
   return (
     <Screen title="Week" subtitle={`Week ${block.week} of ${block.of} · ${block.name} block`} context="this week's plan" wash="week">
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayStrip}>

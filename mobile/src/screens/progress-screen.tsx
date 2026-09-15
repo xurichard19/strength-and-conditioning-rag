@@ -33,6 +33,8 @@ export default function ProgressScreen() {
   const chartWidth = Math.max(250, Math.min(width - 64, 560));
   const maxSessions = 5;
 
+  if (!metrics.length) return <Screen title="Progress" wash="progress"><Card><AppText>No training history yet. Progress tracking is not connected in this build.</AppText></Card></Screen>;
+
   return (
     <Screen title="Progress" subtitle="Both threads, kept separate" context="my progress" wash="progress">
       <SectionTitle>12-week consistency</SectionTitle>

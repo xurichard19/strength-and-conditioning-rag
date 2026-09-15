@@ -1,39 +1,19 @@
 import type { Session as AuthSession } from '@supabase/supabase-js';
 import * as Haptics from 'expo-haptics';
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { Platform, useColorScheme } from 'react-native';
+import * as Linking from 'expo-linking';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { AppState, Platform, useColorScheme } from 'react-native';
 
 import { palettes, type ColorScheme, type Palette, type ThemeMode } from '@/design/tokens';
-import {
-  currentBlock,
-  defaultProfile,
-  initialProposal,
-  initialWeek,
-  mockChatAnswers,
-  progressMetrics,
-} from '@/data/mock';
-import type { ChatMessage, Effort, Profile, Proposal, Session } from '@/domain/types';
-import { rangeAroundToday } from '@/lib/dates';
+import { currentBlock, defaultProfile } from '@/data/mock';
+import type { ChatMessage, Effort, Profile, Proposal, ProgressMetric, Session } from '@/domain/types';
 import { errorMessage } from '@/lib/errors';
 import {
-  completeOnboarding as completeRemoteOnboarding,
-  generateAndSavePlan,
-  getAuthSession,
-  liveApiConfigured,
-  loadProfile,
-  loadWorkouts,
-  requestPasswordReset as apiRequestPasswordReset,
-  saveProfile,
-  signIn as apiSignIn,
-  signInWithGoogle as apiSignInWithGoogle,
-  signOut as apiSignOut,
-  signUp as apiSignUp,
-  streamChat,
-  supabase,
-  updateExerciseCompletion,
-  updatePassword as apiUpdatePassword,
+  backendFor, deviceTimezone, getAuthSession, profileFromApi, sessionFromAuthUrl,
+  requestPasswordReset as apiRequestPasswordReset, signIn as apiSignIn,
+  signInWithGoogle as apiSignInWithGoogle, signOut as apiSignOut, signUp as apiSignUp,
+  supabase, updatePassword as apiUpdatePassword, type Answers, type SavedMessage,
 } from '@/services/api';
-import { loadSnapshot, saveSnapshot, type Snapshot } from '@/state/storage';
 
 type AuthActionResult = { ok: true; message?: string } | { ok: false; message: string };
 
@@ -41,11 +21,17 @@ type AppContextValue = {
   hydrated: boolean;
   accountReady: boolean;
   passwordRecovery: boolean;
+  accountError: string | null;
+  onboardingAnswers: Answers;
+  chatError: string | null;
+  chatLoading: boolean;
+  hasOlderMessages: boolean;
+  refreshChat: (older?: boolean) => Promise<void>;
   profile: Profile;
   sessions: Session[];
   proposal: Proposal | null;
   block: typeof currentBlock;
-  metrics: typeof progressMetrics;
+  metrics: ProgressMetric[];
   authSession: AuthSession | null;
   previewMode: boolean;
   colors: Palette;
@@ -53,7 +39,7 @@ type AppContextValue = {
   notice: string | null;
   chatMessages: ChatMessage[];
   chatBusy: boolean;
-  finishOnboarding: (profile: Profile) => Promise<void>;
+  finishOnboarding: (profile: Profile, answers: Answers) => Promise<boolean>;
   resetOnboarding: () => void;
   setThemeMode: (mode: ThemeMode) => void;
   updateProfile: (update: Partial<Profile>) => void;
@@ -78,141 +64,170 @@ type AppContextValue = {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-const welcomeMessage: ChatMessage = {
-  id: 'welcome',
-  role: 'assistant',
-  text: 'I know your plan and your log — nothing else unless you tell me. Ask about today, the shape of this week, or what to change when plans move.',
-  basis: 'Your current Arcel preview.',
-};
+
+const emptyProfile: Profile = { ...defaultProfile, displayName: '', onboardingComplete: false };
+const asMessage = (row: SavedMessage): ChatMessage => ({ id: row.id, role: row.role, text: row.content });
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const systemScheme = useColorScheme();
   const [hydrated, setHydrated] = useState(false);
   const [accountReady, setAccountReady] = useState(false);
+  const [accountError, setAccountError] = useState<string | null>(null);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
-  const [profile, setProfile] = useState<Profile>(defaultProfile);
-  const [sessions, setSessions] = useState<Session[]>(initialWeek);
-  const [proposal, setProposal] = useState<Proposal | null>(initialProposal);
+  const [profile, setProfile] = useState<Profile>(emptyProfile);
+  const [onboardingAnswers, setOnboardingAnswers] = useState<Answers>({});
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [proposal, setProposal] = useState<Proposal | null>(null);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([welcomeMessage]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
-
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
+  const owner = useRef<string | null>(null);
+  const epoch = useRef(0);
+  const stream = useRef<AbortController | null>(null);
+  const historyBusy = useRef(false);
+  const oldest = useRef<SavedMessage | undefined>(undefined);
+  const accountRequest = useRef(0);
   const colorScheme: ColorScheme = profile.theme === 'system'
-    ? systemScheme === 'dark' ? 'dark' : 'light'
-    : profile.theme;
+    ? systemScheme === 'dark' ? 'dark' : 'light' : profile.theme;
   const colors = palettes[colorScheme];
 
-  useEffect(() => {
-    let mounted = true;
-    const hydrate = async () => {
-      try {
-        const session = await getAuthSession();
-        const local = await loadSnapshot(session);
-        if (!mounted) return;
-        setProfile(local.profile);
-        setSessions(local.sessions);
-        setProposal(local.proposal);
-        setAuthSession(session);
-        if (session && liveApiConfigured) {
-          const range = rangeAroundToday();
-          const [remoteProfile, remoteSessions] = await Promise.all([
-            loadProfile(session.access_token, local.profile),
-            loadWorkouts(session.access_token, range.start, range.end),
-          ]);
-          if (!mounted) return;
-          setProfile((current) => ({ ...current, ...remoteProfile, theme: current.theme }));
-          if (remoteSessions.length) setSessions(remoteSessions);
-        }
-      } catch (error) {
-        setNotice(errorMessage(error, 'Could not restore local data.'));
-      } finally {
-        if (mounted) {
-          setAccountReady(true);
-          setHydrated(true);
-        }
-      }
-    };
-    void hydrate();
-
-    const authSubscription = supabase?.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
-      setAuthSession(session);
-      if (!session) setAccountReady(true);
-    });
-    return () => {
-      mounted = false;
-      authSubscription?.data.subscription.unsubscribe();
-    };
+  // Identity changes clear memory immediately; old async responses may never repopulate it.
+  const acceptSession = useCallback((session: AuthSession | null) => {
+    const userId = session?.user.id ?? null;
+    if (owner.current !== userId) {
+      owner.current = userId;
+      epoch.current += 1;
+      accountRequest.current += 1;
+      stream.current?.abort();
+      stream.current = null;
+      historyBusy.current = false;
+      oldest.current = undefined;
+      setProfile(emptyProfile);
+      setOnboardingAnswers({});
+      setSessions([]);
+      setProposal(null);
+      setChatMessages([]);
+      setChatBusy(false);
+      setChatLoading(false);
+      setChatError(null);
+      setHasOlderMessages(false);
+      setAccountError(null);
+      setNotice(null);
+      setPasswordRecovery(false);
+      setAccountReady(!userId);
+    }
+    setAuthSession(session);
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
-    const snapshot: Snapshot = { profile, sessions, proposal };
-    void saveSnapshot(authSession, snapshot);
-  }, [authSession, hydrated, profile, proposal, sessions]);
+    let active = true;
+    let observedAuth = false;
+    const subscription = supabase?.auth.onAuthStateChange((event, session) => {
+      if (!active) return;
+      observedAuth = true;
+      acceptSession(session);
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
+      setHydrated(true);
+    });
+    void getAuthSession().then(session => {
+      if (active && !observedAuth) acceptSession(session);
+    }).catch(error => { if (active) setNotice(errorMessage(error, 'Could not restore session.')); })
+      .finally(() => { if (active) setHydrated(true); });
+    const handleLink = async (url: string | null) => {
+      if (!url || Platform.OS === 'web' || !/[#?](?:.*&)?access_token=/.test(url)) return;
+      try {
+        const session = await sessionFromAuthUrl(url);
+        if (!active) return;
+        acceptSession(session);
+        if (/[#&?]type=recovery(?:&|$)/.test(url)) setPasswordRecovery(true);
+      } catch (error) { if (active) setNotice(errorMessage(error, 'Invalid sign-in link.')); }
+    };
+    void Linking.getInitialURL().then(handleLink).catch(() => undefined);
+    const links = Linking.addEventListener('url', ({ url }) => { void handleLink(url); });
+    return () => { active = false; subscription?.data.subscription.unsubscribe(); links.remove(); stream.current?.abort(); };
+  }, [acceptSession]);
 
   const refreshLiveData = useCallback(async () => {
-    if (!authSession || !liveApiConfigured) return;
+    const userId = owner.current;
+    if (!userId) return;
+    const generation = epoch.current;
+    const requestId = ++accountRequest.current;
+    setAccountError(null);
     try {
-      const range = rangeAroundToday();
-      const [remoteProfile, remoteSessions] = await Promise.all([
-        loadProfile(authSession.access_token, profile),
-        loadWorkouts(authSession.access_token, range.start, range.end),
-      ]);
-      setProfile((current) => ({ ...current, ...remoteProfile, theme: current.theme }));
-      if (remoteSessions.length) setSessions(remoteSessions);
+      const api = backendFor(userId);
+      const [identity, onboarding] = await Promise.all([api.getProfile(), api.getOnboarding()]);
+      if (epoch.current !== generation || accountRequest.current !== requestId) return;
+      const timezone = deviceTimezone();
+      if (timezone && timezone !== identity.timezone) await api.saveTimezone(timezone);
+      if (epoch.current !== generation || accountRequest.current !== requestId) return;
+      setProfile(current => profileFromApi(identity, onboarding, { ...emptyProfile, theme: current.theme }));
+      setOnboardingAnswers(onboarding?.answers ?? {});
+      setAccountReady(true);
       setNotice(null);
     } catch (error) {
-      setNotice(`${errorMessage(error, 'Live data is unavailable.')} Showing the local preview.`);
-    }
-  }, [authSession, profile]);
-
-  useEffect(() => {
-    if (!authSession || !hydrated || accountReady) return;
-    let active = true;
-    const resolveAccount = async () => {
-      try {
-        const local = await loadSnapshot(authSession);
-        const range = rangeAroundToday();
-        const [remoteProfile, remoteSessions] = await Promise.all([
-          loadProfile(authSession.access_token, local.profile),
-          loadWorkouts(authSession.access_token, range.start, range.end),
-        ]);
-        if (!active) return;
-        setProfile(remoteProfile);
-        setSessions(remoteSessions.length ? remoteSessions : initialWeek);
-        setProposal(initialProposal);
-        setNotice(null);
-      } catch (error) {
-        if (active) setNotice(errorMessage(error, 'Could not load your account.'));
-      } finally {
-        if (active) setAccountReady(true);
+      if (epoch.current === generation && accountRequest.current === requestId) {
+        setAccountError(errorMessage(error, 'Could not load your account.'));
+        setNotice(errorMessage(error, 'Could not load your account.'));
       }
-    };
-    void resolveAccount();
-    return () => { active = false; };
-  }, [accountReady, authSession, hydrated]);
+    }
+  }, []);
+  useEffect(() => { if (authSession?.user.id) void refreshLiveData(); }, [authSession?.user.id, refreshLiveData]);
 
-  const finishOnboarding = async (nextProfile: Profile) => {
-    const completeProfile = { ...nextProfile, onboardingComplete: true };
-    setProfile(completeProfile);
-    setNotice(null);
-    if (!authSession || !liveApiConfigured) return;
-
+  const refreshChat = useCallback(async (older = false) => {
+    const userId = owner.current;
+    if (!userId || stream.current || historyBusy.current) return;
+    const generation = epoch.current;
+    historyBusy.current = true;
+    setChatLoading(true);
+    setChatError(null);
     try {
-      await saveProfile(authSession.access_token, completeProfile);
-      await completeRemoteOnboarding(authSession.access_token);
-      await generateAndSavePlan(authSession.access_token, completeProfile);
-      await refreshLiveData();
+      const rows = await backendFor(userId).getMessages(older ? oldest.current : undefined);
+      if (epoch.current !== generation) return;
+      oldest.current = rows[0] ?? oldest.current;
+      setHasOlderMessages(rows.length === 20);
+      setChatMessages(current => older
+        ? [...rows.map(asMessage).filter(row => !current.some(item => item.id === row.id)), ...current]
+        : rows.map(row => ({ ...asMessage(row), sources: current.find(item => item.id === row.id)?.sources })));
     } catch (error) {
-      setNotice(`${errorMessage(error, 'Could not finish the live setup.')} Your local week is ready.`);
+      if (epoch.current === generation) setChatError(errorMessage(error, 'Could not load chat history.'));
+    } finally {
+      if (epoch.current === generation) { historyBusy.current = false; setChatLoading(false); }
+    }
+  }, []);
+  useEffect(() => {
+    if (!authSession?.user.id) return;
+    void refreshChat();
+    const listener = AppState.addEventListener('change', state => {
+      if (state === 'active') void refreshChat();
+    });
+    return () => listener.remove();
+  }, [authSession?.user.id, refreshChat]);
+
+  const finishOnboarding = async (nextProfile: Profile, answers: Answers): Promise<boolean> => {
+    const userId = owner.current;
+    if (!userId) { setNotice('Please sign in first.'); return false; }
+    const generation = epoch.current;
+    try {
+      const api = backendFor(userId);
+      const identity = await api.getProfile();
+      await api.saveProfile(nextProfile.displayName, deviceTimezone() ?? identity.timezone);
+      await api.saveAnswers(answers);
+      const saved = await api.completeOnboarding();
+      if (epoch.current !== generation) return false;
+      setProfile({ ...nextProfile, onboardingComplete: Boolean(saved.completed_at) });
+      setOnboardingAnswers(saved.answers);
+      setNotice(null);
+      return true;
+    } catch (error) {
+      if (epoch.current === generation) setNotice(errorMessage(error, 'Could not save onboarding. Please try again.'));
+      return false;
     }
   };
-
-  const resetOnboarding = () => {
-    setProfile((current) => ({ ...current, onboardingComplete: false }));
-  };
+  const resetOnboarding = () => setProfile(current => ({ ...current, onboardingComplete: false }));
 
   const setThemeMode = (mode: ThemeMode) => setProfile((current) => ({ ...current, theme: mode }));
   const updateProfile = (update: Partial<Profile>) => setProfile((current) => ({ ...current, ...update }));
@@ -269,7 +284,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setId: string,
     update: { weight?: number | null; reps?: number | null; done?: boolean },
   ) => {
-    let completedExercise = false;
     setSessions((current) => current.map((session) => {
       if (session.id !== sessionId) return session;
       return {
@@ -277,18 +291,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         exercises: session.exercises.map((item) => {
           if (item.id !== exerciseId) return item;
           const sets = item.sets.map((set) => set.id === setId ? { ...set, ...update } : set);
-          completedExercise = sets.length > 0 && sets.every((set) => set.done);
           return { ...item, sets };
         }),
       };
     }));
 
     if (update.done) void Haptics.selectionAsync();
-    if (authSession && completedExercise && !sessionId.startsWith('s-')) {
-      void updateExerciseCompletion(authSession.access_token, sessionId, exerciseId, true).catch(() => {
-        setNotice('Set saved locally. Exercise sync will be retried when the backend supports the full record.');
-      });
-    }
   };
 
   const addSet = (sessionId: string, exerciseId: string) => setSessions((current) => current.map((session) => session.id !== sessionId ? session : {
@@ -332,163 +340,70 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  const signIn = async (email: string, password: string): Promise<AuthActionResult> => {
-    try {
-      setAccountReady(false);
-      const session = await apiSignIn(email, password);
-      setAuthSession(session);
-      return { ok: true };
-    } catch (error) {
-      setAccountReady(true);
-      return { ok: false, message: errorMessage(error, 'Could not sign in.') };
-    }
-  };
 
-  const signInWithGoogle = async (): Promise<AuthActionResult> => {
+  async function authAction(operation: () => Promise<AuthSession | null>, confirmation?: string): Promise<AuthActionResult> {
     try {
-      setAccountReady(false);
-      const session = await apiSignInWithGoogle();
-      if (session) setAuthSession(session);
-      if (!session && Platform.OS !== 'web') setAccountReady(true);
-      return { ok: true };
-    } catch (error) {
-      setAccountReady(true);
-      return { ok: false, message: errorMessage(error, 'Could not sign in with Google.') };
-    }
-  };
-
-  const signUp = async (email: string, password: string): Promise<AuthActionResult> => {
-    try {
-      setAccountReady(false);
-      const session = await apiSignUp(email, password);
-      setAuthSession(session);
-      if (!session) setAccountReady(true);
-      return { ok: true, message: session ? undefined : 'Check your email to confirm the account, then sign in.' };
-    } catch (error) {
-      setAccountReady(true);
-      return { ok: false, message: errorMessage(error, 'Could not create the account.') };
-    }
-  };
-
+      const session = await operation();
+      // Browser OAuth completes through the auth subscription after redirect.
+      if (session) acceptSession(session);
+      return { ok: true, message: session ? undefined : confirmation };
+    } catch (error) { return { ok: false, message: errorMessage(error, 'Authentication failed.') }; }
+  }
+  const signIn = (email: string, password: string) => authAction(() => apiSignIn(email, password));
+  const signUp = (email: string, password: string) => authAction(() => apiSignUp(email, password),
+    'Check your email to confirm the account, then sign in.');
+  const signInWithGoogle = () => authAction(apiSignInWithGoogle);
   const requestPasswordReset = async (email: string): Promise<AuthActionResult> => {
-    try {
-      await apiRequestPasswordReset(email);
-      return { ok: true, message: 'If this email has an account, a reset link will arrive shortly.' };
-    } catch (error) {
-      return { ok: false, message: errorMessage(error, 'Could not send reset instructions.') };
-    }
+    try { await apiRequestPasswordReset(email); return { ok: true, message: 'If this email has an account, a reset link will arrive shortly.' }; }
+    catch (error) { return { ok: false, message: errorMessage(error, 'Could not send reset instructions.') }; }
   };
-
-  const updatePassword = async (password: string): Promise<AuthActionResult> => {
-    try {
-      await apiUpdatePassword(password);
-      await apiSignOut();
-      setAuthSession(null);
-      setPasswordRecovery(false);
-      setProfile(defaultProfile);
-      setSessions(initialWeek);
-      setProposal(initialProposal);
-      setAccountReady(true);
-      return { ok: true, message: 'Password updated. Sign in with your new password.' };
-    } catch (error) {
-      return { ok: false, message: errorMessage(error, 'Could not update your password.') };
-    }
-  };
-
   const signOut = async () => {
-    await apiSignOut();
-    setAuthSession(null);
-    setPasswordRecovery(false);
-    setProfile(defaultProfile);
-    setSessions(initialWeek);
-    setProposal(initialProposal);
-    setAccountReady(true);
-    setNotice(null);
+    try { await apiSignOut(); acceptSession(null); setPasswordRecovery(false); }
+    catch (error) { setNotice(errorMessage(error, 'Could not sign out. Please retry.')); }
+  };
+  const updatePassword = async (password: string): Promise<AuthActionResult> => {
+    try { await apiUpdatePassword(password); await apiSignOut(); acceptSession(null); setPasswordRecovery(false); return { ok: true }; }
+    catch (error) { return { ok: false, message: errorMessage(error, 'Could not update password.') }; }
   };
 
-  const updateAssistant = (assistantId: string, update: Partial<ChatMessage>) => {
-    setChatMessages((current) => current.map((message) => message.id === assistantId ? { ...message, ...update } : message));
-  };
-
-  const streamLiveAnswer = async (assistantId: string, question: string, context?: string) => {
-    if (!authSession) return;
-    let sources: ChatMessage['sources'] = [];
-    const prompt = context ? `[Current app context: ${context}]\n\n${question}` : question;
-    await streamChat(
-      authSession.access_token,
-      prompt,
-      (delta) => setChatMessages((current) => current.map((message) => message.id === assistantId ? { ...message, text: message.text + delta } : message)),
-      (nextSources) => { sources = nextSources; },
-    );
-    updateAssistant(assistantId, { pending: false, sources });
-  };
-
-  const showPreviewAnswer = async (assistantId: string, question: string, context?: string) => {
-    await new Promise((resolve) => setTimeout(resolve, 450));
-    const answer = mockChatAnswers[question.toLowerCase()] ?? {
-      text: 'I can help with that once it is tied to your live training record. For this preview, I would keep today conservative, preserve the main work, and avoid making up missed training with extra intensity.',
-      basis: context ? `Preview guidance using the ${context} screen context.` : 'Preview guidance; no live account is connected.',
-    };
-    updateAssistant(assistantId, { text: answer.text, basis: answer.basis, pending: false });
-  };
-
-  const sendChat = async (rawQuestion: string, context?: string) => {
+  const sendChat = async (rawQuestion: string, _context?: string) => {
     const question = rawQuestion.trim();
-    if (!question || chatBusy) return;
-    const userMessage: ChatMessage = { id: `user-${Date.now()}`, role: 'user', text: question };
-    const assistantId = `assistant-${Date.now()}`;
-    setChatMessages((current) => [...current, userMessage, { id: assistantId, role: 'assistant', text: '', pending: true }]);
+    const userId = owner.current;
+    if (!question || !userId || stream.current || historyBusy.current) return;
+    const generation = epoch.current;
+    const controller = new AbortController();
+    stream.current = controller;
     setChatBusy(true);
-
+    setChatError(null);
+    const id = `pending-${Date.now()}`;
+    setChatMessages(current => [...current, { id: `${id}-user`, role: 'user', text: question },
+      { id, role: 'assistant', text: '', pending: true }]);
+    const update = (changes: Partial<ChatMessage>) => {
+      if (epoch.current === generation) setChatMessages(current => current.map(row => row.id === id ? { ...row, ...changes } : row));
+    };
     try {
-      if (authSession && liveApiConfigured) await streamLiveAnswer(assistantId, question, context);
-      else await showPreviewAnswer(assistantId, question, context);
+      const savedId = await backendFor(userId).streamChat(question, delta => {
+        if (epoch.current === generation) setChatMessages(current => current.map(row => row.id === id ? { ...row, text: row.text + delta } : row));
+      }, sources => update({ sources }), controller.signal);
+      update({ id: savedId, pending: false });
     } catch (error) {
-      updateAssistant(assistantId, { text: errorMessage(error, 'Something went wrong while generating a response.'), pending: false });
+      update({ pending: false, basis: 'Reply not confirmed saved.' });
+      if (epoch.current === generation) setChatError(errorMessage(error, 'Chat failed. Refresh history before sending again.'));
     } finally {
-      setChatBusy(false);
+      if (epoch.current === generation) { stream.current = null; setChatBusy(false); }
     }
   };
 
   const value: AppContextValue = {
-    hydrated,
-    accountReady,
-    passwordRecovery,
-    profile,
-    sessions,
-    proposal,
-    block: currentBlock,
-    metrics: progressMetrics,
-    authSession,
-    previewMode: !authSession || !liveApiConfigured,
-    colors,
-    colorScheme,
-    notice,
-    chatMessages,
-    chatBusy,
-    finishOnboarding,
-    resetOnboarding,
-    setThemeMode,
-    updateProfile,
-    acceptProposal,
-    declineProposal,
-    shortenToday,
-    updateSet,
-    addSet,
-    removeSet,
-    skipExercise,
-    setEffort,
-    finishSession,
-    signIn,
-    signInWithGoogle,
-    signUp,
-    requestPasswordReset,
-    updatePassword,
-    signOut,
-    refreshLiveData,
-    sendChat,
+    hydrated, accountReady, accountError, passwordRecovery, profile, onboardingAnswers,
+    sessions, proposal, block: currentBlock, metrics: [], authSession,
+    previewMode: false, colors, colorScheme, notice, chatMessages, chatBusy, chatError,
+    chatLoading, hasOlderMessages, refreshChat, finishOnboarding, resetOnboarding,
+    setThemeMode, updateProfile, acceptProposal, declineProposal, shortenToday,
+    updateSet, addSet, removeSet, skipExercise, setEffort, finishSession,
+    signIn, signInWithGoogle, signUp, requestPasswordReset, updatePassword,
+    signOut, refreshLiveData, sendChat,
   };
-
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
