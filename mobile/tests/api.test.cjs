@@ -533,7 +533,7 @@ test('logout aborts chat and discards late reply updates', async () => {
   assert.equal(f.value.authSession, null);
 });
 
-test('new chats are lazy, reuse their id for replies, and reset on opening chat', async () => {
+test('new chats are lazy, reuse their id for replies, and reset only on explicit new chat', async () => {
   const ids = [];
   const f = providerFixture({ streamChat: async (_text, _delta, _sources, _signal, id) => {
     ids.push(id); return 'saved';
@@ -664,6 +664,100 @@ test('switching conversations discards a late history response', async () => {
   f.value.openConversation('new'); await f.flush();
   finish([{ id: 'old-message', role: 'user', content: 'old', created_at: 'then' }]); await f.flush();
   assert.equal(f.value.chatMessages[0].id, 'new-message');
+});
+
+// Exercise the real screen's focus and sidebar callbacks without a native renderer.
+function chatScreenFixture(provider) {
+  const slots = []; let cursor = 0; let onFocus; let cleanup;
+  const jsx = (type, props) => ({ type, props });
+  const screen = load('screens/chat-screen.tsx', {
+    react: {
+      useState: initial => {
+        const index = cursor++;
+        if (!(index in slots)) slots[index] = initial;
+        return [slots[index], value => { slots[index] = value; }];
+      },
+      useRef: initial => { const index = cursor++; return slots[index] ??= { current: initial }; },
+      useCallback: fn => fn, useEffect: () => {},
+    },
+    'react/jsx-runtime': { jsx, jsxs: jsx },
+    'expo-router': { useLocalSearchParams: () => ({}), useFocusEffect: fn => { onFocus = fn; } },
+    'expo-linking': {}, 'lucide-react-native': {},
+    'react-native': { Platform: { OS: 'ios' }, StyleSheet: { create: value => value } },
+    'react-native-safe-area-context': {},
+    '@/components/ui': {}, '@/components/markdown-text': {},
+    '@/components/conversation-menu': { ConversationSidebar: 'sidebar', ConversationActions: 'options' },
+    '@/data/mock': { quickQuestions: [] }, '@/design/tokens': { fonts: {}, radius: {} },
+    '@/lib/links': { webUrl }, '@/state/app-context': { useApp: () => provider.value },
+  });
+  const render = () => { cursor = 0; return screen.default(); };
+  function find(predicate) {
+    function visit(node) {
+      if (!node || typeof node !== 'object') return;
+      if (predicate(node)) return node;
+      return [node.props?.children].flat(Infinity).map(visit).find(Boolean);
+    }
+    const node = visit(render());
+    assert.ok(node, 'expected screen element');
+    return node.props;
+  }
+  return {
+    focus: () => { render(); cleanup = onFocus?.(); },
+    blur: () => { cleanup?.(); cleanup = undefined; },
+    find,
+    composer: () => find(node => node.type?.name === 'Composer'),
+  };
+}
+
+test('returning to the chat tab preserves selection, messages, and draft without refetching', async () => {
+  let reads = 0;
+  const f = providerFixture({
+    getMessages: async () => { reads++; return [savedMessage('human', 'hello')]; },
+    getConversation: async id => { reads++; return convo(id, 'Strength questions'); },
+  });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  f.value.openConversation('thread-a'); await f.flush();
+  const screen = chatScreenFixture(f);
+  screen.focus(); await f.flush();
+  screen.composer().onChange('Unsent question');
+  screen.find(node => node.props?.accessibilityLabel === 'Open conversations').onPress();
+  screen.blur(); screen.focus(); await f.flush();
+  assert.equal(f.value.activeConversationId, 'thread-a');
+  assert.equal(f.value.chatTitle, 'Strength questions');
+  assert.equal(f.value.chatMessages[0].text, 'hello');
+  assert.equal(screen.composer().draft, 'Unsent question');
+  assert.equal(reads, 2);
+
+  // Starting a new chat is still an explicit sidebar action.
+  screen.find(node => node.props?.accessibilityLabel === 'Open conversations').onPress();
+  screen.find(node => node.type === 'sidebar').onSelect(); await f.flush();
+  assert.equal(f.value.activeConversationId, null);
+  assert.equal(f.value.chatTitle, 'Ask Arcel');
+  assert.equal(f.value.chatMessages.length, 0);
+  assert.equal(screen.composer().draft, '');
+});
+
+test('returning to the chat tab keeps a pending reply selected through completion', async () => {
+  let finish; let onText; let saved; let signal; let id;
+  const f = providerFixture({ streamChat: (_text, delta, _sources, abort, key, onSaved) => {
+    onText = delta; signal = abort; id = key; saved = onSaved;
+    onSaved(savedMessage('human', 'hello'));
+    return new Promise(resolve => { finish = resolve; });
+  } });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  const screen = chatScreenFixture(f); screen.focus(); await f.flush();
+  const pending = f.value.sendChat('hello'); await f.flush();
+  screen.blur(); onText('partial answer'); await f.flush();
+  screen.focus(); await f.flush();
+  assert.equal(signal.aborted, false);
+  assert.equal(f.value.activeConversationId, id);
+  assert.equal(f.value.chatBusy, true);
+  assert.equal(f.value.chatMessages.at(-1).text, 'partial answer');
+  saved({ ...savedMessage('reply', 'answer'), role: 'assistant' });
+  finish('reply'); await pending; await f.flush();
+  assert.equal(f.value.activeConversationId, id);
+  assert.equal(f.value.chatBusy, false);
+  assert.deepEqual(plain(f.value.chatMessages.map(row => row.text)), ['hello', 'answer']);
 });
 
 test('completed background reply reopens from cache without reloading messages or metadata', async () => {
