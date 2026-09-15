@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 import logging
+import sentry_sdk
 
 from fastapi import HTTPException, Response
 from pydantic import ValidationError
@@ -18,19 +19,21 @@ def private_response(response: Response) -> None:
 
 
 @contextmanager
-def database_errors():
+def database_errors(operation: str = "database.operation"):
     """
-    translate handler failures into safe http responses without exposing database details
+    time a database action and translate handler failures into safe http responses
 
     wrap handler calls, not request validation. malformed database records are
     upstream failures, not invalid user requests. never retry writes here.
 
-    - **yields**: control to the route's database operation
+    - **operation**: stable action name for sentry; never include ids, filters, or payloads
+    - **yields**: control to the route's database operation inside a child span
     - **raises**: http 401/403/404/409/422 for recognized failures, otherwise 502
     """
 
     try:
-        yield
+        with sentry_sdk.start_span(op="db", name=operation):
+            yield
     except SupabaseDataError as exc:
         code = {"PT400": 422, "PT404": 404}.get(exc.code,
             exc.status_code if exc.status_code in (401, 403, 404, 409) else 502)

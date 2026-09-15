@@ -30,7 +30,7 @@ def get_sport(workout_id: UUID, user: AuthUser = Depends(require_user)) -> Sport
     - **returns**: commitment or 404 when missing
     """
 
-    with database_errors():
+    with database_errors("sports_workouts.get_sport"):
         return require_sport(sports_workouts.get_sports_workout(user.id, workout_id, user.access_token))
 
 
@@ -48,7 +48,7 @@ def create_sport(payload: SportsCreateRequest, user: AuthUser = Depends(require_
     - **returns**: new planned commitment with generated id
     """
 
-    with database_errors():
+    with database_errors("sports_workouts.create_sport"):
         return SportsWorkoutResponse.model_validate(sports_workouts.create_sports_workout(user.id,
             SportsWorkoutInput.model_validate(payload.model_dump()), user.access_token))
 
@@ -64,7 +64,7 @@ def update_sport(workout_id: UUID, payload: SportsUpdateRequest, user: AuthUser 
     - **returns**: updated commitment or 404; edits invalidate inputs but do not enqueue work
     """
 
-    with database_errors():
+    with database_errors("sports_workouts.update_sport"):
         return require_sport(sports_workouts.update_sports_workout(user.id, workout_id,
             SportsWorkoutUpdate.model_validate(payload.model_dump(exclude_unset=True)), user.access_token))
 
@@ -83,7 +83,7 @@ def set_sport_status(workout_id: UUID, payload: SportsStatusRequest, user: AuthU
     - **returns**: updated commitment or 404; generated workouts are not modified
     """
 
-    with database_errors():
+    with database_errors("sports_workouts.set_sport_status"):
         return require_sport(sports_workouts.set_sports_workout_status(user.id, workout_id, payload.status, user.access_token))
 
 
@@ -97,5 +97,5 @@ def delete_sport(workout_id: UUID, user: AuthUser = Depends(require_user)) -> Sp
     - **returns**: deleted record or 404, including repeated deletion; planning undo cannot restore it
     """
 
-    with database_errors():
+    with database_errors("sports_workouts.delete_sport"):
         return require_sport(sports_workouts.delete_sports_workout(user.id, workout_id, user.access_token))

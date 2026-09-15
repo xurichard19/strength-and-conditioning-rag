@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     tavily_api_key: str
 
     sentry_dsn: str | None = None
-    sentry_traces_sample_rate: float = 1.0 # change to 0.1 during prod
+    sentry_traces_sample_rate: float = Field(default=0.1, ge=0, le=1)
 
     supabase_url: str
     supabase_publishable_key: str = Field(

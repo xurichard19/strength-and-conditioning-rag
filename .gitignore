@@ -7,6 +7,9 @@ gha-creds-*.json
 /data/
 *.pkl
 docs/
+!/docs/
+/docs/*
+!/docs/database-schema.svg
 
 __pycache__/
 .pytest_cache/

@@ -35,6 +35,8 @@ class ApiSchemaTests(unittest.TestCase):
         self.assertFalse(options['send_default_pii'])
         self.assertFalse(options['include_local_variables'])
         self.assertEqual(options['max_request_body_size'], 'never')
+        self.assertFalse(options['auto_enabling_integrations'])
+        self.assertNotIn('before_send', options)
 
     def test_api_models_do_not_inherit_business_models(self):
         for name, model in vars(schemas).items():

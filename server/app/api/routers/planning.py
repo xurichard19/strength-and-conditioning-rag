@@ -23,7 +23,7 @@ def get_schedule(user: AuthUser = Depends(require_user)) -> ScheduleResponse | N
     - **returns**: schedule including current revision, or null before setup
     """
 
-    with database_errors():
+    with database_errors("planning.get_schedule"):
         result = planning_schedules.get_planning_schedule(user.id, user.access_token)
         return ScheduleResponse.model_validate(result) if result is not None else None
 
@@ -43,7 +43,7 @@ def configure_schedule(payload: ScheduleRequest, user: AuthUser = Depends(requir
     - **returns**: saved schedule; identical settings are a no-op
     """
 
-    with database_errors():
+    with database_errors("planning.configure_schedule"):
         return ScheduleResponse.model_validate(planning_schedules.configure_planning_schedule(user.id, payload.next_refresh_at,
             payload.horizon_days, payload.refresh_interval_days))
 
@@ -62,7 +62,7 @@ def request_adjustment(payload: AdjustmentRequest, user: AuthUser = Depends(requ
     - **returns**: safe job status for polling, not a generated plan
     """
 
-    with database_errors():
+    with database_errors("planning.request_adjustment"):
         return JobResponse.model_validate(replan_jobs.enqueue_adjustment(user.id, payload.deduplication_key,
             payload.reason, payload.effective_from, payload.effective_through))
 
@@ -77,7 +77,7 @@ def list_jobs(limit: int = Query(20, ge=1, le=100), user: AuthUser = Depends(req
     - **returns**: safe statuses; lease tokens, raw errors, and retry keys are omitted
     """
 
-    with database_errors():
+    with database_errors("planning.list_jobs"):
         return [JobResponse.model_validate(job) for job in replan_jobs.get_pending_replans(user.id, limit)]
 
 
@@ -91,7 +91,7 @@ def get_job(job_id: UUID, user: AuthUser = Depends(require_user)) -> JobResponse
     - **returns**: safe status, or 404 when missing or removed by retention
     """
 
-    with database_errors():
+    with database_errors("planning.get_job"):
         result = replan_jobs.get_replan_job(user.id, job_id)
         if result is not None:
             return JobResponse.model_validate(result)
@@ -108,7 +108,7 @@ def cancel_job(job_id: UUID, user: AuthUser = Depends(require_user)) -> JobRespo
     - **returns**: cancelled or already-terminal job; inspect status rather than assuming cancellation
     """
 
-    with database_errors():
+    with database_errors("planning.cancel_job"):
         return JobResponse.model_validate(replan_jobs.cancel_replan_job(user.id, job_id))
 
 
@@ -122,7 +122,7 @@ def retry_job(job_id: UUID, user: AuthUser = Depends(require_user)) -> JobRespon
     - **returns**: pending job or unchanged live/succeeded status; generation remains asynchronous
     """
 
-    with database_errors():
+    with database_errors("planning.retry_job"):
         return JobResponse.model_validate(replan_jobs.retry_replan_job(user.id, job_id))
 
 
@@ -140,7 +140,7 @@ def list_changes(
     - **returns**: newest-first history and current revision; no eligibility guarantee
     """
 
-    with database_errors():
+    with database_errors("planning.list_changes"):
         return HistoryResponse.model_validate(
             planning_changes.get_history_page(user.id, user.access_token, limit, before_revision))
 
@@ -155,7 +155,7 @@ def get_change(change_id: UUID, user: AuthUser = Depends(require_user)) -> Chang
     - **returns**: metadata, before/after workouts, and revision; 404 when missing
     """
 
-    with database_errors():
+    with database_errors("planning.get_change"):
         result = planning_changes.get_change_preview(user.id, change_id, user.access_token)
         if result is None:
             raise HTTPException(404, "change not found", headers=PRIVATE_HEADERS)
@@ -173,7 +173,7 @@ def undo_change(change_id: UUID, payload: RevisionRequest, user: AuthUser = Depe
     - **returns**: receipt/new revision; stale, out-of-order, or performed targets conflict
     """
 
-    with database_errors():
+    with database_errors("planning.undo_change"):
         return ChangeWriteResponse.model_validate(
             planning_changes.undo_planning_change(user.id, change_id, payload.expected_revision))
 
@@ -189,6 +189,6 @@ def redo_change(change_id: UUID, payload: RevisionRequest, user: AuthUser = Depe
     - **returns**: receipt/new revision; does not move refresh cadence or restore deleted sports
     """
 
-    with database_errors():
+    with database_errors("planning.redo_change"):
         return ChangeWriteResponse.model_validate(
             planning_changes.redo_planning_change(user.id, change_id, payload.expected_revision))

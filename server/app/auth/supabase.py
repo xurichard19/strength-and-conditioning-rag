@@ -1,5 +1,6 @@
 import json
 import logging
+import sentry_sdk
 from dataclasses import dataclass
 from http.client import HTTPException as HTTPProtocolError
 from urllib.error import HTTPError
@@ -51,7 +52,7 @@ def verify_supabase_token(access_token: str) -> AuthUser:
     )
 
     try:
-        with urlopen(request, timeout=10) as response:
+        with sentry_sdk.start_span(op="auth", name="auth.verify_session"), urlopen(request, timeout=10) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         if exc.code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:

@@ -20,7 +20,7 @@ def get_onboarding(response: Response, user: AuthUser = Depends(require_user)) -
     """
 
     response.headers.update(PRIVATE_HEADERS)
-    with database_errors():
+    with database_errors("onboarding.get_onboarding"):
         result = onboarding_responses.get_onboarding_response(user.id, user.access_token)
         return OnboardingResponse.model_validate(result) if result is not None else None
 
@@ -44,7 +44,7 @@ def save_onboarding(
     """
 
     response.headers.update(PRIVATE_HEADERS)
-    with database_errors():
+    with database_errors("onboarding.save_onboarding"):
         return OnboardingResponse.model_validate(
             onboarding_responses.save_onboarding_response(user.id, payload.answers, user.access_token))
 
@@ -64,7 +64,7 @@ def complete_onboarding(response: Response, user: AuthUser = Depends(require_use
     """
 
     response.headers.update(PRIVATE_HEADERS)
-    with database_errors():
+    with database_errors("onboarding.complete_onboarding"):
         result = onboarding_responses.complete_onboarding_response(user.id, user.access_token)
         if result is None:
             raise HTTPException(404, "save onboarding answers before completing", headers=PRIVATE_HEADERS)

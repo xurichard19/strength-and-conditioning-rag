@@ -217,7 +217,8 @@ class EndpointTests(unittest.TestCase):
         async def stream(graph, **kwargs):
             yield {'type': 'text', 'delta': 'partial'}
             raise RuntimeError('private provider error')
-        with patch.object(chat, 'stream_workflow', side_effect=stream), \
+        with patch.object(chat.sentry_sdk, 'capture_exception') as capture, \
+             patch.object(chat, 'stream_workflow', side_effect=stream), \
              patch.object(chat.messages, 'get_recent_messages', return_value=[]), \
              patch.object(chat.messages, 'append_message', return_value=MessageRecord(
                  id=ID, conversation_id=ID, user_id=USER.id, role='user', content='hi', created_at=NOW)) as save:
@@ -227,6 +228,8 @@ class EndpointTests(unittest.TestCase):
             self.assertNotIn('private provider error', response.text)
             self.assertNotIn('done', [event['type'] for event in events])
             save.assert_called_once_with(USER.id, 'user', 'hi', USER.access_token, conversation_id=ID)
+            capture.assert_called_once()
+            self.assertIsInstance(capture.call_args.args[0], RuntimeError)
 
     def test_openapi_has_new_routes_and_no_legacy_plan_surface(self):
         paths = self.client.get('/openapi.json').json()['paths']
