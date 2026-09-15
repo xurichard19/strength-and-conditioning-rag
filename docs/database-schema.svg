@@ -1,55 +1,57 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="3090" viewBox="0 0 1080 3090" role="img" aria-labelledby="title description">
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="4160" viewBox="0 0 1080 4160" role="img" aria-labelledby="title description">
 <title id="title">Arcel database schema</title>
-<desc id="description">All thirteen application and authentication tables, with every column and foreign-key relationship. Arrows point from foreign keys to referenced primary keys. User ownership relationships share the central blue connector.</desc>
-<defs><marker id="arrow-blue" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L10 5 L0 10 Z" fill="#4267b2"/></marker><marker id="arrow-purple" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L10 5 L0 10 Z" fill="#7956aa"/></marker><marker id="arrow-teal" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L10 5 L0 10 Z" fill="#0f766e"/></marker></defs>
+<desc id="description">All thirteen application and authentication tables, with every column and foreign-key relationship. The hierarchy runs top to bottom from auth.users through profiles to dependent records. Colored arrows point from referenced parent records to child tables. Light gray outer connectors link profiles.id to every user_id foreign key.</desc>
+<defs><marker id="arrow-blue" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L10 5 L0 10 Z" fill="#4267b2"/></marker><marker id="arrow-purple" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L10 5 L0 10 Z" fill="#7956aa"/></marker><marker id="arrow-teal" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L10 5 L0 10 Z" fill="#0f766e"/></marker><marker id="arrow-gray" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L10 5 L0 10 Z" fill="#9aa7ba"/></marker></defs>
 <style>text{font-family:Arial,Helvetica,sans-serif} .heading{font-size:20px;font-weight:600;fill:#fff}.field{font-size:18px;fill:#172033}.type{font-size:16px;fill:#526178}.key{font-size:13px;font-weight:600;fill:#3159b8}.column{font-size:12px;font-weight:600;letter-spacing:1px;fill:#64748b}.note{font-size:16px;fill:#526178}</style>
-<rect width="1080" height="3090" fill="#fff"/>
+<rect width="1080" height="4160" fill="#fff"/>
 <text x="52" y="30" font-size="22" font-weight="600" fill="#172033">Arcel database schema</text>
-<text x="1028" y="30" text-anchor="end" class="note">Foreign key → referenced key</text>
+<text x="1028" y="30" text-anchor="end" class="note">Parent → child</text>
+<text x="540" y="602" text-anchor="middle" class="note">profiles.id owns every user_id below</text>
 <g fill="none" stroke-linejoin="round" stroke-linecap="round">
-<path d="M476 338 L548 338 L548 168 L604 168" stroke="#fff" stroke-width="7"/>
-<path d="M476 646 L548 646 L548 168 L604 168" stroke="#fff" stroke-width="7"/>
-<path d="M476 896 L548 896 L548 168 L604 168" stroke="#fff" stroke-width="7"/>
-<path d="M476 1206 L548 1206 L548 168 L604 168" stroke="#fff" stroke-width="7"/>
-<path d="M604 478 L548 478 L548 168 L604 168" stroke="#fff" stroke-width="7"/>
-<path d="M604 886 L548 886 L548 168 L604 168" stroke="#fff" stroke-width="7"/>
-<path d="M476 1726 L548 1726 L548 168 L604 168" stroke="#fff" stroke-width="7"/>
-<path d="M476 2226 L548 2226 L548 168 L604 168" stroke="#fff" stroke-width="7"/>
-<path d="M604 1754 L548 1754 L548 168 L604 168" stroke="#fff" stroke-width="7"/>
-<path d="M1028 168 L1054 168 L1054 54 L26 54 L26 168 L52 168" stroke="#fff" stroke-width="7"/>
-<path d="M52 924 L26 924 L26 618 L52 618" stroke="#fff" stroke-width="7"/>
-<g data-from="ONBOARDING_RESPONSES.user_id" data-to="PROFILES.id"><title>ONBOARDING_RESPONSES.user_id → PROFILES.id</title><path d="M476 338 L548 338 L548 168 L604 168" stroke="#4267b2" stroke-width="1.8" marker-end="url(#arrow-blue)"/></g>
-<g data-from="CONVERSATIONS.user_id" data-to="PROFILES.id"><title>CONVERSATIONS.user_id → PROFILES.id</title><path d="M476 646 L548 646 L548 168 L604 168" stroke="#4267b2" stroke-width="1.8" marker-end="url(#arrow-blue)"/></g>
-<g data-from="MESSAGES.user_id" data-to="PROFILES.id"><title>MESSAGES.user_id → PROFILES.id</title><path d="M476 896 L548 896 L548 168 L604 168" stroke="#4267b2" stroke-width="1.8" marker-end="url(#arrow-blue)"/></g>
-<g data-from="SPORTS_WORKOUTS.user_id" data-to="PROFILES.id"><title>SPORTS_WORKOUTS.user_id → PROFILES.id</title><path d="M476 1206 L548 1206 L548 168 L604 168" stroke="#4267b2" stroke-width="1.8" marker-end="url(#arrow-blue)"/></g>
-<g data-from="PLANNING_SCHEDULES.user_id" data-to="PROFILES.id"><title>PLANNING_SCHEDULES.user_id → PROFILES.id</title><path d="M604 478 L548 478 L548 168 L604 168" stroke="#4267b2" stroke-width="1.8" marker-end="url(#arrow-blue)"/></g>
-<g data-from="REPLAN_JOBS.user_id" data-to="PROFILES.id"><title>REPLAN_JOBS.user_id → PROFILES.id</title><path d="M604 886 L548 886 L548 168 L604 168" stroke="#4267b2" stroke-width="1.8" marker-end="url(#arrow-blue)"/></g>
-<g data-from="PLANNING_CHANGES.user_id" data-to="PROFILES.id"><title>PLANNING_CHANGES.user_id → PROFILES.id</title><path d="M476 1726 L548 1726 L548 168 L604 168" stroke="#4267b2" stroke-width="1.8" marker-end="url(#arrow-blue)"/></g>
-<g data-from="WORKOUTS.user_id" data-to="PROFILES.id"><title>WORKOUTS.user_id → PROFILES.id</title><path d="M476 2226 L548 2226 L548 168 L604 168" stroke="#4267b2" stroke-width="1.8" marker-end="url(#arrow-blue)"/></g>
-<g data-from="PLANNING_CHANGE_WORKOUTS.user_id" data-to="PROFILES.id"><title>PLANNING_CHANGE_WORKOUTS.user_id → PROFILES.id</title><path d="M604 1754 L548 1754 L548 168 L604 168" stroke="#4267b2" stroke-width="1.8" marker-end="url(#arrow-blue)"/></g>
-<g data-from="PROFILES.id" data-to="AUTH_USERS.id"><title>PROFILES.id → AUTH_USERS.id</title><path d="M1028 168 L1054 168 L1054 54 L26 54 L26 168 L52 168" stroke="#4267b2" stroke-width="1.8" marker-end="url(#arrow-blue)"/></g>
-<g data-from="MESSAGES.conversation_id" data-to="CONVERSATIONS.id"><title>MESSAGES.conversation_id → CONVERSATIONS.id</title><path d="M52 924 L26 924 L26 618 L52 618" stroke="#4267b2" stroke-width="1.8" marker-end="url(#arrow-blue)"/></g>
-<path d="M604 1250 L578 1250 L578 1698 L476 1698" stroke="#fff" stroke-width="7"/>
-<path d="M52 2254 L26 2254 L26 1698 L52 1698" stroke="#fff" stroke-width="7"/>
-<path d="M604 1698 L476 1698" stroke="#fff" stroke-width="7"/>
-<path d="M604 1726 L578 1726 L578 2198 L476 2198" stroke="#fff" stroke-width="7"/>
-<g data-from="REPLAN_JOBS.change_id" data-to="PLANNING_CHANGES.id"><title>REPLAN_JOBS.change_id → PLANNING_CHANGES.id</title><path d="M604 1250 L578 1250 L578 1698 L476 1698" stroke="#7956aa" stroke-width="1.8" marker-end="url(#arrow-purple)"/></g>
-<g data-from="WORKOUTS.created_by_change_id" data-to="PLANNING_CHANGES.id"><title>WORKOUTS.created_by_change_id → PLANNING_CHANGES.id</title><path d="M52 2254 L26 2254 L26 1698 L52 1698" stroke="#7956aa" stroke-width="1.8" marker-end="url(#arrow-purple)"/></g>
-<g data-from="PLANNING_CHANGE_WORKOUTS.change_id" data-to="PLANNING_CHANGES.id"><title>PLANNING_CHANGE_WORKOUTS.change_id → PLANNING_CHANGES.id</title><path d="M604 1698 L476 1698" stroke="#7956aa" stroke-width="1.8" marker-end="url(#arrow-purple)"/></g>
-<g data-from="PLANNING_CHANGE_WORKOUTS.workout_id" data-to="WORKOUTS.id"><title>PLANNING_CHANGE_WORKOUTS.workout_id → WORKOUTS.id</title><path d="M604 1726 L578 1726 L578 2198 L476 2198" stroke="#7956aa" stroke-width="1.8" marker-end="url(#arrow-purple)"/></g>
-<path d="M604 2026 L590 2026 L590 2198 L476 2198" stroke="#fff" stroke-width="7"/>
-<path d="M1028 2496 L1054 2496 L1054 1998 L1028 1998" stroke="#fff" stroke-width="7"/>
-<g data-from="EXERCISES.workout_id" data-to="WORKOUTS.id"><title>EXERCISES.workout_id → WORKOUTS.id</title><path d="M604 2026 L590 2026 L590 2198 L476 2198" stroke="#0f766e" stroke-width="1.8" marker-end="url(#arrow-teal)"/></g>
-<g data-from="EXERCISE_SETS.exercise_id" data-to="EXERCISES.id"><title>EXERCISE_SETS.exercise_id → EXERCISES.id</title><path d="M1028 2496 L1054 2496 L1054 1998 L1028 1998" stroke="#0f766e" stroke-width="1.8" marker-end="url(#arrow-teal)"/></g>
+<path d="M540 492 L540 556 L26 556 L26 738 L52 738" stroke="#fff" stroke-width="7"/>
+<path d="M540 492 L540 556 L26 556 L26 1326 L52 1326" stroke="#fff" stroke-width="7"/>
+<path d="M540 492 L540 556 L26 556 L26 1736 L52 1736" stroke="#fff" stroke-width="7"/>
+<path d="M540 492 L540 556 L1054 556 L1054 766 L1028 766" stroke="#fff" stroke-width="7"/>
+<path d="M540 492 L540 556 L1054 556 L1054 1298 L1028 1298" stroke="#fff" stroke-width="7"/>
+<path d="M540 492 L540 556 L26 556 L26 2286 L52 2286" stroke="#fff" stroke-width="7"/>
+<path d="M540 492 L540 556 L1054 556 L1054 1736 L1028 1736" stroke="#fff" stroke-width="7"/>
+<path d="M540 492 L540 556 L1054 556 L1054 2286 L1028 2286" stroke="#fff" stroke-width="7"/>
+<path d="M540 492 L540 556 L26 556 L26 3114 L52 3114" stroke="#fff" stroke-width="7"/>
+<g data-from="PROFILES.id" data-to="ONBOARDING_RESPONSES.user_id"><title>PROFILES.id → ONBOARDING_RESPONSES.user_id</title><path d="M540 492 L540 556 L26 556 L26 738 L52 738" stroke="#9aa7ba" stroke-width="1.8" marker-end="url(#arrow-gray)"/></g>
+<g data-from="PROFILES.id" data-to="CONVERSATIONS.user_id"><title>PROFILES.id → CONVERSATIONS.user_id</title><path d="M540 492 L540 556 L26 556 L26 1326 L52 1326" stroke="#9aa7ba" stroke-width="1.8" marker-end="url(#arrow-gray)"/></g>
+<g data-from="PROFILES.id" data-to="MESSAGES.user_id"><title>PROFILES.id → MESSAGES.user_id</title><path d="M540 492 L540 556 L26 556 L26 1736 L52 1736" stroke="#9aa7ba" stroke-width="1.8" marker-end="url(#arrow-gray)"/></g>
+<g data-from="PROFILES.id" data-to="SPORTS_WORKOUTS.user_id"><title>PROFILES.id → SPORTS_WORKOUTS.user_id</title><path d="M540 492 L540 556 L1054 556 L1054 766 L1028 766" stroke="#9aa7ba" stroke-width="1.8" marker-end="url(#arrow-gray)"/></g>
+<g data-from="PROFILES.id" data-to="PLANNING_SCHEDULES.user_id"><title>PROFILES.id → PLANNING_SCHEDULES.user_id</title><path d="M540 492 L540 556 L1054 556 L1054 1298 L1028 1298" stroke="#9aa7ba" stroke-width="1.8" marker-end="url(#arrow-gray)"/></g>
+<g data-from="PROFILES.id" data-to="REPLAN_JOBS.user_id"><title>PROFILES.id → REPLAN_JOBS.user_id</title><path d="M540 492 L540 556 L26 556 L26 2286 L52 2286" stroke="#9aa7ba" stroke-width="1.8" marker-end="url(#arrow-gray)"/></g>
+<g data-from="PROFILES.id" data-to="PLANNING_CHANGES.user_id"><title>PROFILES.id → PLANNING_CHANGES.user_id</title><path d="M540 492 L540 556 L1054 556 L1054 1736 L1028 1736" stroke="#9aa7ba" stroke-width="1.8" marker-end="url(#arrow-gray)"/></g>
+<g data-from="PROFILES.id" data-to="WORKOUTS.user_id"><title>PROFILES.id → WORKOUTS.user_id</title><path d="M540 492 L540 556 L1054 556 L1054 2286 L1028 2286" stroke="#9aa7ba" stroke-width="1.8" marker-end="url(#arrow-gray)"/></g>
+<g data-from="PROFILES.id" data-to="PLANNING_CHANGE_WORKOUTS.user_id"><title>PROFILES.id → PLANNING_CHANGE_WORKOUTS.user_id</title><path d="M540 492 L540 556 L26 556 L26 3114 L52 3114" stroke="#9aa7ba" stroke-width="1.8" marker-end="url(#arrow-gray)"/></g>
+<path d="M540 182 L540 260" stroke="#fff" stroke-width="7"/>
+<path d="M264 1396 L264 1630" stroke="#fff" stroke-width="7"/>
+<g data-from="AUTH_USERS.id" data-to="PROFILES.id"><title>AUTH_USERS.id → PROFILES.id</title><path d="M540 182 L540 260" stroke="#4267b2" stroke-width="1.8" marker-end="url(#arrow-blue)"/></g>
+<g data-from="CONVERSATIONS.id" data-to="MESSAGES.conversation_id"><title>CONVERSATIONS.id → MESSAGES.conversation_id</title><path d="M264 1396 L264 1630" stroke="#4267b2" stroke-width="1.8" marker-end="url(#arrow-blue)"/></g>
+<path d="M816 2002 L816 2070 L264 2070 L264 2180" stroke="#fff" stroke-width="7"/>
+<path d="M816 2002 L816 2180" stroke="#fff" stroke-width="7"/>
+<path d="M816 2002 L816 2070 L500 2070 L500 2860 L264 2860 L264 2980" stroke="#fff" stroke-width="7"/>
+<path d="M816 2608 L816 2720 L540 2720 L540 2920 L264 2920 L264 2980" stroke="#fff" stroke-width="7"/>
+<g data-from="PLANNING_CHANGES.id" data-to="REPLAN_JOBS.change_id"><title>PLANNING_CHANGES.id → REPLAN_JOBS.change_id</title><path d="M816 2002 L816 2070 L264 2070 L264 2180" stroke="#7956aa" stroke-width="1.8" marker-end="url(#arrow-purple)"/></g>
+<g data-from="PLANNING_CHANGES.id" data-to="WORKOUTS.created_by_change_id"><title>PLANNING_CHANGES.id → WORKOUTS.created_by_change_id</title><path d="M816 2002 L816 2180" stroke="#7956aa" stroke-width="1.8" marker-end="url(#arrow-purple)"/></g>
+<g data-from="PLANNING_CHANGES.id" data-to="PLANNING_CHANGE_WORKOUTS.change_id"><title>PLANNING_CHANGES.id → PLANNING_CHANGE_WORKOUTS.change_id</title><path d="M816 2002 L816 2070 L500 2070 L500 2860 L264 2860 L264 2980" stroke="#7956aa" stroke-width="1.8" marker-end="url(#arrow-purple)"/></g>
+<g data-from="WORKOUTS.id" data-to="PLANNING_CHANGE_WORKOUTS.workout_id"><title>WORKOUTS.id → PLANNING_CHANGE_WORKOUTS.workout_id</title><path d="M816 2608 L816 2720 L540 2720 L540 2920 L264 2920 L264 2980" stroke="#7956aa" stroke-width="1.8" marker-end="url(#arrow-purple)"/></g>
+<path d="M816 2608 L816 2980" stroke="#fff" stroke-width="7"/>
+<path d="M816 3324 L816 3460" stroke="#fff" stroke-width="7"/>
+<g data-from="WORKOUTS.id" data-to="EXERCISES.workout_id"><title>WORKOUTS.id → EXERCISES.workout_id</title><path d="M816 2608 L816 2980" stroke="#0f766e" stroke-width="1.8" marker-end="url(#arrow-teal)"/></g>
+<g data-from="EXERCISES.id" data-to="EXERCISE_SETS.exercise_id"><title>EXERCISES.id → EXERCISE_SETS.exercise_id</title><path d="M816 3324 L816 3460" stroke="#0f766e" stroke-width="1.8" marker-end="url(#arrow-teal)"/></g>
 </g>
-<g id="AUTH_USERS" transform="translate(52 90)">
+<circle cx="816" cy="2720" r="3" fill="#0f766e"/><circle cx="816" cy="2070" r="3" fill="#7956aa"/><circle cx="500" cy="2070" r="3" fill="#7956aa"/>
+<g id="AUTH_USERS" transform="translate(328 90)">
 <rect width="424" height="92" rx="5" fill="#fff" stroke="#bac6d7"/>
 <path d="M5 0 H419 Q424 0 424 5 V40 H0 V5 Q0 0 5 0Z" fill="#3159b8"/>
 <text class="heading" x="14" y="27">auth.users</text>
 <rect y="40" width="424" height="24" fill="#eef2f7"/><text class="column" x="14" y="57">TYPE</text><text class="column" x="124" y="57">COLUMN</text><text class="column" x="412" y="57" text-anchor="end">KEY</text>
 <g data-column="id"><text class="type" x="14" y="84">uuid</text><text class="field" x="124" y="84">id</text><text class="key" x="412" y="84" text-anchor="end">PK</text></g>
 </g>
-<g id="PROFILES" transform="translate(604 90)">
+<g id="PROFILES" transform="translate(328 260)">
 <rect width="424" height="232" rx="5" fill="#fff" stroke="#bac6d7"/>
 <path d="M5 0 H419 Q424 0 424 5 V40 H0 V5 Q0 0 5 0Z" fill="#3159b8"/>
 <text class="heading" x="14" y="27">profiles</text>
@@ -61,7 +63,7 @@
 <g data-column="created_at"><text class="type" x="14" y="196">timestamptz</text><text class="field" x="124" y="196">created_at</text></g>
 <g data-column="updated_at"><rect x="1" y="204" width="422" height="28" fill="#f6f8fc"/><text class="type" x="14" y="224">timestamptz</text><text class="field" x="124" y="224">updated_at</text></g>
 </g>
-<g id="ONBOARDING_RESPONSES" transform="translate(52 260)">
+<g id="ONBOARDING_RESPONSES" transform="translate(52 660)">
 <rect width="424" height="204" rx="5" fill="#fff" stroke="#bac6d7"/>
 <path d="M5 0 H419 Q424 0 424 5 V40 H0 V5 Q0 0 5 0Z" fill="#3159b8"/>
 <text class="heading" x="14" y="27">onboarding_responses</text>
@@ -72,7 +74,7 @@
 <g data-column="created_at"><rect x="1" y="148" width="422" height="28" fill="#f6f8fc"/><text class="type" x="14" y="168">timestamptz</text><text class="field" x="124" y="168">created_at</text></g>
 <g data-column="updated_at"><text class="type" x="14" y="196">timestamptz</text><text class="field" x="124" y="196">updated_at</text></g>
 </g>
-<g id="CONVERSATIONS" transform="translate(52 540)">
+<g id="CONVERSATIONS" transform="translate(52 1220)">
 <rect width="424" height="176" rx="5" fill="#fff" stroke="#bac6d7"/>
 <path d="M5 0 H419 Q424 0 424 5 V40 H0 V5 Q0 0 5 0Z" fill="#3159b8"/>
 <text class="heading" x="14" y="27">conversations</text>
@@ -82,7 +84,7 @@
 <g data-column="title"><text class="type" x="14" y="140">text</text><text class="field" x="124" y="140">title</text></g>
 <g data-column="created_at"><rect x="1" y="148" width="422" height="28" fill="#f6f8fc"/><text class="type" x="14" y="168">timestamptz</text><text class="field" x="124" y="168">created_at</text></g>
 </g>
-<g id="MESSAGES" transform="translate(52 790)">
+<g id="MESSAGES" transform="translate(52 1630)">
 <rect width="424" height="232" rx="5" fill="#fff" stroke="#bac6d7"/>
 <path d="M5 0 H419 Q424 0 424 5 V40 H0 V5 Q0 0 5 0Z" fill="#3159b8"/>
 <text class="heading" x="14" y="27">messages</text>
@@ -94,7 +96,7 @@
 <g data-column="content"><text class="type" x="14" y="196">text</text><text class="field" x="124" y="196">content</text></g>
 <g data-column="created_at"><rect x="1" y="204" width="422" height="28" fill="#f6f8fc"/><text class="type" x="14" y="224">timestamptz</text><text class="field" x="124" y="224">created_at</text></g>
 </g>
-<g id="SPORTS_WORKOUTS" transform="translate(52 1100)">
+<g id="SPORTS_WORKOUTS" transform="translate(604 660)">
 <rect width="424" height="428" rx="5" fill="#fff" stroke="#bac6d7"/>
 <path d="M5 0 H419 Q424 0 424 5 V40 H0 V5 Q0 0 5 0Z" fill="#0f766e"/>
 <text class="heading" x="14" y="27">sports_workouts</text>
@@ -113,7 +115,7 @@
 <g data-column="created_at"><rect x="1" y="372" width="422" height="28" fill="#f6f8fc"/><text class="type" x="14" y="392">timestamptz</text><text class="field" x="124" y="392">created_at</text></g>
 <g data-column="updated_at"><text class="type" x="14" y="420">timestamptz</text><text class="field" x="124" y="420">updated_at</text></g>
 </g>
-<g id="PLANNING_SCHEDULES" transform="translate(604 400)">
+<g id="PLANNING_SCHEDULES" transform="translate(604 1220)">
 <rect width="424" height="288" rx="5" fill="#fff" stroke="#bac6d7"/>
 <path d="M5 0 H419 Q424 0 424 5 V40 H0 V5 Q0 0 5 0Z" fill="#7352ad"/>
 <text class="heading" x="14" y="27">planning_schedules</text>
@@ -127,7 +129,7 @@
 <g data-column="created_at"><text class="type" x="14" y="252">timestamptz</text><text class="field" x="124" y="252">created_at</text></g>
 <g data-column="updated_at"><rect x="1" y="260" width="422" height="28" fill="#f6f8fc"/><text class="type" x="14" y="280">timestamptz</text><text class="field" x="124" y="280">updated_at</text></g>
 </g>
-<g id="REPLAN_JOBS" transform="translate(604 780)">
+<g id="REPLAN_JOBS" transform="translate(52 2180)">
 <rect width="424" height="596" rx="5" fill="#fff" stroke="#bac6d7"/>
 <path d="M5 0 H419 Q424 0 424 5 V40 H0 V5 Q0 0 5 0Z" fill="#7352ad"/>
 <text class="heading" x="14" y="27">replan_jobs</text>
@@ -152,7 +154,7 @@
 <g data-column="created_at"><rect x="1" y="540" width="422" height="28" fill="#f6f8fc"/><text class="type" x="14" y="560">timestamptz</text><text class="field" x="124" y="560">created_at</text></g>
 <g data-column="updated_at"><text class="type" x="14" y="588">timestamptz</text><text class="field" x="124" y="588">updated_at</text></g>
 </g>
-<g id="PLANNING_CHANGES" transform="translate(52 1620)">
+<g id="PLANNING_CHANGES" transform="translate(604 1630)">
 <rect width="424" height="372" rx="5" fill="#fff" stroke="#bac6d7"/>
 <path d="M5 0 H419 Q424 0 424 5 V40 H0 V5 Q0 0 5 0Z" fill="#7352ad"/>
 <text class="heading" x="14" y="27">planning_changes</text>
@@ -169,7 +171,7 @@
 <g data-column="horizon_end_after"><rect x="1" y="316" width="422" height="28" fill="#f6f8fc"/><text class="type" x="14" y="336">date</text><text class="field" x="124" y="336">horizon_end_after</text></g>
 <g data-column="created_at"><text class="type" x="14" y="364">timestamptz</text><text class="field" x="124" y="364">created_at</text></g>
 </g>
-<g id="WORKOUTS" transform="translate(52 2120)">
+<g id="WORKOUTS" transform="translate(604 2180)">
 <rect width="424" height="428" rx="5" fill="#fff" stroke="#bac6d7"/>
 <path d="M5 0 H419 Q424 0 424 5 V40 H0 V5 Q0 0 5 0Z" fill="#0f766e"/>
 <text class="heading" x="14" y="27">workouts</text>
@@ -188,7 +190,7 @@
 <g data-column="created_at"><rect x="1" y="372" width="422" height="28" fill="#f6f8fc"/><text class="type" x="14" y="392">timestamptz</text><text class="field" x="124" y="392">created_at</text></g>
 <g data-column="updated_at"><text class="type" x="14" y="420">timestamptz</text><text class="field" x="124" y="420">updated_at</text></g>
 </g>
-<g id="PLANNING_CHANGE_WORKOUTS" transform="translate(604 1620)">
+<g id="PLANNING_CHANGE_WORKOUTS" transform="translate(52 2980)">
 <rect width="424" height="176" rx="5" fill="#fff" stroke="#bac6d7"/>
 <path d="M5 0 H419 Q424 0 424 5 V40 H0 V5 Q0 0 5 0Z" fill="#7352ad"/>
 <text class="heading" x="14" y="27">planning_change_workouts</text>
@@ -198,7 +200,7 @@
 <g data-column="user_id"><text class="type" x="14" y="140">uuid</text><text class="field" x="124" y="140">user_id</text><text class="key" x="412" y="140" text-anchor="end">FK</text></g>
 <g data-column="side"><rect x="1" y="148" width="422" height="28" fill="#f6f8fc"/><text class="type" x="14" y="168">text</text><text class="field" x="124" y="168">side</text></g>
 </g>
-<g id="EXERCISES" transform="translate(604 1920)">
+<g id="EXERCISES" transform="translate(604 2980)">
 <rect width="424" height="344" rx="5" fill="#fff" stroke="#bac6d7"/>
 <path d="M5 0 H419 Q424 0 424 5 V40 H0 V5 Q0 0 5 0Z" fill="#0f766e"/>
 <text class="heading" x="14" y="27">exercises</text>
@@ -214,7 +216,7 @@
 <g data-column="created_at"><text class="type" x="14" y="308">timestamptz</text><text class="field" x="124" y="308">created_at</text></g>
 <g data-column="updated_at"><rect x="1" y="316" width="422" height="28" fill="#f6f8fc"/><text class="type" x="14" y="336">timestamptz</text><text class="field" x="124" y="336">updated_at</text></g>
 </g>
-<g id="EXERCISE_SETS" transform="translate(604 2390)">
+<g id="EXERCISE_SETS" transform="translate(604 3460)">
 <rect width="424" height="624" rx="5" fill="#fff" stroke="#bac6d7"/>
 <path d="M5 0 H419 Q424 0 424 5 V40 H0 V5 Q0 0 5 0Z" fill="#0f766e"/>
 <text class="heading" x="14" y="27">exercise_sets</text>
@@ -240,23 +242,14 @@
 <g data-column="created_at"><text class="type" x="14" y="588">timestamptz</text><text class="field" x="124" y="588">created_at</text></g>
 <g data-column="updated_at"><rect x="1" y="596" width="422" height="28" fill="#f6f8fc"/><text class="type" x="14" y="616">timestamptz</text><text class="field" x="124" y="616">updated_at</text></g>
 </g>
-<circle cx="476" cy="338" r="3" fill="#4267b2" stroke="#fff" stroke-width="1"/>
-<circle cx="476" cy="646" r="3" fill="#4267b2" stroke="#fff" stroke-width="1"/>
-<circle cx="476" cy="896" r="3" fill="#4267b2" stroke="#fff" stroke-width="1"/>
-<circle cx="476" cy="1206" r="3" fill="#4267b2" stroke="#fff" stroke-width="1"/>
-<circle cx="604" cy="478" r="3" fill="#4267b2" stroke="#fff" stroke-width="1"/>
-<circle cx="604" cy="886" r="3" fill="#4267b2" stroke="#fff" stroke-width="1"/>
-<circle cx="476" cy="1726" r="3" fill="#4267b2" stroke="#fff" stroke-width="1"/>
-<circle cx="476" cy="2226" r="3" fill="#4267b2" stroke="#fff" stroke-width="1"/>
-<circle cx="604" cy="1754" r="3" fill="#4267b2" stroke="#fff" stroke-width="1"/>
-<circle cx="1028" cy="168" r="3" fill="#4267b2" stroke="#fff" stroke-width="1"/>
-<circle cx="52" cy="924" r="3" fill="#4267b2" stroke="#fff" stroke-width="1"/>
-<circle cx="604" cy="1250" r="3" fill="#7956aa" stroke="#fff" stroke-width="1"/>
-<circle cx="52" cy="2254" r="3" fill="#7956aa" stroke="#fff" stroke-width="1"/>
-<circle cx="604" cy="1698" r="3" fill="#7956aa" stroke="#fff" stroke-width="1"/>
-<circle cx="604" cy="1726" r="3" fill="#7956aa" stroke="#fff" stroke-width="1"/>
-<circle cx="604" cy="2026" r="3" fill="#0f766e" stroke="#fff" stroke-width="1"/>
-<circle cx="1028" cy="2496" r="3" fill="#0f766e" stroke="#fff" stroke-width="1"/>
-<text x="52" y="3064" class="note">PK primary key · FK foreign key · PK,FK both</text>
-<text x="1028" y="3064" class="note" text-anchor="end">Shared blue connector: user_id → profiles.id</text>
+<circle cx="540" cy="182" r="3" fill="#4267b2" stroke="#fff" stroke-width="1"/>
+<circle cx="264" cy="1396" r="3" fill="#4267b2" stroke="#fff" stroke-width="1"/>
+<circle cx="816" cy="2002" r="3" fill="#7956aa" stroke="#fff" stroke-width="1"/>
+<circle cx="816" cy="2002" r="3" fill="#7956aa" stroke="#fff" stroke-width="1"/>
+<circle cx="816" cy="2002" r="3" fill="#7956aa" stroke="#fff" stroke-width="1"/>
+<circle cx="816" cy="2608" r="3" fill="#7956aa" stroke="#fff" stroke-width="1"/>
+<circle cx="816" cy="2608" r="3" fill="#0f766e" stroke="#fff" stroke-width="1"/>
+<circle cx="816" cy="3324" r="3" fill="#0f766e" stroke="#fff" stroke-width="1"/>
+<text x="52" y="4134" class="note">PK primary key · FK foreign key · PK,FK both</text>
+<text x="1028" y="4134" class="note" text-anchor="end">Gray lines: profile ownership through user_id</text>
 </svg>
