@@ -20,6 +20,8 @@ export default function TodayScreen() {
   const { colors, proposal, sessions, block, acceptProposal, declineProposal, shortenToday } = useApp();
   const session = sessions.find((item) => item.id === 's-today') ?? sessions.find((item) => item.status === 'planned' && item.modality !== 'rest');
 
+  if (!sessions.length) return <Screen title="Today" wash="today"><Card><AppText weight="bold">No workouts yet</AppText><AppText tone="secondary">Planning is not connected in this build. Your account, onboarding answers, and chat are live.</AppText></Card><PrimaryButton onPress={() => router.push('/(tabs)/chat')}>Open chat</PrimaryButton></Screen>;
+
   return (
     <Screen title="Today" subtitle={`${block.name} focus · Week ${block.week} of ${block.of}`} context="today's training" wash="today">
       {proposal ? (

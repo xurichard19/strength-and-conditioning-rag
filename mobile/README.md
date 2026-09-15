@@ -1,90 +1,94 @@
-# Arcel mobile MVP
+# Arcel mobile
 
-This is a standalone Expo / React Native client built from the supplied Arcel UI/UX prototype. It does not reuse the desktop web UI. It runs immediately in preview mode, persists local changes, and switches to live data when the existing backend environment is configured.
+Live scope: Supabase authentication, profile, onboarding, and persisted streaming chat.
+Planning, calendar syncing, workout writes, and background jobs are intentionally not called.
+The previous training screens use labeled mock workouts, proposals, and progress charts.
+Their interactions only change memory: nothing is synced, and they reset on restart or account change.
 
-## Run it
+## Run
 
-Requirements: Node 22.13 or newer and the Expo Go app (or an iOS/Android simulator).
+Use Node 22.13+ and install the dependencies in `mobile`:
 
-```bash
-cd mobile
+```sh
 npm install
-cp .env.example .env
 npm start
 ```
 
-The environment file is optional for preview mode. When testing on a physical phone, `EXPO_PUBLIC_API_BASE_URL` must use an address the phone can reach—not `localhost`.
+Configure these three values in `mobile/.env`, using `.env.example` as the template:
 
-## What is live vs preview
+- `EXPO_PUBLIC_API_BASE_URL`: the deployed backend URL, reachable from the phone.
+- `EXPO_PUBLIC_SUPABASE_URL`: the same Supabase project used by the backend.
+- `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: its `sb_publishable_...` key.
 
-| Area | Live integration | Preview fallback |
-| --- | --- | --- |
-| Account | Supabase sign-up, sign-in, sign-out | Local preview without an account |
-| Profile and setup | `GET/PATCH /profile/`, `POST /profile/onboarding/complete` | Persisted device profile |
-| Initial plan | `POST /plan/generate`, `POST /plan/` | Supplied prototype week |
-| Week | `GET /workouts/?start_date&end_date` | Supplied prototype sessions |
-| Exercise completion | `PATCH /workouts/{workout_id}/exercises/{exercise_id}/completion` | Persisted local state |
-| Chat | Streaming `POST /chat/` | Contextual mock replies |
-| Set logs, progress rollups, week repair, reminders, connected apps | Backend work still needed | Interactive mock/local behavior |
+Restart Expo after changing environment variables. Never include secret keys,
+database passwords, or management tokens in the mobile app.
 
-Preview mode is intentional: no dead buttons are required to review the main flow. Unwired settings are visibly labeled.
+## API handoff
 
-## Product flow
+- Signup/login/logout and token refresh use Supabase Auth directly. The database
+  signup trigger creates the profile; mobile never calls a profile-create endpoint.
+- `GET /profile` and `PATCH /profile` handle identity and timezone.
+- `GET /onboarding`, `PUT /onboarding` with `{ answers: { ... } }`, and
+  `POST /onboarding/complete` handle the questionnaire. All survey values, including
+  running capacity, push-ups, pain, and free-text notes, share one JSON dictionary.
+  Display name is saved separately; theme and completion flags are not survey answers.
+- Opening Chat starts a fresh, unsaved conversation. The hamburger menu loads
+  `GET /chat/conversations` in pages of 50, with the last ID as the `before` cursor.
+  The first human message atomically creates the thread, titled YYYY-MM-DD in the
+  profile timezone. Existing history is preserved as one conversation per user.
+- `GET /chat/messages?conversation_id=UUID` loads chronological pages of 20 messages.
+  Older pages use timestamp and ID cursors. Foreground refresh stays in the selected thread.
+- `POST /chat` accepts `{text, conversation_id}` and streams NDJSON. Text is provisional until `done.message_id` confirms
+  persistence. Only the backend saves human/assistant messages; mobile never inserts
+  assistant rows or automatically retries a failed send.
+- Account changes clear in-memory state and abort the local chat stream. Late responses
+  from an old account are ignored. Account-loading failures have retry/sign-out controls.
+- Chat has no demo fallback. Training screens are explicitly mock previews, not live workouts.
+  Missing configuration and server errors are visible.
+  The older prototype snapshot cache is no longer read or written.
 
-- Arcel-styled sign-in, account creation, and password recovery
-- Returning accounts load their existing profile and open Today
-- New or incomplete accounts continue through setup and generate their first plan
-- Five-step setup and first-week reveal
-- Today with transparent “ease this week” proposal
-- Week calendar and session rationale
-- In-session set logging, volume adjustment, effort notes, swap/skip paths
-- Separate strength and cardio progress tracks
-- Dedicated context-aware Chat tab
-- Plan, block, theme, remembered notes, and account/sync settings
+Deploy the conversation migration and backend before running this mobile version.
+Saved history is displayed in the client but is not passed into AI generation.
+History retrieval will be implemented inside workflow nodes separately.
+Run setup again opens a local draft; its X exits without saving or clearing completion.
 
-For Supabase email links, add the local web URLs (`http://localhost:8081` and `http://localhost:8081/reset-password`) and the production `arcel` app-scheme destinations to Authentication → URL Configuration. Expo Go uses a temporary development URL, while standalone builds use the `arcel` scheme from `app.json`.
+The server still generates chat inside the streaming request. Switching threads aborts
+the local stream. Closing the app or
+losing the connection can leave a saved human message without a saved reply.
+Refreshing history retrieves whatever the server saved; this does not provide
+durable background generation. Source citations are currently streamed only, not
+stored in the messages table, so they may not appear after restarting the app.
 
-## Google sign-in setup
+## Auth callback configuration
 
-The client-side flow is implemented, but the provider must also be enabled outside the repository:
+In Supabase Authentication → URL Configuration, allow the actual web origin and
+recovery path, plus your development/production app callback URLs. Native builds
+use the `arcel` scheme in `app.json`; Expo Go uses a development URL for email links.
+Use a development build for reliable native OAuth testing.
 
-1. In Google Cloud, create a Web OAuth client and add the Supabase callback URL shown in Supabase Authentication → Providers → Google. It has the form `https://<project-ref>.supabase.co/auth/v1/callback`.
-2. In Supabase Authentication → Providers → Google, enable Google and enter that client ID and secret.
-3. In Supabase Authentication → URL Configuration, allow `arcel://**`, the local web origin used for development, and the production web URL if the web build will support Google sign-in.
-4. Test the native flow in a development build before store submission. Expo Go URLs are temporary; the installed development and production builds use the stable `arcel` scheme.
+Google sign-in additionally requires enabling the Google provider in Supabase and
+configuring its callback in Google Cloud. Keep the Google client secret out of mobile.
 
-The Google client secret belongs only in Supabase/Google configuration. Do not add it to the mobile `.env` file.
+## Verification
 
-## Checks
-
-```bash
+```sh
+npm test
 npm run typecheck
+npm run lint
 npm run export:web
 ```
 
-## Before store builds
+Unit tests use fake credentials and mocked HTTP; they do not create real accounts.
 
-The bundle identifiers in `app.json` are working placeholders. Confirm ownership and change `com.arcel.mobile` if needed before registering the app. Replace the scaffold icon/splash artwork, then install and authenticate the EAS CLI and run:
+On a device, verify:
+1. Create a fresh test account; confirm its email if confirmation is enabled.
+2. Sign in and complete onboarding. Check that all answers are in the single
+   `onboarding_responses.answers` object and completion has a server timestamp.
+3. Send a chat message, see the streamed response, and refresh saved messages.
+4. Close/reopen the app, then sign out/in. Verify the same onboarding and chat history.
+5. Sign into a different account and confirm no previous account data appears.
+6. Test invalid credentials, an offline backend, interrupted chat, and password recovery.
 
-```bash
-npx eas-cli build --platform all --profile production
-npx eas-cli submit --platform ios --profile production
-npx eas-cli submit --platform android --profile production
-```
-
-Do not put Supabase service-role keys or other server secrets in `EXPO_PUBLIC_*` variables. Only the public/publishable Supabase key belongs in the app.
-
-## Store submission checklist
-
-- [ ] Enroll in Apple Developer / Google Play Console and verify the legal developer identity.
-- [ ] Confirm the final bundle ID/package name before creating the store records; changing it later creates a different app identity.
-- [ ] Replace the placeholder icon and splash assets. Prepare the store name, subtitle/short description, full description, category, keywords, age/content rating, support URL, and current phone screenshots.
-- [ ] Publish a privacy policy and accurately complete Apple App Privacy and Google Play Data safety forms, including Supabase and any analytics/crash SDKs.
-- [ ] **Backend blocker:** add complete account deletion. Because this client can create accounts, Apple requires an in-app deletion path; Google requires both an in-app path and a deletion-request webpage.
-- [ ] Keep the training-not-medical-care language, publish terms, and review all health/fitness claims for accuracy.
-- [ ] Test sign-up, email confirmation, sign-in, token refresh, offline/slow-network behavior, logout, and deletion against production—not local—services.
-- [ ] Make production EAS builds, test through TestFlight and a Play internal track on real devices, then fix all release-only crashes/layout issues.
-- [ ] Give reviewers a working demo account or keep the full preview mode enabled, and add review notes that explain how to reach every gated feature.
-- [ ] Select the production build in App Store Connect / Play Console, finish export-compliance and policy questions, submit, and monitor reviewer messages.
-
-Official references: [Apple App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/), [Apple account deletion guidance](https://developer.apple.com/support/offering-account-deletion-in-your-app/), [Apple submission steps](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-app/), and [Google Play account deletion requirements](https://support.google.com/googleplay/android-developer/answer/13327111).
+After a database reset, existing Auth users may lack profiles because the signup
+trigger only runs for new users. Start with a fresh test account; missing profiles
+are surfaced rather than silently recreated by the client.

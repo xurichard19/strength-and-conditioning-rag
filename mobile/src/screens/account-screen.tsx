@@ -15,21 +15,21 @@ function ConnectionStatus() {
   return (
     <Card style={styles.statusCard}>
       <View style={[styles.cloud, { backgroundColor: connected ? `${colors.success}18` : colors.fill }]}>{connected ? <Cloud color={colors.success} size={24} /> : <CloudOff color={colors.textSecondary} size={24} />}</View>
-      <View style={styles.copy}><AppText weight="semibold">{connected ? 'Synced account' : 'Local preview'}</AppText><AppText tone="secondary" style={styles.statusCopy}>{connected ? authSession?.user.email : 'Your MVP data is stored on this device.'}</AppText></View>
+      <View style={styles.copy}><AppText weight="semibold">{connected ? 'Signed in' : 'Not signed in'}</AppText><AppText tone="secondary" style={styles.statusCopy}>{connected ? authSession?.user.email : 'Sign in to access your account.'}</AppText></View>
     </Card>
   );
 }
 
 function BackendNotice() {
   if (liveApiConfigured) return null;
-  return <Card style={styles.info}><AppText weight="semibold">Backend connection is not configured</AppText><AppText tone="secondary" style={styles.infoCopy}>Add the three public environment values described in the mobile README. Until then, every screen remains usable with persisted mock data.</AppText></Card>;
+  return <Card style={styles.info}><AppText weight="semibold">Backend connection is not configured</AppText><AppText tone="secondary" style={styles.infoCopy}>Add the three public environment values described in the mobile README. These values are required for authentication and chat.</AppText></Card>;
 }
 
 function SignedInActions() {
   const { refreshLiveData, signOut } = useApp();
   return (
     <View style={styles.form}>
-      <PrimaryButton onPress={() => void refreshLiveData()}>Refresh live plan</PrimaryButton>
+      <PrimaryButton onPress={() => void refreshLiveData()}>Refresh account</PrimaryButton>
       <SecondaryButton icon={LogOut} onPress={() => void signOut()}>Sign out</SecondaryButton>
     </View>
   );
@@ -71,7 +71,7 @@ export default function AccountScreen() {
           <ConnectionStatus />
           <BackendNotice />
           {authSession ? <SignedInActions /> : <AccountForm />}
-          <AppText tone="secondary" style={styles.footnote}>Authentication and plan/workout sync use the existing Supabase and FastAPI endpoints. Set-level logs remain local until the backend schema supports them.</AppText>
+          <AppText tone="secondary" style={styles.footnote}>Profile, onboarding, and chat use the live API. Planning and workout syncing are not connected yet.</AppText>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

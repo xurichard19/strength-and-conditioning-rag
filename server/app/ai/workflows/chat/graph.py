@@ -2,7 +2,6 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
-from app.contracts import MessageRecord
 
 from app.ai.workflows.chat.nodes.generate import generate_node
 from app.ai.workflows.chat.nodes.search import search_node
@@ -28,7 +27,6 @@ async def stream_chat(
     graph,
     message: str,
     context: WorkflowContext,
-    history: list[MessageRecord] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """
     stream the compiled chat graph and translate langgraph output into public chat events
@@ -36,7 +34,9 @@ async def stream_chat(
     - **graph**: compiled langgraph chat workflow
     - **message**: current user message used to initialize graph state
     - **context**: request-scoped user and authentication values
-    - **history**: prior persisted messages in chronological order, excluding this new user turn
+
+    initializes only the current turn. persisted history is not loaded here;
+    any future history retrieval belongs in workflow nodes.
 
     yields dictionaries with one of these shapes:
     - `{"type": "text", "delta": str}`
@@ -47,8 +47,7 @@ async def stream_chat(
     sources = []
 
     async for part in graph.astream(
-        {"messages": [{"role": item.role, "content": item.content} for item in history or []]
-            + [{"role": "user", "content": message}]},
+        {"messages": [{"role": "user", "content": message}]},
         context=context,
         stream_mode=["messages", "updates"],
         version="v2",

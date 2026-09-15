@@ -12,7 +12,7 @@ import { useApp } from '@/state/app-context';
 
 const screenCopy: Record<AuthMode, { title: string; copy: string }> = {
   'sign-in': { title: 'Welcome back', copy: 'Continue with your plan exactly where you left it.' },
-  'sign-up': { title: 'Create your account', copy: 'A few quick questions, then Arcel will build your first week.' },
+  'sign-up': { title: 'Create your account', copy: 'Save your training preferences and start chatting with Arcel.' },
   reset: { title: 'Reset your password', copy: 'Enter your email and we’ll send recovery instructions.' },
 };
 
@@ -23,6 +23,7 @@ export default function AuthScreen() {
     authSession,
     colors,
     profile,
+    notice,
     requestPasswordReset,
     signIn,
     signInWithGoogle,
@@ -91,6 +92,8 @@ export default function AuthScreen() {
             <AppText tone="secondary" style={styles.copy}>{content.copy}</AppText>
           </View>
 
+          {!liveApiConfigured ? <AppText>Configure the mobile API URL, Supabase URL, and publishable key to sign in.</AppText> : null}
+          {notice ? <AppText>{notice}</AppText> : null}
           <AuthCard mode={mode} email={email} password={password} showPassword={showPassword} busy={busy} accountLoading={Boolean(authSession) && !accountReady} canSubmit={canSubmit} feedback={feedback} onModeChange={chooseMode} onEmailChange={setEmail} onPasswordChange={setPassword} onTogglePassword={() => setShowPassword((current) => !current)} onSubmit={() => void submit()} onGoogle={() => void submitGoogle()} />
 
           <View style={styles.trustRow}>

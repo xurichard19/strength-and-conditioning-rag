@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
-import { ArrowLeft, Check, HeartPulse, ShieldCheck, Sparkles } from 'lucide-react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { ArrowLeft, Check, HeartPulse, ShieldCheck, Sparkles, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import { AppText, Card, ChoiceChip, PrimaryButton, SecondaryButton, ShieldLine }
 import { fonts, radius } from '@/design/tokens';
 import type { Profile } from '@/domain/types';
 import { useApp } from '@/state/app-context';
+import { surveyAnswers } from '@/services/api';
 
 const trainingDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const promises = ['One plan, two distinct progress tracks', 'Repairs the week when plans move', 'Explains what changed and what stayed protected'];
@@ -36,18 +37,26 @@ function toggleItem(items: string[], item: string) {
 }
 
 export default function OnboardingScreen() {
-  const { accountReady, colors, profile, finishOnboarding } = useApp();
-  const [step, setStep] = useState(0);
+  const { accountReady, colors, profile, onboardingAnswers, notice, finishOnboarding } = useApp();
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const editing = edit === '1' && profile.onboardingComplete;
+  const [step, setStep] = useState(editing ? 1 : 0);
   const [draft, setDraft] = useState<Profile>(profile);
   const [building, setBuilding] = useState(false);
-  const [runCapacity, setRunCapacity] = useState('10–20 min');
-  const [pushups, setPushups] = useState('5–10');
-  const [pain, setPain] = useState('Nothing current');
-  const [note, setNote] = useState('');
+  const [runCapacity, setRunCapacity] = useState(typeof onboardingAnswers.runCapacity === 'string' ? onboardingAnswers.runCapacity : '10–20 min');
+  const [pushups, setPushups] = useState(typeof onboardingAnswers.pushups === 'string' ? onboardingAnswers.pushups : '5–10');
+  const [pain, setPain] = useState(typeof onboardingAnswers.pain === 'string' ? onboardingAnswers.pain : 'Nothing current');
+  const [note, setNote] = useState(typeof onboardingAnswers.note === 'string' ? onboardingAnswers.note : '');
   const update = (value: Partial<Profile>) => setDraft((current) => ({ ...current, ...value }));
   const toggleDay = (day: string) => update({ trainingDays: toggleItem(draft.trainingDays, day) });
-  const finish = async () => { setBuilding(true); await finishOnboarding(draft); router.replace('/(tabs)/today'); };
-  const shouldRedirect = accountReady && profile.onboardingComplete && step === 0;
+  const finish = async () => {
+    if (building) return;
+    setBuilding(true);
+    const saved = await finishOnboarding(draft, surveyAnswers(draft, { ...onboardingAnswers, runCapacity, pushups, pain, note }));
+    setBuilding(false);
+    if (saved) router.replace('/(tabs)/chat');
+  };
+  const shouldRedirect = accountReady && profile.onboardingComplete && !editing && step === 0;
 
   useEffect(() => {
     if (shouldRedirect) router.replace('/(tabs)/today');
@@ -63,9 +72,11 @@ export default function OnboardingScreen() {
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
       <LinearGradient colors={colors.washYou} style={styles.wash} />
       <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {editing ? <Pressable accessibilityRole="button" accessibilityLabel="Close setup" disabled={building} onPress={() => router.replace('/(tabs)/you')} style={{ alignSelf: 'flex-end', padding: 12 }}><X color={colors.text} size={24} /></Pressable> : null}
         <StepProgress step={step} onBack={() => setStep((value) => Math.max(1, value - 1))} />
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
           <StepHeading step={step} />
+          {notice ? <AppText>{notice}</AppText> : null}
           <StepContent step={step} draft={draft} update={update} toggleDay={toggleDay} pushups={pushups} setPushups={setPushups} runCapacity={runCapacity} setRunCapacity={setRunCapacity} pain={pain} setPain={setPain} note={note} setNote={setNote} />
         </ScrollView>
         <StepFooter step={step} building={building} onContinue={() => setStep((value) => value + 1)} onBuild={() => setStep(6)} onSkip={() => { setNote(''); setStep(6); }} onFinish={() => void finish()} />
@@ -138,12 +149,12 @@ function SafetyStep({ pain, setPain }: Pick<StepContentProps, 'pain' | 'setPain'
 
 function NotesStep({ draft, update, note, setNote }: Pick<StepContentProps, 'draft' | 'update' | 'note' | 'setNote'>) {
   const { colors } = useApp();
-  return <View style={styles.form}><FieldTitle>What should Arcel know?</FieldTitle><TextInput value={note} onChangeText={setNote} multiline placeholder="Travel, exercises you avoid, old injuries, what usually derails a week…" placeholderTextColor={colors.textTertiary} style={[styles.noteInput, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} /><FieldTitle>What should we call you?</FieldTitle><TextInput value={draft.displayName} onChangeText={(displayName) => update({ displayName })} placeholder="First name (optional)" placeholderTextColor={colors.textTertiary} style={[styles.nameInput, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} /></View>;
+  return <View style={styles.form}><FieldTitle>What should Arcel know?</FieldTitle><TextInput value={note} onChangeText={setNote} multiline placeholder="Travel, exercises you avoid, old injuries, what usually derails a week…" placeholderTextColor={colors.textTertiary} style={[styles.noteInput, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} /><FieldTitle>What should we call you?</FieldTitle><TextInput value={draft.displayName} onChangeText={(displayName) => update({ displayName })} maxLength={60} placeholder="First name (optional)" placeholderTextColor={colors.textTertiary} style={[styles.nameInput, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} /></View>;
 }
 
 function RevealStep({ draft, pushups, runCapacity }: Pick<StepContentProps, 'draft' | 'pushups' | 'runCapacity'>) {
   const { colors } = useApp();
-  return <View style={styles.reveal}><View style={[styles.revealIcon, { backgroundColor: colors.tintSoft }]}><ShieldCheck color={colors.tintText} size={34} /></View><AppText weight="bold" style={styles.revealTitle}>Your first week is ready.</AppText><AppText tone="secondary" style={styles.revealCopy}>It starts conservatively, keeps strength and cardio visible as separate threads, and leaves room to repair the week when life moves.</AppText><Card style={styles.summaryCard}><Summary label="Shape" value={`${draft.daysPerWeek} days · ${draft.sessionMinutes} min`} /><Summary label="Goal" value={draft.goal} /><Summary label="Setup" value={`${draft.equipment} · ${draft.cardio}`} /><Summary label="Starting point" value={`${pushups} push-ups · ${runCapacity} run`} /></Card></View>;
+  return <View style={styles.reveal}><View style={[styles.revealIcon, { backgroundColor: colors.tintSoft }]}><ShieldCheck color={colors.tintText} size={34} /></View><AppText weight="bold" style={styles.revealTitle}>Review your answers.</AppText><AppText tone="secondary" style={styles.revealCopy}>Save your preferences to your account. Planning will be connected later; you can start using chat now.</AppText><Card style={styles.summaryCard}><Summary label="Shape" value={`${draft.daysPerWeek} days · ${draft.sessionMinutes} min`} /><Summary label="Goal" value={draft.goal} /><Summary label="Setup" value={`${draft.equipment} · ${draft.cardio}`} /><Summary label="Starting point" value={`${pushups} push-ups · ${runCapacity} run`} /></Card></View>;
 }
 
 function StepContent(props: StepContentProps) {
@@ -161,8 +172,8 @@ function StepContent(props: StepContentProps) {
 function StepFooter({ step, building, onContinue, onBuild, onSkip, onFinish }: { step: number; building: boolean; onContinue: () => void; onBuild: () => void; onSkip: () => void; onFinish: () => void }) {
   const { colors } = useApp();
   if (step < 5) return <View style={[styles.bottom, { borderTopColor: colors.separator }]}><PrimaryButton onPress={onContinue}>Continue</PrimaryButton></View>;
-  if (step === 5) return <View style={[styles.bottom, { borderTopColor: colors.separator }]}><PrimaryButton onPress={onBuild}>Build my week</PrimaryButton><SecondaryButton onPress={onSkip}>Skip for now</SecondaryButton></View>;
-  return <View style={[styles.bottom, { borderTopColor: colors.separator }]}><PrimaryButton loading={building} onPress={onFinish}>See today</PrimaryButton></View>;
+  if (step === 5) return <View style={[styles.bottom, { borderTopColor: colors.separator }]}><PrimaryButton onPress={onBuild}>Review answers</PrimaryButton><SecondaryButton onPress={onSkip}>Skip for now</SecondaryButton></View>;
+  return <View style={[styles.bottom, { borderTopColor: colors.separator }]}><PrimaryButton loading={building} onPress={onFinish}>Save and open chat</PrimaryButton></View>;
 }
 
 function FieldTitle({ children }: { children: string }) { return <AppText weight="semibold" style={styles.fieldTitle}>{children}</AppText>; }

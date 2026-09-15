@@ -9,14 +9,15 @@ import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider, useSegments } fr
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { ActivityIndicator, View } from 'react-native';
+import { AppText, PrimaryButton, SecondaryButton } from '@/components/ui';
 
 import { AppProvider, useApp } from '@/state/app-context';
-import { liveApiConfigured } from '@/services/api';
 
 void SplashScreen.preventAutoHideAsync();
 
 function Navigation() {
-  const { accountReady, authSession, colorScheme, colors, hydrated, passwordRecovery } = useApp();
+  const { accountReady, accountError, authSession, colorScheme, colors, hydrated, passwordRecovery, profile, refreshLiveData, signOut } = useApp();
   const segments = useSegments();
   const baseTheme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
   const theme = {
@@ -25,7 +26,7 @@ function Navigation() {
   };
 
   useEffect(() => {
-    if (!hydrated || !accountReady || !liveApiConfigured) return;
+    if (!hydrated) return;
     const onAuthScreen = segments[0] === 'auth';
     const onRecoveryScreen = segments[0] === 'reset-password';
     if (passwordRecovery && !onRecoveryScreen) {
@@ -33,7 +34,14 @@ function Navigation() {
       return;
     }
     if (!authSession && !onAuthScreen) router.replace('/auth');
-  }, [accountReady, authSession, hydrated, passwordRecovery, segments]);
+    else if (authSession && accountReady && !profile.onboardingComplete && segments[0] !== 'onboarding' && !onRecoveryScreen) router.replace('/onboarding');
+  }, [accountReady, authSession, hydrated, passwordRecovery, profile.onboardingComplete, segments]);
+
+  if (hydrated && authSession && !accountReady && !passwordRecovery) {
+    return <View style={{ flex: 1, justifyContent: 'center', padding: 24, gap: 16, backgroundColor: colors.background }}>
+      {accountError ? <><AppText>{accountError}</AppText><PrimaryButton onPress={() => void refreshLiveData()}>Retry account loading</PrimaryButton><SecondaryButton onPress={() => void signOut()}>Sign out</SecondaryButton></> : <ActivityIndicator color={colors.tint} />}
+    </View>;
+  }
 
   return (
     <ThemeProvider value={theme}>

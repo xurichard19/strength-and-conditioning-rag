@@ -55,9 +55,9 @@ begin
     raise exception 'sports edit/delete failed to invalidate';
   end if;
 
-  insert into public.messages(user_id, role, content) values (u, 'user', 'hello');
+  insert into public.messages(conversation_id, user_id, role, content) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', u, 'user', 'hello');
   blocked := false;
-  begin insert into public.messages(user_id, role, content) values (u, 'assistant', 'forged');
+  begin insert into public.messages(conversation_id, user_id, role, content) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', u, 'assistant', 'forged');
   exception when insufficient_privilege then blocked := true; end;
   if not blocked then raise exception 'client can forge assistant message'; end if;
   blocked := false;
@@ -65,12 +65,12 @@ begin
   exception when insufficient_privilege then blocked := true; end;
   if not blocked then raise exception 'client can rewrite message authorship'; end if;
   blocked := false;
-  begin insert into public.messages(user_id, role, content, created_at) values (u, 'user', 'spoofed time', now());
+  begin insert into public.messages(conversation_id, user_id, role, content, created_at) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', u, 'user', 'spoofed time', now());
   exception when insufficient_privilege then blocked := true; end;
   if not blocked then raise exception 'client can spoof message timestamps'; end if;
   blocked := false;
-  begin insert into public.messages(user_id, role, content)
-    values ('22222222-2222-4222-8222-222222222222', 'user', 'wrong owner');
+  begin insert into public.messages(conversation_id, user_id, role, content)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '22222222-2222-4222-8222-222222222222', 'user', 'wrong owner');
   exception when insufficient_privilege then blocked := true; end;
   if not blocked then raise exception 'client can write another user message'; end if;
   raise notice 'timezone, revision, and message owner checks passed';
@@ -78,7 +78,7 @@ end;
 $$;
 
 set local role service_role;
-insert into public.messages(user_id, role, content) values ('11111111-1111-4111-8111-111111111111', 'assistant', 'backend reply');
+insert into public.messages(conversation_id, user_id, role, content) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111', 'assistant', 'backend reply');
 do $$
 declare j public.replan_jobs; first_claim jsonb; second_claim jsonb; reclaimed jsonb; blocked boolean := false;
 begin

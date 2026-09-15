@@ -8,7 +8,7 @@ import type { ThemeMode } from '@/design/tokens';
 import { useApp } from '@/state/app-context';
 
 export default function YouScreen() {
-  const { colors, profile, block, setThemeMode, resetOnboarding } = useApp();
+  const { colors, profile, block, setThemeMode } = useApp();
   const themes: { label: string; value: ThemeMode }[] = [{ label: 'System', value: 'system' }, { label: 'Light', value: 'light' }, { label: 'Dark', value: 'dark' }];
   return (
     <Screen title={profile.displayName.trim() || 'You'} context="my plan and preferences" wash="you">
@@ -52,7 +52,7 @@ export default function YouScreen() {
         <DisclosureRow title="Reminders" value="Not wired" icon={Bell} onPress={() => {}} />
         <DisclosureRow title="Calendar" value="Not wired" icon={CalendarClock} onPress={() => {}} />
         <DisclosureRow title="Connected apps" value="Not wired" icon={Link2} onPress={() => {}} />
-        <DisclosureRow title="Run setup again" icon={RotateCcw} onPress={() => { resetOnboarding(); router.replace('/onboarding'); }} last />
+        <DisclosureRow title="Run setup again" icon={RotateCcw} onPress={() => { router.push('/onboarding?edit=1'); }} last />
       </Card>
       <Pressable style={styles.privacy}><AppText tone="secondary" style={styles.privacyText}>Privacy · Terms</AppText><ChevronRight color={colors.textTertiary} size={15} /></Pressable>
     </Screen>

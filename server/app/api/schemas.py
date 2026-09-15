@@ -162,6 +162,7 @@ class SportsStatusRequest(RequestModel):
 # -------------------- chat --------------------
 
 class ChatRequest(RequestModel):
+    conversation_id: UUID
     text: str = Field(min_length=1, max_length=4000)
 
     @field_validator("text")
@@ -331,7 +332,15 @@ class ChangeWriteResponse(ResponseModel):
     revision: int = Field(ge=0)
 
 
+class ConversationResponse(ResponseModel):
+    id: UUID
+    user_id: UUID
+    title: str
+    created_at: datetime.datetime
+
+
 class MessageResponse(ResponseModel):
+    conversation_id: UUID
     id: UUID
     user_id: UUID
     role: MessageRole
