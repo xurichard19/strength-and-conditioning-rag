@@ -127,7 +127,7 @@ export function Screen({
         {previewMode ? (
           <View style={[styles.previewPill, { backgroundColor: colors.tintSoft }]}>
             <View style={[styles.previewDot, { backgroundColor: colors.tint }]} />
-            <AppText tone="tint" weight="medium" style={styles.previewText}>Preview data</AppText>
+              <AppText tone="tint" weight="medium" style={styles.previewText}>Training preview · not synced</AppText>
           </View>
         ) : null}
         {notice ? (

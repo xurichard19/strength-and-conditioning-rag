@@ -2,6 +2,8 @@
 
 Live scope: Supabase authentication, profile, onboarding, and persisted streaming chat.
 Planning, calendar syncing, workout writes, and background jobs are intentionally not called.
+The previous training screens use labeled mock workouts, proposals, and progress charts.
+Their interactions only change memory: nothing is synced, and they reset on restart or account change.
 
 ## Run
 
@@ -30,17 +32,28 @@ database passwords, or management tokens in the mobile app.
   `POST /onboarding/complete` handle the questionnaire. All survey values, including
   running capacity, push-ups, pain, and free-text notes, share one JSON dictionary.
   Display name is saved separately; theme and completion flags are not survey answers.
-- `GET /chat/messages` loads chronological pages of 20 messages. Older pages use
-  both timestamp and ID cursors. History refreshes on chat focus and app foreground.
-- `POST /chat` streams NDJSON. Text is provisional until `done.message_id` confirms
+- Opening Chat starts a fresh, unsaved conversation. The hamburger menu loads
+  `GET /chat/conversations` in pages of 50, with the last ID as the `before` cursor.
+  The first human message atomically creates the thread, titled YYYY-MM-DD in the
+  profile timezone. Existing history is preserved as one conversation per user.
+- `GET /chat/messages?conversation_id=UUID` loads chronological pages of 20 messages.
+  Older pages use timestamp and ID cursors. Foreground refresh stays in the selected thread.
+- `POST /chat` accepts `{text, conversation_id}` and streams NDJSON. Text is provisional until `done.message_id` confirms
   persistence. Only the backend saves human/assistant messages; mobile never inserts
   assistant rows or automatically retries a failed send.
 - Account changes clear in-memory state and abort the local chat stream. Late responses
   from an old account are ignored. Account-loading failures have retry/sign-out controls.
-- No demo chat or workout fallback. Missing configuration and server errors are visible.
+- Chat has no demo fallback. Training screens are explicitly mock previews, not live workouts.
+  Missing configuration and server errors are visible.
   The older prototype snapshot cache is no longer read or written.
 
-The server still generates chat inside the streaming request. Closing the app or
+Deploy the conversation migration and backend before running this mobile version.
+Saved history is displayed in the client but is not passed into AI generation.
+History retrieval will be implemented inside workflow nodes separately.
+Run setup again opens a local draft; its X exits without saving or clearing completion.
+
+The server still generates chat inside the streaming request. Switching threads aborts
+the local stream. Closing the app or
 losing the connection can leave a saved human message without a saved reply.
 Refreshing history retrieves whatever the server saved; this does not provide
 durable background generation. Source citations are currently streamed only, not

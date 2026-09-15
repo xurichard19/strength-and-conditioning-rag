@@ -1,11 +1,12 @@
 import type { Session as AuthSession } from '@supabase/supabase-js';
+import { randomUUID } from 'expo-crypto';
 import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, Platform, useColorScheme } from 'react-native';
 
 import { palettes, type ColorScheme, type Palette, type ThemeMode } from '@/design/tokens';
-import { currentBlock, defaultProfile } from '@/data/mock';
+import { currentBlock, defaultProfile, initialWeek, initialProposal, progressMetrics } from '@/data/mock';
 import type { ChatMessage, Effort, Profile, Proposal, ProgressMetric, Session } from '@/domain/types';
 import { errorMessage } from '@/lib/errors';
 import {
@@ -15,9 +16,17 @@ import {
   supabase, updatePassword as apiUpdatePassword, type Answers, type SavedMessage,
 } from '@/services/api';
 
+import type { Conversation } from '@/services/backend';
+
 type AuthActionResult = { ok: true; message?: string } | { ok: false; message: string };
 
 type AppContextValue = {
+  conversations: Conversation[];
+  conversationsLoading: boolean;
+  conversationsError: string | null;
+  hasOlderConversations: boolean;
+  refreshConversations: (older?: boolean) => Promise<void>;
+  openConversation: (id?: string) => void;
   hydrated: boolean;
   accountReady: boolean;
   passwordRecovery: boolean;
@@ -40,7 +49,6 @@ type AppContextValue = {
   chatMessages: ChatMessage[];
   chatBusy: boolean;
   finishOnboarding: (profile: Profile, answers: Answers) => Promise<boolean>;
-  resetOnboarding: () => void;
   setThemeMode: (mode: ThemeMode) => void;
   updateProfile: (update: Partial<Profile>) => void;
   acceptProposal: () => void;
@@ -76,8 +84,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [onboardingAnswers, setOnboardingAnswers] = useState<Answers>({});
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [proposal, setProposal] = useState<Proposal | null>(null);
+  // Training previews are memory-only and never sent to the API.
+  const [sessions, setSessions] = useState<Session[]>(initialWeek);
+  const [proposal, setProposal] = useState<Proposal | null>(initialProposal);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -85,6 +94,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversationsLoading, setConversationsLoading] = useState(false);
+  const [conversationsError, setConversationsError] = useState<string | null>(null);
+  const [hasOlderConversations, setHasOlderConversations] = useState(false);
+  const conversation = useRef<string | null>(null);
+  const chatEpoch = useRef(0);
+  const conversationCursor = useRef<string | undefined>(undefined);
+  const listRequest = useRef(0);
   const owner = useRef<string | null>(null);
   const epoch = useRef(0);
   const stream = useRef<AbortController | null>(null);
@@ -100,6 +117,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const userId = session?.user.id ?? null;
     if (owner.current !== userId) {
       owner.current = userId;
+      conversation.current = null;
+      chatEpoch.current += 1;
+      listRequest.current += 1;
+      conversationCursor.current = undefined;
+      setConversations([]);
+      setConversationsLoading(false);
+      setConversationsError(null);
+      setHasOlderConversations(false);
       epoch.current += 1;
       accountRequest.current += 1;
       stream.current?.abort();
@@ -108,8 +133,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       oldest.current = undefined;
       setProfile(emptyProfile);
       setOnboardingAnswers({});
-      setSessions([]);
-      setProposal(null);
+      setSessions(initialWeek);
+      setProposal(initialProposal);
       setChatMessages([]);
       setChatBusy(false);
       setChatLoading(false);
@@ -179,23 +204,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refreshChat = useCallback(async (older = false) => {
     const userId = owner.current;
-    if (!userId || stream.current || historyBusy.current) return;
+    if (!userId || !conversation.current || stream.current || historyBusy.current) return;
     const generation = epoch.current;
+    const selection = chatEpoch.current;
+    const selectedId = conversation.current;
     historyBusy.current = true;
     setChatLoading(true);
     setChatError(null);
     try {
-      const rows = await backendFor(userId).getMessages(older ? oldest.current : undefined);
-      if (epoch.current !== generation) return;
+      const rows = await backendFor(userId).getMessages(selectedId, older ? oldest.current : undefined);
+      if (epoch.current !== generation || chatEpoch.current !== selection) return;
       oldest.current = rows[0] ?? oldest.current;
       setHasOlderMessages(rows.length === 20);
       setChatMessages(current => older
         ? [...rows.map(asMessage).filter(row => !current.some(item => item.id === row.id)), ...current]
         : rows.map(row => ({ ...asMessage(row), sources: current.find(item => item.id === row.id)?.sources })));
     } catch (error) {
-      if (epoch.current === generation) setChatError(errorMessage(error, 'Could not load chat history.'));
+      if (epoch.current === generation && chatEpoch.current === selection) setChatError(errorMessage(error, 'Could not load chat history.'));
     } finally {
-      if (epoch.current === generation) { historyBusy.current = false; setChatLoading(false); }
+      if (epoch.current === generation && chatEpoch.current === selection) { historyBusy.current = false; setChatLoading(false); }
     }
   }, []);
   useEffect(() => {
@@ -206,6 +233,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     return () => listener.remove();
   }, [authSession?.user.id, refreshChat]);
+
+  // Switching threads invalidates only chat work, never account loading.
+  const openConversation = useCallback((id?: string) => {
+    chatEpoch.current += 1;
+    stream.current?.abort();
+    stream.current = null;
+    conversation.current = id ?? null;
+    historyBusy.current = false;
+    oldest.current = undefined;
+    setChatMessages([]);
+    setChatBusy(false);
+    setChatLoading(false);
+    setChatError(null);
+    setHasOlderMessages(false);
+    if (id) void refreshChat();
+  }, [refreshChat]);
+
+  const refreshConversations = useCallback(async (older = false) => {
+    const userId = owner.current;
+    if (!userId) return;
+    const generation = epoch.current;
+    const request = ++listRequest.current;
+    setConversationsLoading(true);
+    setConversationsError(null);
+    try {
+      const rows = await backendFor(userId).getConversations(older ? conversationCursor.current : undefined);
+      if (epoch.current !== generation || listRequest.current !== request) return;
+      conversationCursor.current = rows.at(-1)?.id;
+      setHasOlderConversations(rows.length === 50);
+      setConversations(current => older
+        ? [...current, ...rows.filter(row => !current.some(item => item.id === row.id))] : rows);
+    } catch (error) {
+      if (epoch.current === generation && listRequest.current === request) setConversationsError(errorMessage(error, 'Could not load conversations.'));
+    } finally {
+      if (epoch.current === generation && listRequest.current === request) setConversationsLoading(false);
+    }
+  }, []);
 
   const finishOnboarding = async (nextProfile: Profile, answers: Answers): Promise<boolean> => {
     const userId = owner.current;
@@ -227,7 +291,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return false;
     }
   };
-  const resetOnboarding = () => setProfile(current => ({ ...current, onboardingComplete: false }));
+
 
   const setThemeMode = (mode: ThemeMode) => setProfile((current) => ({ ...current, theme: mode }));
   const updateProfile = (update: Partial<Profile>) => setProfile((current) => ({ ...current, ...update }));
@@ -371,6 +435,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const userId = owner.current;
     if (!question || !userId || stream.current || historyBusy.current) return;
     const generation = epoch.current;
+    const selection = chatEpoch.current;
+    conversation.current ??= randomUUID();
+    const selectedId = conversation.current;
     const controller = new AbortController();
     stream.current = controller;
     setChatBusy(true);
@@ -379,26 +446,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setChatMessages(current => [...current, { id: `${id}-user`, role: 'user', text: question },
       { id, role: 'assistant', text: '', pending: true }]);
     const update = (changes: Partial<ChatMessage>) => {
-      if (epoch.current === generation) setChatMessages(current => current.map(row => row.id === id ? { ...row, ...changes } : row));
+      if (epoch.current === generation && chatEpoch.current === selection) setChatMessages(current => current.map(row => row.id === id ? { ...row, ...changes } : row));
     };
     try {
       const savedId = await backendFor(userId).streamChat(question, delta => {
-        if (epoch.current === generation) setChatMessages(current => current.map(row => row.id === id ? { ...row, text: row.text + delta } : row));
-      }, sources => update({ sources }), controller.signal);
+        if (epoch.current === generation && chatEpoch.current === selection) setChatMessages(current => current.map(row => row.id === id ? { ...row, text: row.text + delta } : row));
+      }, sources => update({ sources }), controller.signal, selectedId);
       update({ id: savedId, pending: false });
     } catch (error) {
       update({ pending: false, basis: 'Reply not confirmed saved.' });
-      if (epoch.current === generation) setChatError(errorMessage(error, 'Chat failed. Refresh history before sending again.'));
+      if (epoch.current === generation && chatEpoch.current === selection) setChatError(errorMessage(error, 'Chat failed. Refresh history before sending again.'));
     } finally {
-      if (epoch.current === generation) { stream.current = null; setChatBusy(false); }
+      if (epoch.current === generation && chatEpoch.current === selection) { stream.current = null; setChatBusy(false); }
     }
   };
 
   const value: AppContextValue = {
     hydrated, accountReady, accountError, passwordRecovery, profile, onboardingAnswers,
-    sessions, proposal, block: currentBlock, metrics: [], authSession,
-    previewMode: false, colors, colorScheme, notice, chatMessages, chatBusy, chatError,
-    chatLoading, hasOlderMessages, refreshChat, finishOnboarding, resetOnboarding,
+    sessions, proposal, block: currentBlock, metrics: progressMetrics, authSession,
+    previewMode: true, colors, colorScheme, notice, chatMessages, chatBusy, chatError,
+    chatLoading, hasOlderMessages, refreshChat, finishOnboarding,
+    conversations, conversationsLoading, conversationsError, hasOlderConversations, refreshConversations, openConversation,
     setThemeMode, updateProfile, acceptProposal, declineProposal, shortenToday,
     updateSet, addSet, removeSet, skipExercise, setEffort, finishSession,
     signIn, signInWithGoogle, signUp, requestPasswordReset, updatePassword,

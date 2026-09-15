@@ -65,6 +65,8 @@ erDiagram
     AUTH_USERS ||--|| PROFILES : owns
     PROFILES ||--o| ONBOARDING_RESPONSES : completes
     PROFILES ||--o{ MESSAGES : owns
+    PROFILES ||--o{ CONVERSATIONS : owns
+    CONVERSATIONS ||--o{ MESSAGES : contains
     PROFILES ||--o{ SPORTS_WORKOUTS : schedules
 
     AUTH_USERS {
@@ -88,9 +90,17 @@ erDiagram
         timestamptz updated_at
     }
 
+    CONVERSATIONS {
+        uuid id PK
+        uuid user_id FK
+        text title
+        timestamptz created_at
+    }
+
     MESSAGES {
         uuid id PK
         uuid user_id FK
+        uuid conversation_id FK
         text role
         text content
         timestamptz created_at

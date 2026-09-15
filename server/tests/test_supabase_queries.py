@@ -114,10 +114,11 @@ class HandlerTests(unittest.TestCase):
         self.assertNotIn('superseded_by_change_id', request.full_url)
 
     def test_assistant_message_write_uses_explicit_backend_credentials(self):
-        self.response([dict(id=str(JOB), user_id=str(USER), role='assistant', content='reply', created_at=NOW.isoformat())])
-        message = messages.append_message(USER, 'assistant', 'reply', None)
+        self.response([dict(conversation_id=str(WORKOUT), id=str(JOB), user_id=str(USER), role='assistant', content='reply', created_at=NOW.isoformat())])
+        message = messages.append_message(USER, 'assistant', 'reply', None, conversation_id=WORKOUT)
         request = self.http.call_args.args[0]
         self.assertEqual(message.role, 'assistant')
+        self.assertEqual(json.loads(request.data)['conversation_id'], str(WORKOUT))
         self.assertIsNone(request.get_header('Authorization'))
         self.assertEqual(json.loads(request.data)['user_id'], str(USER))
 
@@ -186,8 +187,9 @@ class HandlerTests(unittest.TestCase):
         self.response([])
         planning_changes.get_recent_planning_changes(USER, 'user-jwt', before_revision=12)
         self.assertIn('revision=lt.12', self.http.call_args.args[0].full_url)
-        messages.get_recent_messages(USER, 'user-jwt', before_created_at=NOW, before_id=WORKOUT)
+        messages.get_recent_messages(USER, 'user-jwt', conversation_id=WORKOUT, before_created_at=NOW, before_id=WORKOUT)
         self.assertIn('id.lt.' + str(WORKOUT), self.http.call_args.args[0].full_url)
+        self.assertIn('conversation_id=eq.' + str(WORKOUT), self.http.call_args.args[0].full_url)
         self.assertIn('user_id=eq.' + str(USER), self.http.call_args.args[0].full_url)
 
     def test_context_rejects_revision_change_during_reads(self):

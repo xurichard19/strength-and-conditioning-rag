@@ -88,11 +88,26 @@ test('new users have no completed onboarding even when defaults were previously 
   assert.equal(backend.profileFromApi({ display_name: null }, null, { ...profile, onboardingComplete: true }).onboardingComplete, false);
 });
 
+test('chat sends its conversation id and conversation listing supports pagination', async () => {
+  const calls = [];
+  const api = backend.createBackend(async (path, options) => {
+    calls.push([path, options?.body && JSON.parse(options.body)]);
+    return path === '/chat'
+      ? new Response('{"type":"done","message_id":"saved"}\n')
+      : response([]);
+  });
+  await api.getConversations('last-thread');
+  await api.streamChat('hello', () => {}, () => {}, undefined, 'thread-a');
+  assert.equal(calls[0][0], '/chat/conversations?before=last-thread');
+  assert.deepEqual(calls[1][1], { text: 'hello', conversation_id: 'thread-a' });
+});
+
 test('history passes both cursor fields and a bounded page size', async () => {
   let url;
   await backend.createBackend(async path => { url = path; return response([]); })
-    .getMessages({ id: 'message-a', created_at: '2026-09-15T00:00:00+00:00' });
+    .getMessages('conversation-a', { id: 'message-a', created_at: '2026-09-15T00:00:00+00:00' });
   const query = new URL(url, 'https://api.test').searchParams;
+  assert.equal(query.get('conversation_id'), 'conversation-a');
   assert.equal(query.get('limit'), '20');
   assert.equal(query.get('before_id'), 'message-a');
   assert.equal(query.get('before_created_at'), '2026-09-15T00:00:00+00:00');
@@ -120,7 +135,7 @@ test('chat rejects interrupted, malformed, and server-error streams', async () =
 test('failed POST exposes the server error and is not retried', async () => {
   let count = 0;
   const api = backend.createBackend(async () => { count++; return response({ detail: 'chat unavailable' }, 503); });
-  await assert.rejects(api.streamChat('hello', () => {}, () => {}), /chat unavailable/);
+  await assert.rejects(api.streamChat('hello', () => {}, () => {}, undefined, 'conversation-a'), /chat unavailable/);
   assert.equal(count, 1);
 });
 
@@ -207,6 +222,7 @@ function providerFixture(apiOverrides = {}) {
     getProfile: async () => ({ id: 'user-a', display_name: 'Ada', timezone: 'UTC' }),
     getOnboarding: async () => null,
     getMessages: async () => [],
+    getConversations: async () => [],
     saveProfile: async () => { calls.push('profile'); },
     saveAnswers: async answers => { calls.push(['answers', plain(answers)]); },
     completeOnboarding: async () => { calls.push('complete'); return { answers: { note: 'saved' }, completed_at: 'now' }; },
@@ -215,11 +231,12 @@ function providerFixture(apiOverrides = {}) {
   let authListener;
   const provider = load('state/app-context.tsx', {
     react: hooks, 'react/jsx-runtime': { jsx: (_type, props) => (value = props.value) },
+    'expo-crypto': { randomUUID: require('node:crypto').randomUUID },
     'expo-haptics': {},
     'expo-linking': { getInitialURL: async () => null, addEventListener: () => ({ remove() {} }) },
     'react-native': { Platform: { OS: 'ios' }, useColorScheme: () => 'light', AppState: { addEventListener: () => ({ remove() {} }) } },
     '@/design/tokens': { palettes: { light: {}, dark: {} } },
-    '@/data/mock': { defaultProfile: profile, currentBlock: {} },
+    '@/data/mock': { defaultProfile: profile, currentBlock: {}, initialWeek: [], initialProposal: null, progressMetrics: [] },
     '@/lib/errors': { errorMessage: (error, fallback) => error.message || fallback },
     '@/services/api': {
       backendFor: () => api, getAuthSession: async () => null, profileFromApi: backend.profileFromApi,
@@ -287,6 +304,49 @@ test('logout aborts chat and discards late reply updates', async () => {
   sendDelta('old account reply'); finish('saved-id'); await pending; await f.flush();
   assert.equal(f.value.chatMessages.length, 0);
   assert.equal(f.value.authSession, null);
+});
+
+test('new chats are lazy, reuse their id for replies, and reset on opening chat', async () => {
+  const ids = [];
+  const f = providerFixture({ streamChat: async (_text, _delta, _sources, _signal, id) => {
+    ids.push(id); return 'saved';
+  } });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  f.value.openConversation(); await f.flush();
+  assert.equal(ids.length, 0);
+  await f.value.sendChat('first'); await f.flush();
+  await f.value.sendChat('second'); await f.flush();
+  assert.equal(ids[0], ids[1]);
+  f.value.openConversation(); await f.flush();
+  assert.equal(f.value.chatMessages.length, 0);
+  await f.value.sendChat('new thread'); await f.flush();
+  assert.notEqual(ids[0], ids[2]);
+});
+
+test('switching conversations discards a late history response', async () => {
+  let finish;
+  const f = providerFixture({ getMessages: id => id === 'old'
+    ? new Promise(resolve => { finish = resolve; })
+    : Promise.resolve([{ id: 'new-message', role: 'user', content: 'new', created_at: 'now' }]) });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  f.value.openConversation('old'); await f.flush();
+  f.value.openConversation('new'); await f.flush();
+  finish([{ id: 'old-message', role: 'user', content: 'old', created_at: 'then' }]); await f.flush();
+  assert.equal(f.value.chatMessages[0].id, 'new-message');
+});
+
+test('switching conversations aborts the old stream and ignores its late text', async () => {
+  let finish; let delta; let signal;
+  const f = providerFixture({ streamChat: (_text, onText, _sources, abort) => {
+    delta = onText; signal = abort; return new Promise(resolve => { finish = resolve; });
+  } });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  const pending = f.value.sendChat('old'); await f.flush();
+  f.value.openConversation(); await f.flush();
+  assert.equal(signal.aborted, true);
+  delta('late'); finish('saved'); await pending; await f.flush();
+  assert.equal(f.value.chatMessages.length, 0);
+  assert.equal(f.value.chatBusy, false);
 });
 
 test('a late profile load from the previous user cannot overwrite a new account', async () => {

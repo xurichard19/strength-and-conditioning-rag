@@ -4,6 +4,7 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [key:
 export type Answers = Record<string, JsonValue>;
 export type ApiProfile = { id: string; display_name: string | null; timezone: string };
 export type Onboarding = { answers: Answers; completed_at: string | null };
+export type Conversation = { id: string; title: string; created_at: string };
 export type SavedMessage = { id: string; role: 'user' | 'assistant'; content: string; created_at: string };
 export type ApiRequest = (path: string, options?: RequestInit) => Promise<Response>;
 
@@ -63,15 +64,16 @@ export function createBackend(request: ApiRequest) {
       method: 'PUT', body: JSON.stringify({ answers }),
     }),
     completeOnboarding: () => json<Onboarding>('/onboarding/complete', { method: 'POST' }),
-    getMessages: (before?: SavedMessage) => {
-      const query = new URLSearchParams({ limit: '20' });
+    getConversations: (before?: string) => json<Conversation[]>(`/chat/conversations${before ? `?before=${encodeURIComponent(before)}` : ''}`),
+    getMessages: (conversationId: string, before?: SavedMessage) => {
+      const query = new URLSearchParams({ limit: '20', conversation_id: conversationId });
       if (before) { query.set('before_created_at', before.created_at); query.set('before_id', before.id); }
       return json<SavedMessage[]>(`/chat/messages?${query}`);
     },
     streamChat: async (text: string, onText: (delta: string) => void,
-      onSources: (sources: ChatSource[]) => void, signal?: AbortSignal) => {
+      onSources: (sources: ChatSource[]) => void, signal: AbortSignal | undefined, conversationId: string) => {
       const response = await checked(await request('/chat', {
-        method: 'POST', body: JSON.stringify({ text }), signal,
+        method: 'POST', body: JSON.stringify({ text, conversation_id: conversationId }), signal,
         headers: { Accept: 'application/x-ndjson' },
       }));
       if (!response.body) throw new Error('Chat stream is unavailable.');

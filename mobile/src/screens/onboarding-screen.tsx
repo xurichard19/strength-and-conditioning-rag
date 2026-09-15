@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
-import { ArrowLeft, Check, HeartPulse, ShieldCheck, Sparkles } from 'lucide-react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { ArrowLeft, Check, HeartPulse, ShieldCheck, Sparkles, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -38,7 +38,9 @@ function toggleItem(items: string[], item: string) {
 
 export default function OnboardingScreen() {
   const { accountReady, colors, profile, onboardingAnswers, notice, finishOnboarding } = useApp();
-  const [step, setStep] = useState(0);
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const editing = edit === '1' && profile.onboardingComplete;
+  const [step, setStep] = useState(editing ? 1 : 0);
   const [draft, setDraft] = useState<Profile>(profile);
   const [building, setBuilding] = useState(false);
   const [runCapacity, setRunCapacity] = useState(typeof onboardingAnswers.runCapacity === 'string' ? onboardingAnswers.runCapacity : '10–20 min');
@@ -54,7 +56,7 @@ export default function OnboardingScreen() {
     setBuilding(false);
     if (saved) router.replace('/(tabs)/chat');
   };
-  const shouldRedirect = accountReady && profile.onboardingComplete && step === 0;
+  const shouldRedirect = accountReady && profile.onboardingComplete && !editing && step === 0;
 
   useEffect(() => {
     if (shouldRedirect) router.replace('/(tabs)/today');
@@ -70,6 +72,7 @@ export default function OnboardingScreen() {
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
       <LinearGradient colors={colors.washYou} style={styles.wash} />
       <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {editing ? <Pressable accessibilityRole="button" accessibilityLabel="Close setup" disabled={building} onPress={() => router.replace('/(tabs)/you')} style={{ alignSelf: 'flex-end', padding: 12 }}><X color={colors.text} size={24} /></Pressable> : null}
         <StepProgress step={step} onBack={() => setStep((value) => Math.max(1, value - 1))} />
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
           <StepHeading step={step} />

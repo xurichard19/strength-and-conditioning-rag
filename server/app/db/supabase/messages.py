@@ -3,19 +3,41 @@
 from datetime import datetime
 from uuid import UUID
 
-from app.contracts import MessageRecord, MessageRole
+from app.contracts import ConversationRecord, MessageRecord, MessageRole
 from app.db.supabase._queries import identifier, page_limit
 from app.db.supabase.transport import SupabaseDataError, insert_rows, select_rows
 
 
-MESSAGE_COLUMNS = "id,user_id,role,content,created_at"
+MESSAGE_COLUMNS = "conversation_id,id,user_id,role,content,created_at"
+
+
+def get_conversations(user_id: str | UUID, access_token: str, *, before: UUID | None = None) -> list[ConversationRecord]:
+    """
+    list up to 50 saved threads, newest first, using an exclusive id cursor
+
+    - **user_id**: verified owner; both the filter and rls restrict visibility
+    - **access_token**: owner's jwt
+    - **before**: last conversation id from the previous page; omit for newest
+    - **returns**: dated conversations; empty when no further threads remain
+    """
+    cursor = []
+    if before is not None:
+        rows = select_rows("conversations", [("select", "created_at"), ("id", f"eq.{identifier(before)}"),
+            ("user_id", f"eq.{identifier(user_id)}")], access_token)
+        if not rows:
+            return []
+        stamp = datetime.fromisoformat(rows[0]["created_at"]).isoformat()
+        cursor = [("or", f"(created_at.lt.{stamp},and(created_at.eq.{stamp},id.lt.{identifier(before)}))")]
+    return [ConversationRecord.model_validate(row) for row in select_rows("conversations",
+        [("select", "id,user_id,title,created_at"), ("user_id", f"eq.{identifier(user_id)}"),
+         *cursor, ("order", "created_at.desc,id.desc"), ("limit", "50")], access_token)]
 
 
 def get_recent_messages(
     user_id: str | UUID,
     access_token: str | None,
     limit: int = 20,
-    *, before_created_at: datetime | None = None, before_id: UUID | None = None,
+    *, conversation_id: UUID, before_created_at: datetime | None = None, before_id: UUID | None = None,
 ) -> list[MessageRecord]:
     """
     return a bounded oldest-to-newest message history
@@ -26,6 +48,7 @@ def get_recent_messages(
     pages. the timestamp must be timezone-aware. equal timestamps are ordered by id,
     and the cursor is exclusive. an empty result means no older visible messages.
 
+    - **conversation_id**: thread id; history never crosses conversation boundaries
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **access_token**: verified user jwt for rls; none uses backend service-role credentials
     - **limit**: maximum records to return, from 1 to 100
@@ -48,6 +71,7 @@ def get_recent_messages(
         "messages",
         [
             ("select", MESSAGE_COLUMNS),
+            ("conversation_id", f"eq.{identifier(conversation_id)}"),
             ("user_id", f"eq.{identifier(user_id)}"),
             *cursor,
             ("order", "created_at.desc,id.desc"),
@@ -63,6 +87,7 @@ def append_message(
     role: MessageRole,
     content: str,
     access_token: str | None,
+    *, conversation_id: UUID,
 ) -> MessageRecord:
     """
     store one message and return it
@@ -76,6 +101,8 @@ def append_message(
     retrying after an ambiguous timeout can create a duplicate.
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
+    - **conversation_id**: thread id; a first human insert creates the dated thread atomically;
+      assistant inserts require an existing thread belonging to the same owner
     - **role**: message author, user or assistant
     - **content**: nonblank message text
     - **access_token**: verified user jwt for human messages; none for trusted backend writes
@@ -87,7 +114,7 @@ def append_message(
 
     rows = insert_rows(
         "messages",
-        {"user_id": identifier(user_id), "role": role, "content": content},
+        {"user_id": identifier(user_id), "role": role, "content": content, "conversation_id": identifier(conversation_id)},
         access_token,
     )
     if not rows:

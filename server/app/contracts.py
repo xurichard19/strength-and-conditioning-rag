@@ -295,7 +295,15 @@ class ExerciseSetResult(BaseModel):
 
 # -------------------- message records --------------------
 
+class ConversationRecord(BaseModel):
+    id: UUID
+    user_id: UUID
+    title: str
+    created_at: datetime.datetime
+
+
 class MessageRecord(BaseModel):
+    conversation_id: UUID
     id: UUID
     user_id: UUID
     role: MessageRole
