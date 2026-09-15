@@ -4,7 +4,7 @@ note: web client depreciated, mobile client currently in development
 
 Arcel is a full-stack assistant for hybrid athletes building strength and conditioning programs around sport-specific demands. It answers conversational and research-backed training questions using more than 300 CC BY 4.0 research papers, live web search, and streamed LLM generation.
 
-The Expo/React Native mobile client connects to the containerized FastAPI backend running on Google Cloud Run behind Google Cloud Load Balancing and Cloud Armor. The backend uses LangGraph for request-level workflow orchestration, a LangChain search agent for evidence gathering, OpenAI for model inference, Chroma Cloud for research retrieval, Tavily for web search, Cohere for reranking, and Supabase for authentication and application data.
+The Expo/React Native mobile client connects to the containerized FastAPI backend running on Google Cloud Run behind Google Cloud Load Balancing and Cloud Armor. The backend uses LangGraph for request-level workflow orchestration, a LangChain search agent for evidence gathering, OpenAI for model inference, Chroma Cloud for research retrieval, Tavily for web search, Cohere for reranking, and Supabase for authentication and application data. GitHub Actions builds and pushes backend images to Google Artifact Registry, deploys them to Cloud Run, and verifies backend health.
 
 ---
 #### App Infrastructure
@@ -22,9 +22,8 @@ flowchart TB
     Workflows --> LangSmith["LangSmith<br/>tracing"]
     Docs[("GCS source<br/>documents")] --> Index["Offline<br/>indexing"]
     Index --> Chroma
+    API -.- ci["GitHub Actions<br/>deployment"]
 ```
-
-### AI Workflows
 
 #### Chat LangGraph Workflow
 

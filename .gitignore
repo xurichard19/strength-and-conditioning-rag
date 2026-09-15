@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 secrets/
+gha-creds-*.json
 
 /data/
 *.pkl
