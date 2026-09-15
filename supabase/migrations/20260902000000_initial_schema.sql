@@ -25,6 +25,21 @@ create table public.profiles (
   constraint profiles_timezone_check check (char_length(btrim(timezone)) > 0)
 );
 
+create or replace function public.validate_profile_timezone()
+returns trigger language plpgsql set search_path = pg_catalog as $$
+begin
+  if not exists (select 1 from pg_catalog.pg_timezone_names where name = new.timezone) then
+    raise sqlstate 'PT400' using message = 'invalid timezone';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger profiles_validate_timezone
+before insert or update of timezone on public.profiles
+for each row execute function public.validate_profile_timezone();
+revoke all on function public.validate_profile_timezone() from public, anon, authenticated;
+
 create table public.onboarding_responses (
   user_id uuid primary key references public.profiles(id) on delete cascade,
   answers jsonb not null default '{}'::jsonb,
@@ -180,6 +195,9 @@ create index replan_jobs_claim_idx
 on public.replan_jobs(available_at, id) where status = 'pending';
 create index replan_jobs_expired_idx
 on public.replan_jobs(lease_expires_at) where status = 'running';
+create index replan_jobs_user_live_idx on public.replan_jobs(user_id, available_at, id)
+where status in ('pending', 'running');
+
 create index replan_jobs_retention_idx
 on public.replan_jobs(completed_at) where completed_at is not null;
 
@@ -453,12 +471,12 @@ with check (
   )
 );
 
-create policy messages_owner_policy
-on public.messages
-for all
-to authenticated
-using (user_id = (select auth.uid()))
-with check (user_id = (select auth.uid()));
+-- Users can read their history and insert only their own human messages.
+-- Message identity/timestamps and all assistant writes belong to the backend.
+create policy messages_owner_read on public.messages
+for select to authenticated using (user_id = (select auth.uid()));
+create policy messages_owner_insert on public.messages
+for insert to authenticated with check (user_id = (select auth.uid()) and role = 'user');
 
 create policy sports_workouts_owner_policy
 on public.sports_workouts
@@ -486,12 +504,46 @@ revoke all on table public.sports_workouts from anon, authenticated;
 
 grant select, insert, update on table public.profiles to authenticated;
 grant select, insert, update, delete on table public.onboarding_responses to authenticated;
-grant select, insert on table public.planning_changes to authenticated;
-grant select, insert, update, delete on table public.workouts to authenticated;
-grant select, insert, update, delete on table public.exercises to authenticated;
-grant select, insert, update, delete on table public.exercise_sets to authenticated;
-grant select, insert, update, delete on table public.messages to authenticated;
+-- Clients read planned content; backend RPCs enforce revisions and result guards.
+grant select on table public.planning_changes, public.workouts,
+  public.exercises, public.exercise_sets to authenticated;
+grant select on table public.messages to authenticated;
+grant insert (user_id, role, content) on public.messages to authenticated;
+grant select, insert on table public.messages to service_role;
 grant select, insert, update, delete on table public.sports_workouts to authenticated;
+
+grant all on public.profiles, public.onboarding_responses, public.sports_workouts,
+  public.planning_schedules, public.planning_changes, public.planning_change_workouts,
+  public.workouts, public.exercises, public.exercise_sets, public.replan_jobs to service_role;
 
 revoke execute on function public.set_updated_at() from public, anon, authenticated;
 revoke execute on function public.handle_new_user() from public, anon, authenticated;
+
+-- AFTER sees the actual upsert outcome, rather than both its insert and update attempts.
+-- Compare within the write transaction; timestamps alone do not change planning inputs.
+create or replace function public.bump_planning_input_revision()
+returns trigger language plpgsql security definer set search_path = pg_catalog, public as $$
+declare v_user_id uuid;
+begin
+  if tg_table_name = 'profiles' then
+    if new.timezone is not distinct from old.timezone then return null; end if;
+    v_user_id := new.id;
+  else
+    if tg_op = 'UPDATE' and (to_jsonb(new) - 'updated_at') = (to_jsonb(old) - 'updated_at') then
+      return null;
+    end if;
+    v_user_id := case when tg_op = 'DELETE' then old.user_id else new.user_id end;
+  end if;
+  update public.planning_schedules set revision = revision + 1 where user_id = v_user_id;
+  return null;
+end;
+$$;
+
+create trigger profiles_planning_revision after update on public.profiles
+for each row execute function public.bump_planning_input_revision();
+create trigger onboarding_planning_revision after insert or update or delete on public.onboarding_responses
+for each row execute function public.bump_planning_input_revision();
+create trigger sports_planning_revision after insert or update or delete on public.sports_workouts
+for each row execute function public.bump_planning_input_revision();
+
+revoke all on function public.bump_planning_input_revision() from public, anon, authenticated;

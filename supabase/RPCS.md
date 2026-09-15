@@ -1,7 +1,7 @@
 # Planning RPCs
 
-Defined in `migrations/20260903000000_workout_rpcs.sql`, with scheduler/claim hardening
-in `migrations/20260915000000_data_access_hardening.sql`. Apply all migrations in order.
+Apply `migrations/20260902000000_initial_schema.sql` first, then
+`migrations/20260903000000_workout_rpcs.sql`, which defines the planning RPCs.
 Typed Python wrappers live in `server/app/db/supabase`.
 
 All RPCs are backend-only (`service_role`). Authenticate and authorize the caller
@@ -85,8 +85,8 @@ Use a disposable PostgreSQL 17 instance. `tests/bootstrap.sql` supplies minimal
 Supabase auth/role fixtures; **never run it against a Supabase project**. Apply the
 numbered migrations in order, then run `tests/planning_rpcs.sql` and
 `tests/data_access_hardening.sql` with `psql -v ON_ERROR_STOP=1`.
-The SQL tests roll back their fixtures. The hardening migration deliberately fails
-if existing profiles contain invalid timezones; correct those explicitly first.
+The SQL tests roll back their fixtures. The initial schema includes timezone
+validation, message permissions, and planning-input revision triggers.
 
 `python supabase/tests/concurrency.py <disposable-container-name>` tests two workers
 claiming different users, simultaneous duplicate publication, and identical
