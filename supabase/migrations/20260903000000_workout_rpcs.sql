@@ -64,31 +64,49 @@ begin
 end;
 $$;
 
+-- Local cadence arithmetic shared by selection and insertion; no rolling anchor drift.
+create or replace function public.latest_refresh_occurrence(
+  p_anchor timestamptz, p_interval_days integer, p_timezone text, p_now timestamptz
+) returns timestamptz language plpgsql stable set search_path = pg_catalog as $$
+declare v_due timestamp := p_anchor at time zone p_timezone;
+  v_now timestamp := p_now at time zone p_timezone;
+begin
+  v_due := v_due + make_interval(days => greatest(0,
+    ((v_now::date - v_due::date) / p_interval_days) * p_interval_days));
+  if v_due > v_now then v_due := v_due - make_interval(days => p_interval_days); end if;
+  return v_due at time zone p_timezone;
+end;
+$$;
+revoke all on function public.latest_refresh_occurrence(timestamptz, integer, text, timestamptz)
+from public, anon, authenticated;
+grant execute on function public.latest_refresh_occurrence(timestamptz, integer, text, timestamptz) to service_role;
+
 create or replace function public.enqueue_due_replans(p_limit integer default 100)
 returns integer language plpgsql security invoker set search_path = pg_catalog, public as $$
-declare v_schedule record; v_due timestamp; v_now timestamp; v_count integer := 0; v_rows integer;
+declare v_candidate record; v_now timestamptz := clock_timestamp(); v_count integer := 0; v_rows integer;
 begin
   if p_limit is null or p_limit not between 1 and 1000 then
     raise sqlstate 'PT400' using message = 'limit must be between 1 and 1000';
   end if;
-  for v_schedule in
-    select s.*, p.timezone from public.planning_schedules s join public.profiles p on p.id = s.user_id
-    where s.next_refresh_at <= clock_timestamp()
+  for v_candidate in
+    select s.user_id, occurrence.due_at from public.planning_schedules s
+    join public.profiles p on p.id = s.user_id
+    cross join lateral (
+      select public.latest_refresh_occurrence(s.next_refresh_at, s.refresh_interval_days, p.timezone, v_now) as due_at
+    ) occurrence
+    where s.next_refresh_at <= v_now
       and not exists (select 1 from public.replan_jobs j where j.user_id = s.user_id
         and j.kind = 'refresh' and j.status in ('pending', 'running'))
-    order by s.next_refresh_at limit p_limit for update of s skip locked
+      -- Filter duplicates BEFORE LIMIT so terminal occurrences cannot consume every slot.
+      and not exists (select 1 from public.replan_jobs j where j.user_id = s.user_id
+        and j.kind = 'refresh' and j.scheduled_for = occurrence.due_at)
+      and not exists (select 1 from public.replan_jobs j where j.user_id = s.user_id
+        and j.deduplication_key = 'refresh:' || extract(epoch from occurrence.due_at)::text)
+    order by s.next_refresh_at, s.user_id limit p_limit for update of s skip locked
   loop
-    v_due := v_schedule.next_refresh_at at time zone v_schedule.timezone;
-    v_now := clock_timestamp() at time zone v_schedule.timezone;
-    -- Jump to the latest due boundary without moving its local time or cadence.
-    v_due := v_due + make_interval(days => greatest(0,
-      ((v_now::date - v_due::date) / v_schedule.refresh_interval_days)
-      * v_schedule.refresh_interval_days));
-    if v_due > v_now then v_due := v_due - make_interval(days => v_schedule.refresh_interval_days); end if;
     insert into public.replan_jobs(user_id, kind, reason, deduplication_key, scheduled_for)
-    values(v_schedule.user_id, 'refresh', 'scheduled refresh',
-      'refresh:' || extract(epoch from (v_due at time zone v_schedule.timezone))::text,
-      v_due at time zone v_schedule.timezone)
+    values(v_candidate.user_id, 'refresh', 'scheduled refresh',
+      'refresh:' || extract(epoch from v_candidate.due_at)::text, v_candidate.due_at)
     on conflict do nothing;
     get diagnostics v_rows = row_count;
     v_count := v_count + v_rows;
@@ -100,26 +118,37 @@ $$;
 create or replace function public.claim_replan_job(p_lease_seconds integer default 300)
 returns jsonb language plpgsql security invoker set search_path = pg_catalog, public as $$
 declare v_user_id uuid; v_job public.replan_jobs; v_schedule public.planning_schedules;
+  v_now timestamptz := clock_timestamp();
   v_today date; v_timezone text; v_from date; v_through date; v_horizon date;
 begin
   if p_lease_seconds is null or p_lease_seconds not between 30 and 3600 then
     raise sqlstate 'PT400' using message = 'lease must be between 30 and 3600 seconds';
   end if;
-  select s.user_id into v_user_id from public.planning_schedules s
-  where not exists (select 1 from public.replan_jobs j where j.user_id = s.user_id
-    and j.status = 'running' and j.lease_expires_at > clock_timestamp())
-    and exists (select 1 from public.replan_jobs j where j.user_id = s.user_id
-      and ((j.status = 'pending' and j.available_at <= clock_timestamp())
-        or (j.status = 'running' and j.lease_expires_at <= clock_timestamp())))
-  order by (select min(j.available_at) from public.replan_jobs j where j.user_id = s.user_id
-    and j.status in ('pending', 'running')), s.user_id
-  limit 1 for update of s skip locked;
-  if not found then return null; end if;
-  select * into v_schedule from public.planning_schedules where user_id = v_user_id;
+  -- Start from ready jobs, not every athlete; keep schedule-first lock ordering.
+  for v_user_id in
+    select ready.user_id from (
+      select user_id, available_at from public.replan_jobs
+      where status = 'pending' and available_at <= v_now
+      union all
+      select user_id, available_at from public.replan_jobs
+      where status = 'running' and lease_expires_at <= v_now
+    ) ready
+    where not exists (select 1 from public.replan_jobs j where j.user_id = ready.user_id
+      and j.status = 'running' and j.lease_expires_at > v_now)
+    group by ready.user_id order by min(ready.available_at), ready.user_id
+  loop
+    select * into v_schedule from public.planning_schedules
+    where user_id = v_user_id for update skip locked;
+    exit when found;
+  end loop;
+  if v_schedule.user_id is null then return null; end if;
+  -- Lock/recheck a running job first, including a concurrently renewed lease.
   select * into v_job from public.replan_jobs where user_id = v_user_id
-    and ((status = 'pending' and available_at <= clock_timestamp())
-      or (status = 'running' and lease_expires_at <= clock_timestamp()))
+    and (status = 'running' or (status = 'pending' and available_at <= v_now))
   order by (status = 'running') desc, available_at, id limit 1 for update;
+  if not found or (v_job.status = 'running' and v_job.lease_expires_at > clock_timestamp()) then
+    return null;
+  end if;
   if v_job.attempts >= 5 then
     update public.replan_jobs set status = 'failed', error = 'attempt limit reached',
       completed_at = clock_timestamp(), lease_token = null, lease_expires_at = null where id = v_job.id;
@@ -264,31 +293,6 @@ returns boolean language sql stable security invoker set search_path = pg_catalo
       or s.actual_reps is not null or s.actual_weight is not null or s.actual_distance is not null
       or s.actual_duration_seconds is not null or s.actual_rpe is not null or s.result_notes is not null));
 $$;
-
--- Input writes acquire the schedule lock and invalidate in-flight proposals.
-create or replace function public.bump_planning_input_revision()
-returns trigger language plpgsql security definer set search_path = pg_catalog, public as $$
-declare v_user_id uuid;
-begin
-  if tg_table_name = 'profiles' then
-    v_user_id := new.id;
-  elsif tg_op = 'DELETE' then
-    v_user_id := old.user_id;
-  else
-    v_user_id := new.user_id;
-  end if;
-  update public.planning_schedules set revision = revision + 1 where user_id = v_user_id;
-  if tg_op = 'DELETE' then return old; end if;
-  return new;
-end;
-$$;
-
-create trigger profiles_planning_revision before update on public.profiles
-for each row execute function public.bump_planning_input_revision();
-create trigger onboarding_planning_revision before insert or update or delete on public.onboarding_responses
-for each row execute function public.bump_planning_input_revision();
-create trigger sports_planning_revision before insert or update or delete on public.sports_workouts
-for each row execute function public.bump_planning_input_revision();
 
 -- Planned content stays immutable; progress/results are the supported mutable fields.
 create or replace function public.record_workout_results(
@@ -511,13 +515,6 @@ returns jsonb language sql security invoker set search_path = pg_catalog, public
   select public.set_planning_change_applied(p_user_id, p_change_id, p_expected_revision, true);
 $$;
 
--- Prevent browser REST writes from bypassing revisions, history, and result guards.
-revoke insert, update, delete on public.workouts, public.exercises, public.exercise_sets,
-  public.planning_changes from authenticated;
-grant all on public.profiles, public.onboarding_responses, public.sports_workouts,
-  public.planning_schedules, public.planning_changes, public.planning_change_workouts,
-  public.workouts, public.exercises, public.exercise_sets, public.replan_jobs to service_role;
-
 -- Restrict exactly this migration's functions, including internal helpers.
 do $$
 declare v_function regprocedure;
@@ -528,7 +525,7 @@ begin
       'configure_planning_schedule', 'enqueue_adjustment', 'enqueue_due_replans', 'claim_replan_job',
       'renew_replan_lease', 'fail_replan_job', 'cancel_replan_job', 'retry_replan_job', 'purge_replan_jobs', 'invalidate_planning_inputs',
       'workout_has_results', 'complete_replan_job', 'set_planning_change_applied',
-      'undo_planning_change', 'redo_planning_change', 'record_workout_results', 'bump_planning_input_revision'])
+      'undo_planning_change', 'redo_planning_change', 'record_workout_results', 'latest_refresh_occurrence'])
   loop
     execute format('revoke all on function %s from public, anon, authenticated', v_function);
     execute format('grant execute on function %s to service_role', v_function);

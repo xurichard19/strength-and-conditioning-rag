@@ -1,7 +1,8 @@
 # Planning RPCs
 
-Defined in `migrations/20260903000000_workout_rpcs.sql`. These replace the former
-replacement/copying-rollback functions. Typed Python wrappers live in `server/app/db/supabase`.
+Apply `migrations/20260902000000_initial_schema.sql` first, then
+`migrations/20260903000000_workout_rpcs.sql`, which defines the planning RPCs.
+Typed Python wrappers live in `server/app/db/supabase`.
 
 All RPCs are backend-only (`service_role`). Authenticate and authorize the caller
 before passing a user ID. Never send the service-role credential to a client.
@@ -61,7 +62,9 @@ calendar/history before deciding whether another operation is needed.
 
 `invalidate_planning_inputs(user_id)` increments and returns the revision for
 inputs without a dedicated table. Profile, onboarding, and sports-workout writes
-automatically bump it through database triggers. These triggers invalidate proposals;
+automatically bump it through database triggers only for actual changes (profile:
+timezone only). Identical onboarding upserts do not bump it; changed upserts bump
+once. Comparison and invalidation happen in the write transaction. These triggers invalidate proposals;
 they do not decide whether to enqueue an adjustment. Save a durable input before
 enqueuing its request. Trigger/job orchestration belongs to the future backend layer.
 
@@ -72,17 +75,21 @@ cleared. Unlisted sets are unchanged. It validates set ownership, stores results
 status timestamps atomically, and invalidates in-flight proposals. A stale revision
 requires reloading before retrying. Planned content is never edited here.
 
-`set_planning_change_applied`, `workout_has_results`, and
-`bump_planning_input_revision` are implementation helpers, not application entry points.
+`set_planning_change_applied`, `workout_has_results`, `latest_refresh_occurrence`,
+`validate_profile_timezone`, and `bump_planning_input_revision` are implementation
+helpers, not application entry points.
 
 ## Verification
 
 Use a disposable PostgreSQL 17 instance. `tests/bootstrap.sql` supplies minimal
 Supabase auth/role fixtures; **never run it against a Supabase project**. Apply the
-initial migration and RPC migration, then run `tests/planning_rpcs.sql` with
-`psql -v ON_ERROR_STOP=1`. The SQL tests roll back their fixtures.
+numbered migrations in order, then run `tests/planning_rpcs.sql` and
+`tests/data_access_hardening.sql` with `psql -v ON_ERROR_STOP=1`.
+The SQL tests roll back their fixtures. The initial schema includes timezone
+validation, message permissions, and planning-input revision triggers.
 
 `python supabase/tests/concurrency.py <disposable-container-name>` tests two workers
-claiming different users and simultaneous duplicate publication through Docker.
+claiming different users, simultaneous duplicate publication, and identical
+concurrent onboarding saves through Docker.
 It creates and removes its own users. The standalone fixtures exercise PostgreSQL
 transactions and privileges, not the PostgREST HTTP layer.

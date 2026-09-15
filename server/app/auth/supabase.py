@@ -1,7 +1,8 @@
 import json
 import logging
 from dataclasses import dataclass
-from urllib.error import HTTPError, URLError
+from http.client import HTTPException as HTTPProtocolError
+from urllib.error import HTTPError
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 
@@ -29,7 +30,7 @@ def require_user(
         logger.warning("authentication rejected reason=missing_bearer_token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
+            detail="authentication required",
             headers=AUTH_CHALLENGE,
         )
 
@@ -57,27 +58,29 @@ def verify_supabase_token(access_token: str) -> AuthUser:
             logger.warning("authentication rejected reason=invalid_or_expired_session status=%s", exc.code)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired session",
+                detail="invalid or expired session",
                 headers=AUTH_CHALLENGE,
             ) from exc
 
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Supabase auth validation failed",
+            detail="supabase auth validation failed",
         ) from exc
-    except URLError as exc:
+    except (OSError, HTTPProtocolError) as exc:
         logger.warning("authentication unavailable reason=supabase_auth_unreachable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Supabase auth is unavailable",
+            detail="supabase auth is unavailable",
         ) from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(502, "invalid auth service response") from exc
 
-    user_id = payload.get("id")
+    user_id = payload.get("id") if isinstance(payload, dict) else None
     if not isinstance(user_id, str) or not user_id:
         logger.warning("authentication rejected reason=missing_user_id")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid session user",
+            detail="invalid session user",
             headers=AUTH_CHALLENGE,
         )
 

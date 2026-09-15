@@ -2,8 +2,9 @@
 
 import json
 import re
+from http.client import HTTPException as HTTPProtocolError
 from typing import Any
-from urllib.error import HTTPError, URLError
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
@@ -52,8 +53,8 @@ def _request(
 
     synchronous call with a 10-second urlopen timeout, not an overall multi-query
     handler deadline. use a worker thread when called from an async route. a user
-    token uses the publishable api key; none selects the backend service-role jwt
-    for both authorization and apikey. this does not authenticate the application
+    token uses the publishable api key; none selects the backend secret API key
+    for apikey only. this does not authenticate the application
     caller or authorize a user id on their behalf.
 
     invalid resource names raise valueerror before network access. missing backend
@@ -77,9 +78,9 @@ def _request(
 
     api_key = settings.supabase_publishable_key
     if access_token is None:
-        if settings.supabase_service_role_key is None:
-            raise SupabaseDataError("supabase service role key is not configured")
-        access_token = api_key = settings.supabase_service_role_key.get_secret_value()
+        if settings.supabase_secret_key is None:
+            raise SupabaseDataError("supabase secret key is not configured")
+        api_key = settings.supabase_secret_key.get_secret_value()
 
     # build request
     resource = f"rpc/{path}" if rpc else path
@@ -87,10 +88,11 @@ def _request(
     if query_params:
         url = f"{url}?{urlencode(query_params, safe=',().')}"
     headers = {
-        "Authorization": f"Bearer {access_token}",
         "apikey": api_key,
         "Accept": "application/json",
     }
+    if access_token is not None:
+        headers["Authorization"] = f"Bearer {access_token}"
     if body is not None:
         headers["Content-Type"] = "application/json"
     if prefer:
@@ -110,7 +112,7 @@ def _request(
     except HTTPError as exc:
         try:
             error = json.loads(exc.read().decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError, HTTPProtocolError):
             error = {}
         if not isinstance(error, dict):
             error = {}
@@ -120,7 +122,7 @@ def _request(
             exc.code,
             code if isinstance(code, str) else None,
         ) from exc
-    except (json.JSONDecodeError, TimeoutError, UnicodeDecodeError, URLError) as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError, HTTPProtocolError) as exc:
         raise SupabaseDataError("supabase data api is unavailable") from exc
 
 
@@ -187,7 +189,7 @@ def call_rpc(
 def insert_rows(
     table: str,
     rows: dict[str, Any] | list[dict[str, Any]],
-    access_token: str,
+    access_token: str | None,
 ) -> list[dict[str, Any]]:
     """
     insert rows into supabase table using supabase rest api
@@ -199,7 +201,7 @@ def insert_rows(
 
     - **table**: supabase table name
     - **rows**: json-compatible row or rows to save
-    - **access_token**: verified user jwt used to enforce rls
+    - **access_token**: verified user jwt for rls; none uses trusted backend credentials
     - **returns**: inserted row dictionaries including database defaults
     """
 

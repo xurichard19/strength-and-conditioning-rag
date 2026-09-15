@@ -1,9 +1,37 @@
 # shared query validation and pagination
 
 from datetime import date
+from collections.abc import Callable
+from typing import TypeVar
 from uuid import UUID
 
 from app.db.supabase.transport import SupabaseDataError, call_rpc, select_rows
+
+
+T = TypeVar("T")
+
+
+def read_with_revision(user_id: str | UUID, access_token: str | None, read: Callable[[], T]) -> tuple[T, int | None]:
+    """
+    bracket a frontend data read with planning revision checks
+
+    prevents returning stale data labelled with a newer revision. this is an
+    optimistic check, not a transaction snapshot; mutations must still supply
+    the returned revision. no configured schedule is represented by none.
+
+    - **user_id**: authenticated owner
+    - **access_token**: user jwt or none for backend reads
+    - **read**: zero-argument read operation, never a write
+    - **returns**: data and matching revision; raises a 409 if revision changed
+    """
+
+    filters = [("select", "revision"), ("user_id", f"eq.{identifier(user_id)}"), ("limit", "1")]
+    before = select_rows("planning_schedules", filters, access_token)
+    result = read()
+    after = select_rows("planning_schedules", filters, access_token)
+    if before != after:
+        raise SupabaseDataError("planning inputs changed during read", status_code=409)
+    return result, before[0]["revision"] if before else None
 
 
 def rpc_row(name: str, payload: dict) -> dict:

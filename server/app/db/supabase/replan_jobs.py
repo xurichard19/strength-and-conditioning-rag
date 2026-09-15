@@ -92,7 +92,8 @@ def enqueue_due_replans(limit: int = 100) -> int:
     preserves the athlete's local wall-clock cadence across daylight-saving changes.
     does not advance coverage or next_refresh_at; successful publication does that.
 
-    occurrence keys deduplicate repeated scheduler passes. a terminally failed
+    existing occurrence keys are excluded before the batch limit, so failed or
+    cancelled occurrences cannot starve other due users. a terminally failed
     occurrence can remain suppressed until the next cadence boundary unless explicitly
     retried; monitoring/recovery belongs to the scheduler service. zero queued does
     not prove every schedule is healthy.
@@ -108,7 +109,8 @@ def claim_replan_job(lease_seconds: int = 300) -> ClaimedReplanJob | None:
     """
     claim one available job with its token, revision, and allowed planning dates
 
-    backend-only worker entry point; atomically selects work across users. locks
+    backend-only worker entry point; selects candidates from ready jobs, not all
+    athlete schedules. locks
     schedule rows with skip-locked behavior, allows one unexpired running job per
     user, and can reclaim expired leases. each claim increments attempts and issues
     a fresh token plus the current planning revision. pass that exact token to

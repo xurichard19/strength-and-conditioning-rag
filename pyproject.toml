@@ -29,6 +29,7 @@ dependencies = [
     "sentry-sdk[fastapi]",
     "supabase",
     "tqdm==4.67.3",
+    "tzdata>=2025.2",
     "uvicorn==0.44.0",
 ]
 

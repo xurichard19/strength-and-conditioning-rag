@@ -62,12 +62,14 @@ def append_message(
     user_id: str | UUID,
     role: MessageRole,
     content: str,
-    access_token: str,
+    access_token: str | None,
 ) -> MessageRecord:
     """
     store one message and return it
 
-    persists one user or assistant message under the authenticated owner. rejects
+    persists a user message with its owner jwt, or an assistant message with
+    backend credentials (access_token=None). callers must authorize the owner
+    before using backend credentials; a user jwt cannot write assistant messages. rejects
     blank/whitespace-only text but stores valid content without trimming it. messages
     do not automatically invalidate planning or enqueue an adjustment; business logic
     must handle chat-derived changes separately. this insert has no idempotency key:
@@ -76,7 +78,7 @@ def append_message(
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **role**: message author, user or assistant
     - **content**: nonblank message text
-    - **access_token**: verified user jwt used to enforce rls
+    - **access_token**: verified user jwt for human messages; none for trusted backend writes
     - **returns**: saved message including its id and creation timestamp
     """
 

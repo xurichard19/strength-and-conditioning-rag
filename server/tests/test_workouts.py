@@ -1,4 +1,3 @@
-import datetime
 import unittest
 from unittest.mock import patch
 from uuid import UUID
@@ -6,586 +5,87 @@ from uuid import UUID
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.routers import workouts
-from app.auth.supabase import AuthUser, require_user
+from app.api.routers import calendar, workouts
+from app.auth.supabase import require_user
+from app.contracts import CalendarSnapshot, WorkoutRecord, WorkoutSnapshot
 from app.db.supabase import SupabaseDataError
+from server.tests.test_profile import USER, NOW
 
 
-USER = AuthUser(id="user-123", email="athlete@example.com", access_token="caller-jwt")
-WORKOUT_ID = "11111111-1111-4111-8111-111111111111"
-EXERCISE_ID = "22222222-2222-4222-8222-222222222222"
-COMPLETED_AT = "2026-08-17T21:45:00+00:00"
-PENDING_EXERCISE_ROW = {
-    "id": EXERCISE_ID,
-    "workout_id": WORKOUT_ID,
-    "scheduled_date": "2026-08-17",
-    "order_index": 0,
-    "name": "Back squat",
-    "sets": 4,
-    "reps": "5",
-    "duration": None,
-    "rest": "90 seconds",
-    "notes": None,
-    "metadata": {},
-    "completed_at": None,
-}
-WORKOUT_ROW = {
-    "id": WORKOUT_ID,
-    "title": "Lower body",
-    "goal": "Strength",
-    "notes": None,
-}
-WORKOUT_RESPONSE = {
-    "id": WORKOUT_ID,
-    "scheduled_date": "2026-08-17",
-    "title": "Lower body",
-    "goal": "Strength",
-    "notes": None,
-    "exercises": [
-        {
-            key: value
-            for key, value in PENDING_EXERCISE_ROW.items()
-            if key != "scheduled_date"
-        }
-    ],
-}
-
-
-def authenticated_client() -> TestClient:
-    app = FastAPI()
-    app.include_router(workouts.router)
-    app.dependency_overrides[require_user] = lambda: USER
-    return TestClient(app)
+ID = UUID("22222222-2222-4222-8222-222222222222")
+WORKOUT = WorkoutRecord(id=ID, user_id=USER.id, created_by_change_id=ID, scheduled_date="2026-09-14",
+    name="strength", exercises=[], created_at=NOW, updated_at=NOW)
 
 
 class WorkoutRouteTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.client = authenticated_client()
-
-    @patch("app.api.routers.workouts.select_rows")
-    def test_range_returns_persisted_exercises_with_inclusive_filters(self, select_rows) -> None:
-        select_rows.side_effect = [
-            [PENDING_EXERCISE_ROW],
-            [PENDING_EXERCISE_ROW],
-            [WORKOUT_ROW],
-        ]
-
-        response = self.client.get(
-            "/workouts",
-            params={"start_date": "2026-08-01", "end_date": "2026-08-31"},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), [WORKOUT_RESPONSE])
-        self.assertEqual(response.headers["cache-control"], "private, no-store")
-        self.assertEqual(select_rows.call_count, 3)
-        self.assertEqual(
-            select_rows.call_args_list[0].args,
-            (
-                "exercises",
-                workouts._range_query(
-                    datetime.date(2026, 8, 1),
-                    datetime.date(2026, 8, 31),
-                    limit=workouts.MAX_RANGE_EXERCISES,
-                    offset=0,
-                ),
-                USER.access_token,
-            ),
-        )
-        self.assertEqual(
-            select_rows.call_args_list[1].args,
-            (
-                "exercises",
-                workouts._all_exercises_query(
-                    [UUID(WORKOUT_ID)],
-                    limit=workouts.MAX_RANGE_EXERCISES,
-                    offset=0,
-                ),
-                USER.access_token,
-            ),
-        )
-        self.assertEqual(
-            select_rows.call_args_list[2].args,
-            (
-                "workouts",
-                [
-                    ("select", workouts.WORKOUT_COLUMNS),
-                    ("id", f"in.({WORKOUT_ID})"),
-                    ("order", "id.asc"),
-                    ("limit", "1"),
-                ],
-                USER.access_token,
-            ),
-        )
-
-    @patch("app.api.routers.workouts.select_rows", return_value=[])
-    def test_empty_range_avoids_workout_metadata_query(self, select_rows) -> None:
-        response = self.client.get(
-            "/workouts/",
-            params={
-                "start_date": "2026-08-17",
-                "end_date": "2026-08-17",
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), [])
-        self.assertEqual(select_rows.call_count, 1)
-
-    @patch("app.api.routers.workouts.select_rows")
-    def test_range_rejects_invalid_dates_and_span(self, select_rows) -> None:
-        invalid_queries = (
-            {},
-            {"start_date": "2026-08-18", "end_date": "2026-08-17"},
-            {"start_date": "2026-01-01", "end_date": "2027-01-02"},
-            {"start_date": "not-a-date", "end_date": "2026-08-17"},
-        )
-
-        for params in invalid_queries:
-            with self.subTest(params=params):
-                response = self.client.get("/workouts/", params=params)
-                self.assertEqual(response.status_code, 422)
-
-        select_rows.assert_not_called()
-
-    @patch("app.api.routers.workouts.select_rows")
-    def test_range_rejects_results_that_exceed_safe_response_size(self, select_rows) -> None:
-        select_rows.side_effect = [
-            [PENDING_EXERCISE_ROW] * workouts.MAX_RANGE_EXERCISES,
-            [PENDING_EXERCISE_ROW],
-        ]
-
-        response = self.client.get(
-            "/workouts/",
-            params={"start_date": "2026-08-01", "end_date": "2026-08-31"},
-        )
-
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual(
-            response.json(),
-            {"detail": "Workout range contains too many exercises; narrow the date range"},
-        )
-        self.assertEqual(select_rows.call_count, 2)
-
-    @patch("app.api.routers.workouts.select_rows")
-    def test_range_rejects_complete_workout_that_exceeds_safe_response_size(
-        self,
-        select_rows,
-    ) -> None:
-        select_rows.side_effect = [
-            [PENDING_EXERCISE_ROW],
-            [PENDING_EXERCISE_ROW] * workouts.MAX_RANGE_EXERCISES,
-            [PENDING_EXERCISE_ROW],
-        ]
-
-        response = self.client.get(
-            "/workouts/",
-            params={"start_date": "2026-08-01", "end_date": "2026-08-31"},
-        )
-
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual(
-            response.json(),
-            {"detail": "Workout range contains too many exercises; narrow the date range"},
-        )
-        self.assertEqual(select_rows.call_count, 3)
-
-    @patch(
-        "app.api.routers.workouts.select_rows",
-        side_effect=SupabaseDataError("database-secret-detail"),
-    )
-    def test_range_supabase_failure_is_sanitized(self, select_rows) -> None:
-        response = self.client.get(
-            "/workouts/",
-            params={"start_date": "2026-08-01", "end_date": "2026-08-31"},
-        )
-
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(response.json(), {"detail": "Workout range load failed"})
-        self.assertNotIn("database-secret-detail", response.text)
-
-    @patch("app.api.routers.workouts.select_rows")
-    def test_range_metadata_failure_is_sanitized(self, select_rows) -> None:
-        select_rows.side_effect = [
-            [PENDING_EXERCISE_ROW],
-            [PENDING_EXERCISE_ROW],
-            SupabaseDataError("database-secret-detail"),
-        ]
-
-        response = self.client.get(
-            "/workouts/",
-            params={"start_date": "2026-08-01", "end_date": "2026-08-31"},
-        )
-
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(response.json(), {"detail": "Workout range load failed"})
-        self.assertNotIn("database-secret-detail", response.text)
-
-    @patch(
-        "app.api.routers.workouts.select_rows",
-        return_value=[{"workout_id": WORKOUT_ID}],
-    )
-    def test_range_rejects_invalid_database_rows(self, select_rows) -> None:
-        response = self.client.get(
-            "/workouts/",
-            params={"start_date": "2026-08-01", "end_date": "2026-08-31"},
-        )
-
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(response.json(), {"detail": "Workout data is invalid"})
-
-    @patch("app.api.routers.workouts.select_rows")
-    def test_range_rejects_mixed_dates_outside_the_requested_range(self, select_rows) -> None:
-        second_exercise = {
-            **PENDING_EXERCISE_ROW,
-            "id": "33333333-3333-4333-8333-333333333333",
-            "scheduled_date": "2026-08-18",
-            "order_index": 1,
-        }
-        select_rows.side_effect = [
-            [PENDING_EXERCISE_ROW],
-            [PENDING_EXERCISE_ROW, second_exercise],
-            [WORKOUT_ROW],
-        ]
-
-        response = self.client.get(
-            "/workouts/",
-            params={"start_date": "2026-08-17", "end_date": "2026-08-17"},
-        )
-
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(response.json(), {"detail": "Workout data is invalid"})
-
-    @patch("app.api.routers.workouts.select_rows")
-    @patch("app.api.routers.workouts.update_rows")
-    def test_completion_sets_server_timestamp_with_atomic_filters(
-        self,
-        update_rows,
-        select_rows,
-    ) -> None:
-        update_rows.return_value = [
-            {
-                "id": EXERCISE_ID,
-                "workout_id": WORKOUT_ID,
-                "completed_at": COMPLETED_AT,
-            }
-        ]
-
-        response = self.client.patch(
-            f"/workouts/{WORKOUT_ID}/exercises/{EXERCISE_ID}/completion",
-            json={"completed": True},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.headers["cache-control"], "private, no-store")
-        self.assertEqual(
-            datetime.datetime.fromisoformat(response.json()["completed_at"]),
-            datetime.datetime.fromisoformat(COMPLETED_AT),
-        )
-        values = update_rows.call_args.args[1]
-        generated_at = datetime.datetime.fromisoformat(values["completed_at"])
-        self.assertEqual(generated_at.utcoffset(), datetime.timedelta(0))
-        update_rows.assert_called_once_with(
-            "exercises",
-            values,
-            [
-                ("select", workouts.COMPLETION_COLUMNS),
-                ("id", f"eq.{EXERCISE_ID}"),
-                ("workout_id", f"eq.{WORKOUT_ID}"),
-                ("completed_at", "is.null"),
-            ],
-            USER.access_token,
-        )
-        select_rows.assert_not_called()
-
-    @patch("app.api.routers.workouts.select_rows")
-    @patch("app.api.routers.workouts.update_rows", return_value=[])
-    def test_repeated_completion_preserves_first_timestamp(
-        self,
-        update_rows,
-        select_rows,
-    ) -> None:
-        select_rows.return_value = [
-            {
-                "id": EXERCISE_ID,
-                "workout_id": WORKOUT_ID,
-                "completed_at": COMPLETED_AT,
-            }
-        ]
-
-        response = self.client.patch(
-            f"/workouts/{WORKOUT_ID}/exercises/{EXERCISE_ID}/completion",
-            json={"completed": True},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            datetime.datetime.fromisoformat(response.json()["completed_at"]),
-            datetime.datetime.fromisoformat(COMPLETED_AT),
-        )
-        select_rows.assert_called_once_with(
-            "exercises",
-            [
-                ("select", workouts.COMPLETION_COLUMNS),
-                ("id", f"eq.{EXERCISE_ID}"),
-                ("workout_id", f"eq.{WORKOUT_ID}"),
-                ("limit", "1"),
-            ],
-            USER.access_token,
-        )
-
-    @patch("app.api.routers.workouts.select_rows")
-    @patch("app.api.routers.workouts.update_rows")
-    def test_completion_rejects_mismatched_or_incorrect_update_responses(
-        self,
-        update_rows,
-        select_rows,
-    ) -> None:
-        invalid_rows = (
-            {
-                "id": "33333333-3333-4333-8333-333333333333",
-                "workout_id": WORKOUT_ID,
-                "completed_at": COMPLETED_AT,
-            },
-            {
-                "id": EXERCISE_ID,
-                "workout_id": WORKOUT_ID,
-                "completed_at": None,
-            },
-        )
-
-        for invalid_row in invalid_rows:
-            with self.subTest(invalid_row=invalid_row):
-                update_rows.return_value = [invalid_row]
-                response = self.client.patch(
-                    f"/workouts/{WORKOUT_ID}/exercises/{EXERCISE_ID}/completion",
-                    json={"completed": True},
-                )
-                self.assertEqual(response.status_code, 502)
-                self.assertEqual(
-                    response.json(),
-                    {"detail": "Exercise completion data is invalid"},
-                )
-
-        select_rows.assert_not_called()
-
-    @patch("app.api.routers.workouts.select_rows")
-    @patch("app.api.routers.workouts.update_rows")
-    def test_marking_incomplete_clears_completion(
-        self,
-        update_rows,
-        select_rows,
-    ) -> None:
-        update_rows.return_value = [
-            {
-                "id": EXERCISE_ID,
-                "workout_id": WORKOUT_ID,
-                "completed_at": None,
-            }
-        ]
-
-        response = self.client.patch(
-            f"/workouts/{WORKOUT_ID}/exercises/{EXERCISE_ID}/completion",
-            json={"completed": False},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIsNone(response.json()["completed_at"])
-        update_rows.assert_called_once_with(
-            "exercises",
-            {"completed_at": None},
-            [
-                ("select", workouts.COMPLETION_COLUMNS),
-                ("id", f"eq.{EXERCISE_ID}"),
-                ("workout_id", f"eq.{WORKOUT_ID}"),
-                ("completed_at", "not.is.null"),
-            ],
-            USER.access_token,
-        )
-        select_rows.assert_not_called()
-
-    @patch("app.api.routers.workouts.select_rows")
-    @patch("app.api.routers.workouts.update_rows", return_value=[])
-    def test_repeated_mark_incomplete_is_idempotent(
-        self,
-        update_rows,
-        select_rows,
-    ) -> None:
-        select_rows.return_value = [
-            {
-                "id": EXERCISE_ID,
-                "workout_id": WORKOUT_ID,
-                "completed_at": None,
-            }
-        ]
-
-        response = self.client.patch(
-            f"/workouts/{WORKOUT_ID}/exercises/{EXERCISE_ID}/completion",
-            json={"completed": False},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIsNone(response.json()["completed_at"])
-        self.assertEqual(update_rows.call_count, 1)
-        self.assertEqual(select_rows.call_count, 1)
-
-    @patch("app.api.routers.workouts.select_rows", return_value=[])
-    @patch("app.api.routers.workouts.update_rows", return_value=[])
-    def test_completion_hides_missing_mismatched_and_unowned_rows(
-        self,
-        update_rows,
-        select_rows,
-    ) -> None:
-        response = self.client.patch(
-            f"/workouts/{WORKOUT_ID}/exercises/{EXERCISE_ID}/completion",
-            json={"completed": True},
-        )
-
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.json(), {"detail": "Exercise not found"})
-
-    @patch(
-        "app.api.routers.workouts.select_rows",
-        return_value=[
-            {
-                "id": "33333333-3333-4333-8333-333333333333",
-                "workout_id": WORKOUT_ID,
-                "completed_at": COMPLETED_AT,
-            }
-        ],
-    )
-    @patch("app.api.routers.workouts.update_rows", return_value=[])
-    def test_completion_rejects_mismatched_fallback_response(
-        self,
-        update_rows,
-        select_rows,
-    ) -> None:
-        response = self.client.patch(
-            f"/workouts/{WORKOUT_ID}/exercises/{EXERCISE_ID}/completion",
-            json={"completed": True},
-        )
-
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(
-            response.json(),
-            {"detail": "Exercise completion data is invalid"},
-        )
-
-    @patch("app.api.routers.workouts.select_rows")
-    @patch("app.api.routers.workouts.update_rows", return_value=[])
-    def test_completion_returns_conflict_after_opposing_state_races(
-        self,
-        update_rows,
-        select_rows,
-    ) -> None:
-        select_rows.return_value = [
-            {
-                "id": EXERCISE_ID,
-                "workout_id": WORKOUT_ID,
-                "completed_at": None,
-            }
-        ]
-
-        response = self.client.patch(
-            f"/workouts/{WORKOUT_ID}/exercises/{EXERCISE_ID}/completion",
-            json={"completed": True},
-        )
-
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(update_rows.call_count, 2)
-        self.assertEqual(select_rows.call_count, 2)
-
-    @patch("app.api.routers.workouts.select_rows")
-    @patch("app.api.routers.workouts.update_rows")
-    def test_completion_rejects_invalid_requests_without_database_calls(
-        self,
-        update_rows,
-        select_rows,
-    ) -> None:
-        invalid_payloads = (
-            {},
-            {"completed": "true"},
-            {"completed": 1},
-            {"completed": None},
-            {"completed": True, "completed_at": COMPLETED_AT},
-        )
-        path = f"/workouts/{WORKOUT_ID}/exercises/{EXERCISE_ID}/completion"
-
-        for payload in invalid_payloads:
-            with self.subTest(payload=payload):
-                response = self.client.patch(path, json=payload)
-                self.assertEqual(response.status_code, 422)
-
-        response = self.client.patch(
-            f"/workouts/not-a-uuid/exercises/{EXERCISE_ID}/completion",
-            json={"completed": True},
-        )
-        self.assertEqual(response.status_code, 422)
-        update_rows.assert_not_called()
-        select_rows.assert_not_called()
-
-    @patch("app.api.routers.workouts.select_rows")
-    @patch(
-        "app.api.routers.workouts.update_rows",
-        side_effect=SupabaseDataError("database-secret-detail"),
-    )
-    def test_completion_supabase_failure_is_sanitized(
-        self,
-        update_rows,
-        select_rows,
-    ) -> None:
-        response = self.client.patch(
-            f"/workouts/{WORKOUT_ID}/exercises/{EXERCISE_ID}/completion",
-            json={"completed": True},
-        )
-
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(
-            response.json(),
-            {"detail": "Exercise completion update failed"},
-        )
-        self.assertNotIn("database-secret-detail", response.text)
-
-    @patch(
-        "app.api.routers.workouts.select_rows",
-        side_effect=SupabaseDataError("database-secret-detail"),
-    )
-    @patch("app.api.routers.workouts.update_rows", return_value=[])
-    def test_completion_fallback_failure_is_sanitized(
-        self,
-        update_rows,
-        select_rows,
-    ) -> None:
-        response = self.client.patch(
-            f"/workouts/{WORKOUT_ID}/exercises/{EXERCISE_ID}/completion",
-            json={"completed": True},
-        )
-
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(
-            response.json(),
-            {"detail": "Exercise completion update failed"},
-        )
-        self.assertNotIn("database-secret-detail", response.text)
-
-    def test_workout_routes_require_authentication(self) -> None:
+    def setUp(self):
         app = FastAPI()
+        app.include_router(calendar.router)
         app.include_router(workouts.router)
-        client = TestClient(app)
+        app.dependency_overrides[require_user] = lambda: USER
+        self.client = TestClient(app)
+        self.addCleanup(self.client.close)
 
-        range_response = client.get(
-            "/workouts/",
-            params={"start_date": "2026-08-01", "end_date": "2026-08-31"},
-        )
-        completion_response = client.patch(
-            f"/workouts/{WORKOUT_ID}/exercises/{EXERCISE_ID}/completion",
-            json={"completed": True},
-        )
+    @patch("app.api.routers.calendar.calendar.get_calendar_snapshot")
+    def test_calendar_has_revision_and_current_data(self, handler):
+        handler.return_value = CalendarSnapshot(workouts=[WORKOUT], sports_workouts=[], revision=4)
+        response = self.client.get("/calendar?start_date=2026-09-14&end_date=2026-09-20")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["revision"], 4)
+        self.assertEqual(response.json()["workouts"][0]["name"], "strength")
+        self.assertEqual(handler.call_args.args[0], USER.id)
+        self.assertEqual(handler.call_args.args[-1], USER.access_token)
+        self.assertEqual(response.headers["cache-control"], "private, no-store")
 
-        self.assertEqual(range_response.status_code, 401)
-        self.assertEqual(range_response.headers["www-authenticate"], "Bearer")
-        self.assertEqual(completion_response.status_code, 401)
-        self.assertEqual(completion_response.headers["www-authenticate"], "Bearer")
+    @patch("app.api.routers.calendar.calendar.get_calendar_snapshot")
+    def test_invalid_range_does_not_query(self, handler):
+        for query in ("start_date=2026-09-20&end_date=2026-09-14",
+                      "start_date=2020-01-01&end_date=2026-09-14", "start_date=bad&end_date=2026-09-14"):
+            self.assertEqual(self.client.get("/calendar?" + query).status_code, 422)
+        handler.assert_not_called()
+
+    @patch("app.api.routers.calendar.calendar.get_calendar_snapshot")
+    def test_calendar_preloads_at_most_31_inclusive_dates(self, handler):
+        handler.return_value = CalendarSnapshot(workouts=[], sports_workouts=[], revision=None)
+        self.assertEqual(self.client.get('/calendar?start_date=2026-10-01&end_date=2026-10-31').status_code, 200)
+        handler.reset_mock()
+        self.assertEqual(self.client.get('/calendar?start_date=2026-10-01&end_date=2026-11-01').status_code, 422)
+        handler.assert_not_called()
+
+    @patch("app.api.routers.workouts.workouts.get_workout_snapshot")
+    def test_workout_detail_and_missing(self, handler):
+        handler.return_value = WorkoutSnapshot(workout=WORKOUT, revision=4)
+        response = self.client.get(f"/workouts/{ID}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["revision"], 4)
+        handler.assert_called_once_with(USER.id, ID, USER.access_token)
+        handler.return_value = None
+        self.assertEqual(self.client.get(f"/workouts/{ID}").status_code, 404)
+
+    @patch("app.api.routers.workouts.workouts.record_workout_results", return_value=5)
+    def test_results_go_through_atomic_handler(self, handler):
+        response = self.client.put(f"/workouts/{ID}/results", json={"expected_revision": 4, "status": "in_progress",
+            "sets": [{"id": str(ID), "actual_reps": 5, "result_status": "completed"}]})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"revision": 5})
+        self.assertEqual(handler.call_args.args[:4], (USER.id, ID, 4, "in_progress"))
+        self.assertIsNone(handler.call_args.args[4][0].actual_weight)
+
+    @patch("app.api.routers.workouts.workouts.record_workout_results")
+    def test_results_validate_revision_status_and_unique_sets(self, handler):
+        for body in ({"status": "completed"}, {"expected_revision": -1, "status": "completed"},
+                     {"expected_revision": 1, "status": "missed"},
+                     {"expected_revision": 1, "status": "planned", "user_id": USER.id},
+                     {"expected_revision": 1, "status": "planned", "sets": [{"id": str(ID)}, {"id": str(ID)}]}):
+            self.assertEqual(self.client.put(f"/workouts/{ID}/results", json=body).status_code, 422)
+        handler.assert_not_called()
+
+    @patch("app.api.routers.workouts.workouts.record_workout_results",
+           side_effect=SupabaseDataError("private conflict details", 409, "PT409"))
+    def test_stale_revision_is_conflict_not_gateway_failure(self, handler):
+        response = self.client.put(f"/workouts/{ID}/results", json={"expected_revision": 1, "status": "completed"})
+        self.assertEqual(response.status_code, 409)
+        self.assertNotIn("private conflict details", response.text)
 
 
 if __name__ == "__main__":
