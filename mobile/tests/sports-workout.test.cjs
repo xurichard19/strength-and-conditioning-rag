@@ -74,7 +74,7 @@ test('sports writes use the existing POST endpoint and never make calendar/plann
 });
 
 function formFixture(write, date = '2026-09-20', userId = 'owner') {
-  const slots = []; let cursor = 0; const calls = [];
+  const slots = []; let cursor = 0; const calls = []; const invalidations = [];
   const screen = load('screens/sports-workout-screen.tsx', {
     react: {
       useState: initial => {
@@ -93,7 +93,8 @@ function formFixture(write, date = '2026-09-20', userId = 'owner') {
     '@/lib/calendar': calendar, '@/lib/sports-workout': options,
     '@/lib/errors': { errorMessage: (error, fallback) => error.message || fallback },
     '@/services/api': { backendFor: owner => ({ createSportsWorkout: async input => { calls.push({ owner, input }); return write(input); } }) },
-    '@/state/app-context': { useApp: () => ({ colors: {}, authSession: userId ? { user: { id: userId } } : null }) },
+    '@/state/app-context': { useApp: () => ({ colors: {}, authSession: userId ? { user: { id: userId } } : null,
+      invalidateCalendar: (...args) => invalidations.push(args) }) },
   });
   const expand = node => {
     if (!node || typeof node !== 'object') return node;
@@ -102,7 +103,7 @@ function formFixture(write, date = '2026-09-20', userId = 'owner') {
     return { ...node, props: { ...node.props, children: expand(node.props.children) } };
   };
   const render = () => { cursor = 0; return expand(screen.default()); };
-  return { calls, render,
+  return { calls, render, invalidations,
     field: label => children(render()).find(node => node.type === 'field' && node.props.label === label).props,
     notes: () => children(render()).find(node => node.type === 'input').props,
     save: () => children(render()).find(node => node.type === 'save' && node.props.children === 'Save sports workout')?.props,
@@ -129,6 +130,8 @@ test('form saves for the signed-in owner, blocks repeated taps, and confirms onl
   assert.equal(form.calls.length, 1);
   assert.equal(form.save(), undefined);
   assert.match(JSON.stringify(form.render()), /Sports workout saved/);
+  assert.deepEqual(form.invalidations, [['owner', '2026-09-20', '2026-09-20']]);
+  assert.doesNotMatch(JSON.stringify(form.render()), /preview calendar/);
 });
 
 test('failed saves keep field values, show an error, and do not claim success', async () => {
@@ -142,6 +145,7 @@ test('failed saves keep field values, show an error, and do not claim success', 
   assert.equal(form.notes().value, 'Keep this draft');
   assert.match(JSON.stringify(form.render()), /offline/);
   assert.doesNotMatch(JSON.stringify(form.render()), /Sports workout saved/);
+  assert.deepEqual(form.invalidations, [['owner', '2026-09-20', '2026-09-20']]);
   assert.equal(formFixture(async () => {}, '2026-02-30').save(), undefined);
   assert.equal(formFixture(async () => {}, '2026-09-20', null).save(), undefined);
 });
@@ -160,4 +164,97 @@ test('day menu opens Chat without prompting and carries the chosen date into the
   buttons[0].props.onPress(); buttons[1].props.onPress();
   assert.deepEqual(plain(routes), ['/(tabs)/chat', { pathname: '/sports-workout', params: { date: '2027-01-02' } }]);
   assert.equal(closes, 2);
+});
+
+test('sports deletion uses the owner-authenticated DELETE endpoint and never retries writes', async () => {
+  const calls = [];
+  const api = createBackend(async (path, config) => {
+    calls.push({ path, config });
+    return new Response(JSON.stringify({ id: 'a/b', scheduled_date: '2026-09-20' }));
+  });
+  assert.equal((await api.deleteSportsWorkout('a/b')).id, 'a/b');
+  assert.deepEqual(plain(calls), [{ path: '/sports-workouts/a%2Fb', config: { method: 'DELETE' } }]);
+  let attempts = 0;
+  const failed = createBackend(async () => { attempts++; return new Response('{"detail":"offline"}', { status: 503 }); });
+  await assert.rejects(failed.deleteSportsWorkout('sport'), /offline/);
+  assert.equal(attempts, 1);
+});
+
+function detailFixture(write, fields = {}) {
+  const slots = []; let cursor = 0; let closes = 0; const cleanups = [];
+  const calls = []; const invalidations = [];
+  const session = { id: 'sport', kind: 'sport', date: '2026-09-20', title: 'Boxing', status: 'planned',
+    startTime: '18:30:00', minutes: 60, intensity: 'moderate', notes: 'Technique\nBring wraps', ...fields };
+  const { SportsWorkoutDetails } = load('components/sports-workout-details.tsx', {
+    react: {
+      useState: initial => {
+        const i = cursor++; if (!(i in slots)) slots[i] = initial;
+        return [slots[i], value => { slots[i] = value; }];
+      },
+      useRef: initial => { const i = cursor++; return slots[i] ??= { current: initial }; },
+      useEffect: fn => { const i = cursor++; if (!(i in slots)) { slots[i] = true; cleanups.push(fn()); } },
+    },
+    'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react-native': { Ellipsis: 'icon' },
+    'react-native': { View: 'view', Pressable: 'button', ScrollView: 'scroll', StyleSheet: { create: value => value } },
+    './action-sheet': { ActionSheet: 'sheet' }, './ui': { AppText: 'text', OutlineButton: 'outline' },
+    '@/lib/calendar': calendar, '@/lib/errors': { errorMessage: error => error.message },
+    '@/services/api': { backendFor: owner => ({ deleteSportsWorkout: async id => { calls.push({ owner, id }); return write(); } }) },
+    '@/state/app-context': { useApp: () => ({ colors: {}, invalidateCalendar: (...args) => invalidations.push(args) }) },
+  });
+  const expand = node => {
+    if (!node || typeof node !== 'object') return node;
+    if (Array.isArray(node)) return node.map(expand);
+    if (typeof node.type === 'function') return expand(node.type(node.props));
+    return { ...node, props: { ...node.props, children: expand(node.props.children) } };
+  };
+  const render = () => { cursor = 0; return expand(SportsWorkoutDetails({ session, userId: 'owner', onClose: () => closes++ })); };
+  const button = label => children(render()).find(node => node.type === 'outline' && node.props.children === label)?.props;
+  const options = () => render().props.headerAction.props.onPress();
+  return { render, button, options, calls, invalidations, unmount: () => cleanups.forEach(fn => fn?.()), get closes() { return closes; } };
+}
+
+test('details show all cached sports fields and full notes without requests, including empty optionals', () => {
+  const f = detailFixture(async () => {});
+  const text = JSON.stringify(f.render());
+  for (const value of ['Boxing', 'Sunday, September 20, 2026', '6:30 PM', '60 minutes', 'Moderate', 'Planned', 'Bring wraps']) assert.ok(text.includes(value), value);
+  assert.equal(f.calls.length, 0);
+  const empty = JSON.stringify(detailFixture(async () => {}, { notes: null, startTime: null, minutes: null, intensity: null }).render());
+  assert.match(empty, /Not set/); assert.match(empty, /No notes added/);
+  assert.doesNotMatch(empty, /undefined|NaN/);
+});
+
+test('delete requires confirmation, blocks duplicate taps/dismissal, and invalidates only after the write settles', async () => {
+  let finish;
+  const f = detailFixture(() => new Promise(resolve => { finish = resolve; }));
+  f.options(); f.button('Delete workout').onPress();
+  assert.equal(f.render().props.title, 'Delete sports workout?'); assert.equal(f.calls.length, 0);
+  f.button('Cancel').onPress(); assert.ok(f.render().props.headerAction);
+  f.options(); f.button('Delete workout').onPress();
+  const confirm = f.button('Delete workout').onPress;
+  confirm(); confirm(); f.render().props.onClose();
+  assert.equal(f.button('Deleting…').disabled, true);
+  assert.equal(f.closes, 0); assert.deepEqual(f.invalidations, []);
+  assert.deepEqual(f.calls, [{ owner: 'owner', id: 'sport' }]);
+  finish({ scheduled_date: '2026-09-20' }); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.closes, 1);
+  assert.deepEqual(f.invalidations, [['owner', '2026-09-20', '2026-09-20']]);
+  confirm(); assert.equal(f.calls.length, 1);
+});
+
+test('failed deletion keeps a retryable confirmation and invalidates an uncertain result', async () => {
+  const f = detailFixture(async () => { throw new Error('offline'); });
+  f.options(); f.button('Delete workout').onPress(); f.button('Delete workout').onPress();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(JSON.stringify(f.render()), /offline/);
+  assert.equal(f.closes, 0); assert.equal(f.button('Delete workout').disabled, false);
+  assert.deepEqual(f.invalidations, [['owner', '2026-09-20', '2026-09-20']]);
+});
+
+test('late deletion cannot dismiss a replacement screen and revalidates both dates if a workout moved', async () => {
+  let finish;
+  const f = detailFixture(() => new Promise(resolve => { finish = resolve; }));
+  f.options(); f.button('Delete workout').onPress(); f.button('Delete workout').onPress();
+  f.unmount(); finish({ scheduled_date: '2026-09-21' }); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.closes, 0);
+  assert.deepEqual(f.invalidations, [['owner', '2026-09-21', '2026-09-21'], ['owner', '2026-09-20', '2026-09-20']]);
 });

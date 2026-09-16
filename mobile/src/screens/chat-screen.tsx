@@ -2,12 +2,13 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { ArrowUp, BookOpen, ChevronRight, ExternalLink, Globe2, Menu, MoreHorizontal, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui';
 import { ConversationActions, ConversationSidebar } from '@/components/conversation-menu';
-import { MarkdownText } from '@/components/markdown-text';
+import { MarkdownText, markdownPlainText } from '@/components/markdown-text';
+import { MessageTextSelection, messageTextProps } from '@/components/message-text-selection';
 import { quickQuestions } from '@/data/mock';
 import { fonts, radius } from '@/design/tokens';
 import type { ChatMessage, ChatSource } from '@/domain/types';
@@ -91,20 +92,20 @@ function MessageSources({ sources }: { sources: ChatSource[] }) {
   );
 }
 
-function MessageContent({ message }: { message: ChatMessage }) {
+function MessageContent({ message, onSelectText }: { message: ChatMessage; onSelectText?: () => void }) {
   const { colors } = useApp();
   if (message.pending && !message.text) return <ActivityIndicator color={colors.tint} size="small" />;
-  if (message.role === 'assistant') return <MarkdownText>{message.text}</MarkdownText>;
-  return <AppText tone="inverse" style={styles.messageText}>{message.text}</AppText>;
+  if (message.role === 'assistant') return <MarkdownText onSelectText={onSelectText}>{message.text}</MarkdownText>;
+  return <AppText {...messageTextProps(onSelectText)} tone="inverse" style={styles.messageText}>{message.text}</AppText>;
 }
 
-function ChatBubble({ message }: { message: ChatMessage }) {
+function ChatBubble({ message, onSelectText }: { message: ChatMessage; onSelectText?: () => void }) {
   const { colors } = useApp();
   const fromUser = message.role === 'user';
   return (
     <View style={[styles.message, fromUser ? styles.userWrap : styles.assistantWrap]}>
-      <View style={[styles.bubble, { backgroundColor: fromUser ? colors.strong : colors.card }]}><MessageContent message={message} /></View>
-      {message.basis ? <AppText tone="secondary" style={styles.basis}>Based on: {message.basis}</AppText> : null}
+      <View style={[styles.bubble, { backgroundColor: fromUser ? colors.strong : colors.card }]}><MessageContent message={message} onSelectText={onSelectText} /></View>
+      {message.basis ? <AppText selectable tone="secondary" style={styles.basis}>Based on: {message.basis}</AppText> : null}
       {!fromUser && message.sources?.length ? <MessageSources sources={message.sources} /> : null}
     </View>
   );
@@ -134,40 +135,68 @@ function Composer({ draft, busy, onChange, onSubmit }: { draft: string; busy: bo
   );
 }
 
+function ChatHeader({ onMenu, onOptions }: { onMenu: () => void; onOptions: () => void }) {
+  const { colors, chatTitle, activeConversationId } = useApp();
+  return <View style={[styles.header, { borderBottomColor: colors.separator }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Open conversations" onPress={onMenu} style={styles.spark}><Menu color={colors.text} size={24} /></Pressable>
+    <View style={styles.headerCopy}><AppText weight="bold" style={styles.title} numberOfLines={2}>{chatTitle}</AppText><AppText tone="secondary" style={styles.subtitle}>Training questions · live</AppText></View>
+    {activeConversationId ? <Pressable accessibilityRole="button" accessibilityLabel="Conversation options" onPress={onOptions} style={styles.spark}><MoreHorizontal color={colors.text} size={24} /></Pressable> : null}
+  </View>;
+}
+
+function ChatHistory({ context, onSelectText }: { context?: string; onSelectText: (message: ChatMessage) => void }) {
+  const { colors, chatMessages, chatBusy, chatLoading, chatError, hasOlderMessages, refreshChat } = useApp();
+  const busy = chatBusy || chatLoading;
+  return <>
+    {chatError ? <Pressable disabled={busy} onPress={() => void refreshChat()}><AppText>{chatError} Tap to reload.</AppText></Pressable> : null}
+    {hasOlderMessages ? <Pressable disabled={busy} onPress={() => void refreshChat(true)}><AppText tone="tint">Load older messages</AppText></Pressable> : null}
+    {chatLoading ? <ActivityIndicator color={colors.tint} /> : null}
+    {chatMessages.map((message) => <ChatBubble key={message.id} message={message}
+      onSelectText={Platform.OS === 'ios' ? () => onSelectText(message) : undefined} />)}
+    {!chatLoading && !chatError && chatMessages.length === 0 ? <QuickQuestions context={context} /> : null}
+  </>;
+}
+
 export default function ChatScreen() {
   const params = useLocalSearchParams<{ context?: string }>();
   const context = Array.isArray(params.context) ? params.context[0] : params.context;
-  const { colors, chatMessages, chatBusy, chatLoading, chatError, hasOlderMessages, refreshChat, sendChat, refreshConversations, openConversation, chatTitle, activeConversationId } = useApp();
+  const { colors, authSession, chatMessages, chatBusy, chatLoading, sendChat, refreshConversations, openConversation, activeConversationId } = useApp();
   const [menuOpen, setMenuOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [draft, setDraft] = useState('');
+  const [selection, setSelection] = useState<{ text: string; userId?: string; conversationId: string | null } | null>(null);
+  const userId = authSession?.user.id;
+  const busy = chatBusy || chatLoading;
   // Keep the selected conversation and draft across tab visits; only dismiss menus.
-  useFocusEffect(useCallback(() => { setMenuOpen(false); setOptionsOpen(false); }, []));
+  useFocusEffect(useCallback(() => {
+    setMenuOpen(false); setOptionsOpen(false); setSelection(null);
+    return () => setSelection(null);
+  }, []));
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => { scrollRef.current?.scrollToEnd({ animated: true }); }, [chatMessages]);
   const selectConversation = (id?: string, title?: string) => {
-    openConversation(id, title); setDraft(''); setMenuOpen(false);
+    openConversation(id, title); setDraft(''); setMenuOpen(false); setSelection(null);
   };
-  const submit = () => { if (!draft.trim() || chatBusy || chatLoading) return; const message = draft; setDraft(''); void sendChat(message, context); };
+  const selectText = (message: ChatMessage) => {
+    Keyboard.dismiss();
+    // Snapshot once so incoming tokens cannot move the user's selection handles.
+    setSelection({ text: message.role === 'assistant' ? markdownPlainText(message.text) : message.text,
+      userId, conversationId: activeConversationId });
+  };
+  const submit = () => { if (!draft.trim() || busy) return; const message = draft; setDraft(''); void sendChat(message, context); };
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top']}>
+      {selection && selection.userId === userId && selection.conversationId === activeConversationId
+        ? <MessageTextSelection text={selection.text} onClose={() => setSelection(null)} /> : null}
       {optionsOpen ? <ConversationActions onClose={() => setOptionsOpen(false)} /> : null}
       {menuOpen ? <ConversationSidebar onClose={() => setMenuOpen(false)} onSelect={selectConversation} /> : null}
       <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={[styles.header, { borderBottomColor: colors.separator }]}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Open conversations" onPress={() => { setMenuOpen(true); void refreshConversations(); }} style={styles.spark}><Menu color={colors.text} size={24} /></Pressable>
-          <View style={styles.headerCopy}><AppText weight="bold" style={styles.title} numberOfLines={2}>{chatTitle}</AppText><AppText tone="secondary" style={styles.subtitle}>Training questions · live</AppText></View>
-          {activeConversationId ? <Pressable accessibilityRole="button" accessibilityLabel="Conversation options" onPress={() => setOptionsOpen(true)} style={styles.spark}><MoreHorizontal color={colors.text} size={24} /></Pressable> : null}
-        </View>
+        <ChatHeader onMenu={() => { setMenuOpen(true); void refreshConversations(); }} onOptions={() => setOptionsOpen(true)} />
         <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.messages} showsVerticalScrollIndicator={false}>
-          {chatError ? <Pressable disabled={chatBusy || chatLoading} onPress={() => void refreshChat()}><AppText>{chatError} Tap to reload.</AppText></Pressable> : null}
-          {hasOlderMessages ? <Pressable disabled={chatBusy || chatLoading} onPress={() => void refreshChat(true)}><AppText tone="tint">Load older messages</AppText></Pressable> : null}
-          {chatLoading ? <ActivityIndicator color={colors.tint} /> : null}
-          {chatMessages.map((message) => <ChatBubble key={message.id} message={message} />)}
-          {!chatLoading && !chatError && chatMessages.length === 0 ? <QuickQuestions context={context} /> : null}
+          <ChatHistory context={context} onSelectText={selectText} />
         </ScrollView>
-        <Composer draft={draft} busy={chatBusy || chatLoading} onChange={setDraft} onSubmit={submit} />
+        <Composer draft={draft} busy={busy} onChange={setDraft} onSubmit={submit} />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

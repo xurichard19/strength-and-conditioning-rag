@@ -140,7 +140,6 @@ jobs:
             SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
             SUPABASE_SECRET_KEY=${{ secrets.SUPABASE_SECRET_KEY }}
           flags: >-
-            --remove-env-vars=LANGSMITH_HIDE_INPUTS,LANGSMITH_HIDE_OUTPUTS
             --port=8000
             --memory=2Gi
             --max-instances=10

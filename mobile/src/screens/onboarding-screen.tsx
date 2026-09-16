@@ -9,7 +9,7 @@ import { AppText, Card, ChoiceChip, PrimaryButton, SecondaryButton, ShieldLine }
 import { fonts, radius } from '@/design/tokens';
 import type { Profile } from '@/domain/types';
 import { useApp } from '@/state/app-context';
-import { surveyAnswers } from '@/services/api';
+import { surveyAnswers, type Answers } from '@/services/api';
 
 const trainingDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const promises = ['One plan, two distinct progress tracks', 'Repairs the week when plans move', 'Explains what changed and what stayed protected'];
@@ -36,6 +36,10 @@ function toggleItem(items: string[], item: string) {
   return items.includes(item) ? items.filter((value) => value !== item) : [...items, item];
 }
 
+function textAnswer(answers: Answers, key: string, fallback: string) {
+  return typeof answers[key] === 'string' ? answers[key] : fallback;
+}
+
 export default function OnboardingScreen() {
   const { accountReady, colors, profile, onboardingAnswers, notice, finishOnboarding } = useApp();
   const { edit } = useLocalSearchParams<{ edit?: string }>();
@@ -43,10 +47,10 @@ export default function OnboardingScreen() {
   const [step, setStep] = useState(editing ? 1 : 0);
   const [draft, setDraft] = useState<Profile>(profile);
   const [building, setBuilding] = useState(false);
-  const [runCapacity, setRunCapacity] = useState(typeof onboardingAnswers.runCapacity === 'string' ? onboardingAnswers.runCapacity : '10–20 min');
-  const [pushups, setPushups] = useState(typeof onboardingAnswers.pushups === 'string' ? onboardingAnswers.pushups : '5–10');
-  const [pain, setPain] = useState(typeof onboardingAnswers.pain === 'string' ? onboardingAnswers.pain : 'Nothing current');
-  const [note, setNote] = useState(typeof onboardingAnswers.note === 'string' ? onboardingAnswers.note : '');
+  const [runCapacity, setRunCapacity] = useState(textAnswer(onboardingAnswers, 'runCapacity', '10–20 min'));
+  const [pushups, setPushups] = useState(textAnswer(onboardingAnswers, 'pushups', '5–10'));
+  const [pain, setPain] = useState(textAnswer(onboardingAnswers, 'pain', 'Nothing current'));
+  const [note, setNote] = useState(textAnswer(onboardingAnswers, 'note', ''));
   const update = (value: Partial<Profile>) => setDraft((current) => ({ ...current, ...value }));
   const toggleDay = (day: string) => update({ trainingDays: toggleItem(draft.trainingDays, day) });
   const finish = async () => {

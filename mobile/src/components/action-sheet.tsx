@@ -7,7 +7,9 @@ import { useApp } from '@/state/app-context';
 import { AppText } from './ui';
 
 /** A dismissible bottom menu; its own safe area keeps controls above the home indicator. */
-export function ActionSheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function ActionSheet({ title, onClose, children, headerAction }: {
+  title: string; onClose: () => void; children: ReactNode; headerAction?: ReactNode;
+}) {
   const { colors } = useApp();
   return <Modal transparent visible animationType="fade" onRequestClose={onClose}>
     <SafeAreaProvider style={styles.backdrop}>
@@ -15,6 +17,7 @@ export function ActionSheet({ title, onClose, children }: { title: string; onClo
       <SafeAreaView edges={['bottom']} style={[styles.panel, { backgroundColor: colors.elevated }]} accessibilityViewIsModal>
         <View style={styles.header}>
           <AppText weight="semibold" style={styles.title}>{title}</AppText>
+          {headerAction}
           <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={onClose} style={styles.close}>
             <X color={colors.textSecondary} size={22} />
           </Pressable>

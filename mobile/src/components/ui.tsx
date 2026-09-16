@@ -21,7 +21,7 @@ import {
   type PressableProps,
   type ScrollViewProps,
   type StyleProp,
-  type TextStyle,
+  type TextProps,
   type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -69,17 +69,14 @@ export function AppText({
   style,
   tone = 'default',
   weight = 'regular',
-  numberOfLines,
-}: {
-  children: ReactNode;
-  style?: StyleProp<TextStyle>;
+  ...props
+}: TextProps & {
   tone?: Tone;
   weight?: keyof typeof fonts;
-  numberOfLines?: number;
 }) {
   const { colors } = useApp();
   return (
-    <Text numberOfLines={numberOfLines} style={[styles.text, { color: colors[toneColorKeys[tone]], fontFamily: fonts[weight] }, style]}>
+    <Text {...props} style={[styles.text, { color: colors[toneColorKeys[tone]], fontFamily: fonts[weight] }, style]}>
       {children}
     </Text>
   );
@@ -94,6 +91,7 @@ export function Screen({
   contentContainerStyle,
   scrollProps,
   onRefresh,
+  preview,
 }: {
   title: string;
   subtitle?: string;
@@ -103,6 +101,7 @@ export function Screen({
   contentContainerStyle?: StyleProp<ViewStyle>;
   scrollProps?: ScrollViewProps;
   onRefresh?: () => Promise<void>;
+  preview?: boolean;
 }) {
   const { colors, notice, previewMode } = useApp();
   const [refreshing, setRefreshing] = useState(false);
@@ -142,7 +141,7 @@ export function Screen({
             </Pressable>
           ) : null}
         </View>
-        {previewMode ? (
+        {(preview ?? previewMode) ? (
           <View style={[styles.previewPill, { backgroundColor: colors.tintSoft }]}>
             <View style={[styles.previewDot, { backgroundColor: colors.tint }]} />
               <AppText tone="tint" weight="medium" style={styles.previewText}>Training preview · not synced</AppText>

@@ -21,7 +21,9 @@ function load(file, modules = {}) {
   return exports;
 }
 const backend = load('services/backend.ts');
-const { createChatCache } = load('state/chat-cache.ts');
+const memoryCache = load('state/memory-cache.ts');
+const { createChatCache } = load('state/chat-cache.ts', { './memory-cache': memoryCache });
+const { createCalendarCache } = load('state/calendar-cache.ts', { './memory-cache': memoryCache, '../lib/calendar': load('lib/calendar.ts') });
 const { webUrl } = load('lib/links.ts');
 const plain = value => JSON.parse(JSON.stringify(value));
 const profile = { displayName: 'Ada', goal: 'Strong and fit', experienceLevel: 'new',
@@ -342,6 +344,30 @@ test('chat rejects interrupted, malformed, and server-error streams', async () =
   ]) await assert.rejects(backend.readChatStream(stream(body), () => {}, () => {}), expected);
 });
 
+test('invalid stream events never reach callbacks and always release the reader', async () => {
+  for (const event of [null, [], { type: 'unknown' }, { type: 'text', delta: 42 },
+    { type: 'sources', sources: {} }, { type: 'done', message_id: 42 },
+    { type: 'saved', message: { ...savedMessage('a'), role: 'assistant' } },
+    { type: 'done', message_id: 'a', message: savedMessage('a') },
+    { type: 'done', message_id: 'a', message: { ...savedMessage('b'), role: 'assistant' } },
+  ]) {
+    const body = new Response(JSON.stringify(event)).body;
+    const unexpected = () => assert.fail('invalid event reached a callback');
+    await assert.rejects(backend.readChatStream(body, unexpected, unexpected, unexpected), /Invalid/);
+    assert.equal(body.locked, false);
+  }
+});
+
+test('blank stream lines are ignored but an empty completion id is not a saved reply', async () => {
+  const body = new Response('\n  \n{"type":"text","delta":"answer"}\n\n{"type":"done","message_id":"saved"}').body;
+  const chunks = [];
+  assert.equal(await backend.readChatStream(body, text => chunks.push(text), () => {}), 'saved');
+  assert.deepEqual(chunks, ['answer']);
+  assert.equal(body.locked, false);
+  await assert.rejects(backend.readChatStream(new Response('{"type":"done","message_id":""}').body,
+    () => {}, () => {}), /before the reply was confirmed/);
+});
+
 test('failed POST exposes the server error and is not retried', async () => {
   let count = 0;
   const api = backend.createBackend(async () => { count++; return response({ detail: 'chat unavailable' }, 503); });
@@ -446,6 +472,7 @@ function providerFixture(apiOverrides = {}) {
     react: hooks, 'react/jsx-runtime': { jsx: (_type, props) => (value = props.value) },
     'expo-crypto': { randomUUID: require('node:crypto').randomUUID },
     './chat-cache': { createChatCache },
+    './calendar-cache': { createCalendarCache },
     'expo-haptics': {},
     'expo-linking': { getInitialURL: async () => null, addEventListener: () => ({ remove() {} }) },
     'react-native': { Platform: { OS: 'ios' }, useColorScheme: () => 'light', AppState: { addEventListener: () => ({ remove() {} }) } },
@@ -493,6 +520,29 @@ test('an older account read cannot overwrite newly completed onboarding', async 
   assert.deepEqual(plain(f.value.onboardingAnswers), { note: 'saved' });
 });
 
+test('newer account refresh wins over a late success or failure from the same account', async () => {
+  for (const failOlder of [false, true]) {
+    let delayed = false;
+    const requests = []; const timezoneWrites = [];
+    const identity = { id: 'user-a', display_name: 'Original', timezone: 'UTC' };
+    const f = providerFixture({
+      getProfile: () => delayed ? new Promise((resolve, reject) => requests.push({ resolve, reject })) : Promise.resolve(identity),
+      saveTimezone: async timezone => timezoneWrites.push(timezone),
+    });
+    await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+    delayed = true;
+    const older = f.value.refreshLiveData(); const newer = f.value.refreshLiveData();
+    requests[1].resolve({ ...identity, display_name: 'Newest' }); await newer;
+    if (failOlder) requests[0].reject(new Error('obsolete failure'));
+    else requests[0].resolve({ ...identity, display_name: 'Stale', timezone: 'America/New_York' });
+    await older; await f.flush();
+    assert.equal(f.value.profile.displayName, 'Newest');
+    assert.equal(f.value.accountError, null);
+    assert.equal(f.value.notice, null);
+    assert.deepEqual(timezoneWrites, []);
+  }
+});
+
 test('account loading syncs a changed device timezone before onboarding', async () => {
   const writes = [];
   const f = providerFixture({
@@ -510,6 +560,26 @@ test('failed onboarding stays incomplete and exposes the error', async () => {
   assert.equal(await f.value.finishOnboarding(profile, {}), false); await f.flush();
   assert.equal(f.value.profile.onboardingComplete, false);
   assert.equal(f.value.notice, 'offline');
+});
+
+test('calendar cache is account-scoped and old-account writes cannot invalidate the new account', async () => {
+  const f = providerFixture(); await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  const calendar = f.value.calendarCache;
+  const dates = ['2026-09-01', '2026-09-30'];
+  const response = { workouts: [], sports_workouts: [], revision: null };
+  await calendar.load({ getCalendarRange: async () => response }, ...dates);
+  f.value.invalidateCalendar('user-a', '2026-09-15', '2026-09-15');
+  assert.equal(calendar.peek(...dates).fresh, false);
+  let finish;
+  const old = calendar.load({ getCalendarRange: () => new Promise(resolve => { finish = resolve; }) }, ...dates);
+  f.auth('SIGNED_IN', { user: { id: 'user-b' }, access_token: 'other-token' }); await f.flush();
+  assert.equal(calendar.peek(...dates), undefined);
+  finish(response); assert.equal(await old, undefined);
+  await calendar.load({ getCalendarRange: async () => response }, ...dates);
+  f.value.invalidateCalendar('user-a', ...dates);
+  assert.equal(calendar.peek(...dates).fresh, true);
+  await f.value.signOut(); await f.flush();
+  assert.equal(calendar.peek(...dates), undefined);
 });
 
 test('account refresh replaces live data but preserves theme, chat cache, and pending replies', async () => {
@@ -772,6 +842,7 @@ function chatScreenFixture(provider) {
     'react-native': { Platform: { OS: 'ios' }, StyleSheet: { create: value => value } },
     'react-native-safe-area-context': {},
     '@/components/ui': {}, '@/components/markdown-text': {},
+    '@/components/message-text-selection': { messageTextProps: () => ({}) },
     '@/components/conversation-menu': { ConversationSidebar: 'sidebar', ConversationActions: 'options' },
     '@/data/mock': { quickQuestions: [] }, '@/design/tokens': { fonts: {}, radius: {} },
     '@/lib/links': { webUrl }, '@/state/app-context': { useApp: () => provider.value },
@@ -781,6 +852,7 @@ function chatScreenFixture(provider) {
     function visit(node) {
       if (!node || typeof node !== 'object') return;
       if (predicate(node)) return node;
+      if (typeof node.type === 'function') return visit(node.type(node.props));
       return [node.props?.children].flat(Infinity).map(visit).find(Boolean);
     }
     const node = visit(render());
@@ -963,9 +1035,10 @@ test('pull-to-refresh stops on failure, shows the error, and allows retry', asyn
   assert.equal(refreshScreenFixture().scroll().refreshControl, undefined);
 });
 
-test('only You refreshes account data; all four tabs expose refresh in filled and empty states', () => {
+test('You refreshes account data, Calendar refreshes ranges, other training tabs remain previews', () => {
   const refreshLiveData = async () => {};
   const refreshPreview = async () => {};
+  const refreshCalendar = async () => {};
   for (const populated of [false, true]) {
     const value = { colors: {}, profile, block: {}, proposal: null, refreshLiveData, refreshPreview,
       sessions: populated ? [{ id: 's-today', status: 'planned', modality: 'strength', date: '2026-09-15', exercises: [] }] : [],
@@ -979,13 +1052,15 @@ test('only You refreshes account data; all four tabs expose refresh in filled an
         'react-native': { StyleSheet: { create: value => value }, useWindowDimensions: () => ({ width: 390 }) },
         '@/components/ui': { Screen: 'screen' },
         '@/components/calendar-day-actions': { CalendarDayActions: 'day-actions' },
+        '@/components/sports-workout-details': { SportsWorkoutDetails: 'sport-details' },
         '@/components/policy-links': { PolicyLinks: 'policy-links' },
         '@/data/mock': { milestones: [{ text: 'Preview' }], consistency: [], rememberedNotes: [] },
         '@/lib/dates': { isToday: () => true, todayIso: () => '2026-09-15' },
         '@/lib/calendar': load('lib/calendar.ts'), '@/state/app-context': { useApp: () => value },
+        '@/state/use-calendar-range': { useCalendarRange: () => ({ data: { entries: [] }, loading: false, error: null, refresh: refreshCalendar }) },
       }).default();
       assert.equal(page.type, 'screen');
-      assert.equal(page.props.onRefresh, tab === 'you' ? refreshLiveData : refreshPreview);
+      assert.equal(page.props.onRefresh, tab === 'you' ? refreshLiveData : tab === 'week' ? refreshCalendar : refreshPreview);
     }
   }
 });

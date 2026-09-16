@@ -17,6 +17,7 @@ import {
 } from '@/services/api';
 
 import { createChatCache } from './chat-cache';
+import { createCalendarCache, type CalendarCache } from './calendar-cache';
 import type { Conversation } from '@/services/backend';
 
 type ChatRun = { controller: AbortController; rows: ChatMessage[]; title: string; error: string | null; confirmed: boolean };
@@ -75,6 +76,8 @@ type AppContextValue = {
   signOut: () => Promise<void>;
   refreshLiveData: () => Promise<void>;
   refreshPreview: () => Promise<void>;
+  calendarCache: CalendarCache;
+  invalidateCalendar: (userId: string, start?: string, end?: string) => void;
   sendChat: (question: string, context?: string) => Promise<void>;
 };
 
@@ -83,6 +86,16 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 const emptyProfile: Profile = { ...defaultProfile, displayName: '', onboardingComplete: false };
 const asMessage = (row: SavedMessage): ChatMessage => ({ id: row.id, role: row.role, text: row.content });
+
+/** Overlay the active turn on saved history, replacing matching ids without reordering. */
+function displayedMessages(window: { rows: SavedMessage[] } | undefined, run: ChatRun | undefined) {
+  return [...new Map([...(window?.rows.map(asMessage) ?? []), ...(run?.rows ?? [])].map(row => [row.id, row])).values()];
+}
+
+function firstMessageTitle(question: string) {
+  const characters = Array.from(question.replace(/\s+/g, ' '));
+  return characters.length > 120 ? characters.slice(0, 119).join('') + '…' : characters.join('');
+}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const systemScheme = useColorScheme();
@@ -114,6 +127,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const owner = useRef<string | null>(null);
   const epoch = useRef(0);
   const [cache] = useState(() => createChatCache());
+  const [calendarCache] = useState(() => createCalendarCache());
   const runs = useRef(new Map<string, ChatRun>());
   const historyBusy = useRef(false);
   const accountRequest = useRef(0);
@@ -132,6 +146,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       chatEpoch.current += 1;
       listRequest.current += 1;
       cache.clear();
+      calendarCache.clear();
       setConversations([]);
       setConversationsLoading(false);
       setConversationsError(null);
@@ -156,7 +171,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAccountReady(!userId);
     }
     setAuthSession(session);
-  }, [cache]);
+  }, [cache, calendarCache]);
 
   useEffect(() => {
     const activeRuns = runs.current;
@@ -184,8 +199,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     void Linking.getInitialURL().then(handleLink).catch(() => undefined);
     const links = Linking.addEventListener('url', ({ url }) => { void handleLink(url); });
-    return () => { active = false; subscription?.data.subscription.unsubscribe(); links.remove(); activeRuns.forEach(run => run.controller.abort()); activeRuns.clear(); cache.clear(); };
-  }, [acceptSession, cache]);
+    return () => { active = false; subscription?.data.subscription.unsubscribe(); links.remove(); activeRuns.forEach(run => run.controller.abort()); activeRuns.clear(); cache.clear(); calendarCache.clear(); };
+  }, [acceptSession, cache, calendarCache]);
+
+  // Delayed writes from a previous account must not invalidate the current account's cache.
+  const invalidateCalendar = useCallback((userId: string, start?: string, end?: string) => {
+    if (owner.current === userId) calendarCache.invalidate(start, end);
+  }, [calendarCache]);
 
   // Replace account data after a fresh read; leave chat caches and local previews intact.
   const refreshLiveData = useCallback(async () => {
@@ -193,22 +213,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
     const generation = epoch.current;
     const requestId = ++accountRequest.current;
+    const current = () => epoch.current === generation && accountRequest.current === requestId;
     setAccountError(null);
     try {
       const api = backendFor(userId);
       const [identity, onboarding] = await Promise.all([api.getProfile(), api.getOnboarding()]);
-      if (epoch.current !== generation || accountRequest.current !== requestId) return;
+      if (!current()) return;
       const timezone = deviceTimezone();
       if (timezone && timezone !== identity.timezone) await api.saveTimezone(timezone);
-      if (epoch.current !== generation || accountRequest.current !== requestId) return;
+      if (!current()) return;
       setProfile(current => profileFromApi(identity, onboarding, { ...emptyProfile, theme: current.theme }));
       setOnboardingAnswers(onboarding?.answers ?? {});
       setAccountReady(true);
       setNotice(null);
     } catch (error) {
-      if (epoch.current === generation && accountRequest.current === requestId) {
-        setAccountError(errorMessage(error, 'Could not load your account.'));
-        setNotice(errorMessage(error, 'Could not load your account.'));
+      if (current()) {
+        const message = errorMessage(error, 'Could not load your account.');
+        setAccountError(message);
+        setNotice(message);
       }
     }
   }, []);
@@ -224,7 +246,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const run = id ? runs.current.get(id) : undefined;
     const metadata = id ? cache.peekConversation(id) : undefined;
     const window = id ? cache.peekMessages(id) : undefined;
-    const rows = [...new Map([...(window?.rows.map(asMessage) ?? []), ...(run?.rows ?? [])].map(row => [row.id, row])).values()];
+    const rows = displayedMessages(window, run);
     setChatMessages(current => {
       const sources = new Map(current.map(row => [row.id, row.sources]));
       return rows.map(row => ({ ...row, sources: row.sources ?? sources.get(row.id) }));
@@ -250,6 +272,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!userId || !id || runs.current.has(id) || historyBusy.current) return;
     const generation = epoch.current;
     const selection = chatEpoch.current;
+    const current = () => epoch.current === generation && chatEpoch.current === selection;
     historyBusy.current = true;
     setChatLoading(!cache.peekMessages(id));
     setChatError(null);
@@ -259,16 +282,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         cache.loadMessages(api, id, older),
         cache.loadConversation(api, id).catch(() => undefined),
       ]);
-      if (epoch.current !== generation || chatEpoch.current !== selection) return;
+      if (!current()) return;
       publishChat();
       // Oversized pages may be displayed without retaining them in the cache.
       if (window && !cache.peekMessages(id)) {
         setChatMessages(window.rows.map(asMessage)); setHasOlderMessages(window.more);
       }
     } catch (error) {
-      if (epoch.current === generation && chatEpoch.current === selection) setChatError(errorMessage(error, 'Could not load chat history.'));
+      if (current()) setChatError(errorMessage(error, 'Could not load chat history.'));
     } finally {
-      if (epoch.current === generation && chatEpoch.current === selection) { historyBusy.current = false; setChatLoading(false); }
+      if (current()) { historyBusy.current = false; setChatLoading(false); }
     }
   }, [cache, publishChat]);
   useEffect(() => {
@@ -324,17 +347,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
     const generation = epoch.current;
     const request = ++listRequest.current;
+    const current = () => epoch.current === generation && listRequest.current === request;
     publishList();
     setConversationsLoading(true);
     setConversationsError(null);
     try {
       await cache.loadList(backendFor(userId), older);
-      if (epoch.current !== generation || listRequest.current !== request) return;
+      if (!current()) return;
       publishList();
     } catch (error) {
-      if (epoch.current === generation && listRequest.current === request) setConversationsError(errorMessage(error, 'Could not load conversations.'));
+      if (current()) setConversationsError(errorMessage(error, 'Could not load conversations.'));
     } finally {
-      if (epoch.current === generation && listRequest.current === request) setConversationsLoading(false);
+      if (current()) setConversationsLoading(false);
     }
   }, [cache, publishList]);
 
@@ -515,9 +539,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (savedReply && window?.rows.some(row => row.id === reply.id)) run.rows = [reply];
     }
     if (!current()) return;
-    if (conversation.current === id) publishChat();
+    if (conversation.current === id) { publishChat(); setChatBusy(false); }
     runs.current.delete(id);
-    if (conversation.current === id) setChatBusy(false);
   };
 
   const sendChat = async (rawQuestion: string, _context?: string) => {
@@ -531,9 +554,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     conversation.current ??= randomUUID();
     const id = conversation.current;
     const client = backendFor(userId);
-    const titleCharacters = Array.from(question.replace(/\s+/g, ' '));
-    const firstMessageTitle = titleCharacters.length > 120 ? titleCharacters.slice(0, 119).join('') + '…' : titleCharacters.join('');
-    const title = isNew ? firstMessageTitle : chatTitle;
+    const title = isNew ? firstMessageTitle(question) : chatTitle;
     const pendingId = randomUUID();
     const run: ChatRun = { controller: new AbortController(), title, error: null, confirmed: false,
       rows: [{ id: pendingId + '-user', role: 'user', text: question },
@@ -586,7 +607,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setThemeMode, updateProfile, acceptProposal, declineProposal, shortenToday,
     updateSet, addSet, removeSet, skipExercise, setEffort, finishSession,
     signIn, signInWithGoogle, signUp, requestPasswordReset, updatePassword,
-    signOut, refreshLiveData, refreshPreview, sendChat,
+    signOut, refreshLiveData, refreshPreview, calendarCache, invalidateCalendar, sendChat,
   };
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
