@@ -1,12 +1,30 @@
 import * as Linking from 'expo-linking';
 import type { ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, type TextProps } from 'react-native';
 
 import { fonts, radius, type Palette } from '@/design/tokens';
 import { webUrl } from '@/lib/links';
 import { useApp } from '@/state/app-context';
+import { messageTextProps } from './message-text-selection';
 
 const inlinePattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)]+\)|\*[^*]+\*)/g;
+
+/** Match the formatting we render while preserving literal code and user-visible text for selection. */
+export function markdownPlainText(markdown: string): string {
+  let code = false;
+  const lines: string[] = [];
+  for (const line of markdown.replace(/\r\n/g, '\n').split('\n')) {
+    if (line.trim().startsWith('```')) { code = !code; continue; }
+    if (code) { lines.push(line); continue; }
+    lines.push(line.replace(/^(#{1,3})\s+/, '').replace(/^\s*[-*]\s+/, '• ').replace(/^>\s?/, '')
+      .replace(inlinePattern, token => {
+        if (token.startsWith('**')) return token.slice(2, -2);
+        if (token.startsWith('[')) return token.slice(1, token.indexOf(']('));
+        return token.slice(1, -1);
+      }));
+  }
+  return lines.join('\n');
+}
 
 function renderInlineToken(token: string, key: number, colors: Palette) {
   if (token.startsWith('**')) return <Text key={key} style={{ fontFamily: fonts.semibold }}>{token.slice(2, -2)}</Text>;
@@ -32,42 +50,43 @@ function inlineParts(text: string, colors: Palette) {
   return parts;
 }
 
-function InlineMarkdown({ children }: { children: string }) {
+function InlineMarkdown({ children, selection }: { children: string; selection: TextProps }) {
   const { colors } = useApp();
-  return <Text style={[styles.paragraph, { color: colors.text }]}>{inlineParts(children, colors)}</Text>;
+  return <Text {...selection} style={[styles.paragraph, { color: colors.text }]}>{inlineParts(children, colors)}</Text>;
 }
 
-function MarkdownLine({ line, index }: { line: string; index: number }) {
+function MarkdownLine({ line, index, selection }: { line: string; index: number; selection: TextProps }) {
   const { colors } = useApp();
   if (!line.trim()) return <View style={styles.spacer} />;
 
   const heading = line.match(/^(#{1,3})\s+(.+)$/);
-  if (heading) return <Text style={[styles.heading, heading[1].length > 1 && styles.smallHeading, { color: colors.text }]}>{heading[2]}</Text>;
+  if (heading) return <Text {...selection} style={[styles.heading, heading[1].length > 1 && styles.smallHeading, { color: colors.text }]}>{heading[2]}</Text>;
 
   const unordered = line.match(/^\s*[-*]\s+(.+)$/);
-  if (unordered) return <View style={styles.listRow}><Text style={[styles.bullet, { color: colors.tint }]}>•</Text><View style={styles.listCopy}><InlineMarkdown>{unordered[1]}</InlineMarkdown></View></View>;
+  if (unordered) return <View style={styles.listRow}><Text style={[styles.bullet, { color: colors.tint }]}>•</Text><View style={styles.listCopy}><InlineMarkdown selection={selection}>{unordered[1]}</InlineMarkdown></View></View>;
 
   const ordered = line.match(/^\s*(\d+)\.\s+(.+)$/);
-  if (ordered) return <View style={styles.listRow}><Text style={[styles.number, { color: colors.tintText }]}>{ordered[1]}.</Text><View style={styles.listCopy}><InlineMarkdown>{ordered[2]}</InlineMarkdown></View></View>;
+  if (ordered) return <View style={styles.listRow}><Text style={[styles.number, { color: colors.tintText }]}>{ordered[1]}.</Text><View style={styles.listCopy}><InlineMarkdown selection={selection}>{ordered[2]}</InlineMarkdown></View></View>;
 
   const quote = line.match(/^>\s?(.+)$/);
-  if (quote) return <View style={[styles.quote, { borderLeftColor: colors.tint }]}><InlineMarkdown>{quote[1]}</InlineMarkdown></View>;
-  return <InlineMarkdown key={index}>{line}</InlineMarkdown>;
+  if (quote) return <View style={[styles.quote, { borderLeftColor: colors.tint }]}><InlineMarkdown selection={selection}>{quote[1]}</InlineMarkdown></View>;
+  return <InlineMarkdown key={index} selection={selection}>{line}</InlineMarkdown>;
 }
 
-function CodeBlock({ lines }: { lines: string[] }) {
+function CodeBlock({ lines, selection }: { lines: string[]; selection: TextProps }) {
   const { colors } = useApp();
-  return <View style={[styles.codeBlock, { backgroundColor: colors.fill }]}><Text selectable style={[styles.codeText, { color: colors.text }]}>{lines.join('\n')}</Text></View>;
+  return <View style={[styles.codeBlock, { backgroundColor: colors.fill }]}><Text {...selection} style={[styles.codeText, { color: colors.text }]}>{lines.join('\n')}</Text></View>;
 }
 
-export function MarkdownText({ children }: { children: string }) {
+export function MarkdownText({ children, onSelectText }: { children: string; onSelectText?: () => void }) {
+  const selection = messageTextProps(onSelectText);
   const lines = children.replace(/\r\n/g, '\n').split('\n');
   const blocks: ReactNode[] = [];
   let codeLines: string[] | null = null;
 
   lines.forEach((line, index) => {
     if (line.trim().startsWith('```')) {
-      if (codeLines) blocks.push(<CodeBlock key={`code-${index}`} lines={codeLines} />);
+      if (codeLines) blocks.push(<CodeBlock key={`code-${index}`} lines={codeLines} selection={selection} />);
       codeLines = codeLines ? null : [];
       return;
     }
@@ -75,10 +94,10 @@ export function MarkdownText({ children }: { children: string }) {
       codeLines.push(line);
       return;
     }
-    blocks.push(<MarkdownLine key={index} line={line} index={index} />);
+    blocks.push(<MarkdownLine key={index} line={line} index={index} selection={selection} />);
   });
 
-  if (codeLines) blocks.push(<CodeBlock key={`code-${lines.length}`} lines={codeLines} />);
+  if (codeLines) blocks.push(<CodeBlock key={`code-${lines.length}`} lines={codeLines} selection={selection} />);
   return <View style={styles.container}>{blocks}</View>;
 }
 

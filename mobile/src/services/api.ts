@@ -65,8 +65,8 @@ export async function sessionFromAuthUrl(url: string) {
   const params = Object.fromEntries(new URLSearchParams(parsed.hash.slice(1) || parsed.search.slice(1)));
   if (params.error_description || params.error) throw new Error(params.error_description || params.error);
 
-  const accessToken = typeof params.access_token === 'string' ? params.access_token : null;
-  const refreshToken = typeof params.refresh_token === 'string' ? params.refresh_token : null;
+  const accessToken = params.access_token;
+  const refreshToken = params.refresh_token;
   if (!accessToken || !refreshToken) throw new Error('The sign-in link did not contain a valid session.');
 
   const { data, error } = await supabase.auth.setSession({

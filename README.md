@@ -65,7 +65,187 @@ flowchart TB
 
 #### Database Infrastructure
 
-[![Hierarchical database schema with all tables, columns, and parent-to-child connections](docs/database-schema.svg?v=7db3009)](docs/database-schema.svg?v=7db3009)
+```mermaid
+erDiagram
+    direction LR
+
+    AUTH_USERS ||--|| PROFILES : owns
+    PROFILES ||--o| ONBOARDING_RESPONSES : completes
+    PROFILES ||--o| PLANNING_SCHEDULES : configures
+    PROFILES ||--o{ PLANNING_CHANGES : records
+    PLANNING_CHANGES ||--o{ WORKOUTS : creates
+    WORKOUTS ||--o{ EXERCISES : contains
+    EXERCISES ||--o{ EXERCISE_SETS : contains
+    PLANNING_CHANGES ||--o{ PLANNING_CHANGE_WORKOUTS : records
+    WORKOUTS ||--o{ PLANNING_CHANGE_WORKOUTS : participates
+    PROFILES ||--o{ WORKOUTS : schedules
+    PROFILES ||--o{ PLANNING_CHANGE_WORKOUTS : owns
+    PROFILES ||--o{ REPLAN_JOBS : queues
+    PLANNING_CHANGES o|--o{ REPLAN_JOBS : produces
+    PROFILES ||--o{ SPORTS_WORKOUTS : schedules
+    PROFILES ||--o{ CONVERSATIONS : owns
+    CONVERSATIONS ||--o{ MESSAGES : contains
+    PROFILES ||--o{ MESSAGES : owns
+
+    AUTH_USERS {
+        uuid id PK
+    }
+
+    PROFILES {
+        uuid id PK,FK
+        text email
+        text display_name
+        text timezone
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    ONBOARDING_RESPONSES {
+        uuid user_id PK,FK
+        jsonb answers
+        timestamptz completed_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    PLANNING_SCHEDULES {
+        uuid user_id PK,FK
+        integer horizon_days
+        integer refresh_interval_days
+        date horizon_end
+        timestamptz next_refresh_at
+        bigint revision
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    PLANNING_CHANGES {
+        uuid id PK
+        uuid user_id FK
+        bigint revision
+        text kind
+        text status
+        text reason
+        date effective_from
+        date effective_through
+        date horizon_end_before
+        date horizon_end_after
+        timestamptz created_at
+    }
+
+    WORKOUTS {
+        uuid id PK
+        uuid user_id FK
+        uuid created_by_change_id FK
+        date scheduled_date
+        text name
+        text status
+        text notes
+        timestamptz started_at
+        timestamptz completed_at
+        timestamptz skipped_at
+        timestamptz superseded_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    EXERCISES {
+        uuid id PK
+        uuid workout_id FK
+        integer order_index
+        text name
+        boolean reps_per_side
+        text weight_unit
+        text distance_unit
+        text notes
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    EXERCISE_SETS {
+        uuid id PK
+        uuid exercise_id FK
+        integer order_index
+        integer planned_reps
+        numeric planned_weight
+        numeric planned_distance
+        integer planned_duration_seconds
+        numeric planned_rpe
+        integer planned_rest_seconds
+        text planned_notes
+        integer actual_reps
+        numeric actual_weight
+        numeric actual_distance
+        integer actual_duration_seconds
+        numeric actual_rpe
+        text result_status
+        text result_notes
+        timestamptz completed_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    PLANNING_CHANGE_WORKOUTS {
+        uuid change_id PK,FK
+        uuid workout_id PK,FK
+        uuid user_id FK
+        text side
+    }
+
+    REPLAN_JOBS {
+        uuid id PK
+        uuid user_id FK
+        text kind
+        text status
+        text reason
+        text deduplication_key
+        date effective_from
+        date effective_through
+        timestamptz scheduled_for
+        timestamptz available_at
+        integer attempts
+        bigint expected_revision
+        uuid lease_token
+        timestamptz lease_expires_at
+        uuid change_id FK
+        text error
+        timestamptz completed_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    SPORTS_WORKOUTS {
+        uuid id PK
+        uuid user_id FK
+        text sport
+        date scheduled_date
+        time start_time
+        integer planned_duration_minutes
+        text intensity
+        text status
+        text notes
+        timestamptz completed_at
+        timestamptz cancelled_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    CONVERSATIONS {
+        uuid id PK
+        uuid user_id FK
+        text title
+        timestamptz created_at
+    }
+
+    MESSAGES {
+        uuid id PK
+        uuid user_id FK
+        uuid conversation_id FK
+        text role
+        text content
+        timestamptz created_at
+    }
+```
 
 ---
 

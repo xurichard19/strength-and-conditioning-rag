@@ -19,9 +19,9 @@ function close() {
   else router.replace('/(tabs)/week');
 }
 
-/** Save only on explicit submission; calendar reads and automatic replanning remain deferred. */
+/** Save only on explicit submission; invalidate calendar reads, without triggering AI replanning. */
 function SportsWorkoutForm({ date, userId }: { date: string; userId: string }) {
-  const { colors } = useApp();
+  const { colors, invalidateCalendar } = useApp();
   const [sport, setSport] = useState('boxing');
   const [startTime, setStartTime] = useState('09:00');
   const [duration, setDuration] = useState('60');
@@ -43,13 +43,17 @@ function SportsWorkoutForm({ date, userId }: { date: string; userId: string }) {
     } catch (failure) {
       submitting.current = false;
       setError(errorMessage(failure, 'Could not save the sports workout.'));
-    } finally { setBusy(false); }
+    } finally {
+      // A lost response can still mean a committed write; refetch instead of guessing or retrying.
+      invalidateCalendar(userId, date, date);
+      setBusy(false);
+    }
   };
 
   if (saved) return <Card style={styles.success}>
     <CheckCircle2 color={colors.success} size={32} />
     <AppText weight="semibold" style={styles.successTitle}>Sports workout saved</AppText>
-    <AppText tone="secondary">Saved to your account for {calendarLabel(saved.scheduled_date, { month: 'short', day: 'numeric' })}. It won’t appear in the preview calendar yet.</AppText>
+    <AppText tone="secondary">Saved to your calendar for {calendarLabel(saved.scheduled_date, { month: 'short', day: 'numeric' })}.</AppText>
     <PrimaryButton onPress={close}>Back to calendar</PrimaryButton>
   </Card>;
 

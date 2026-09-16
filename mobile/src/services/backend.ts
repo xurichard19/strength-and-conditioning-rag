@@ -11,7 +11,16 @@ export type SportsWorkoutInput = {
   sport: string; scheduled_date: string; start_time: string; planned_duration_minutes: number;
   intensity: 'easy' | 'moderate' | 'hard' | 'variable'; notes: string | null;
 };
-export type SportsWorkout = SportsWorkoutInput & { id: string; user_id: string; status: 'planned' | 'completed' | 'cancelled' };
+export type SportsWorkout = Omit<SportsWorkoutInput, 'start_time' | 'planned_duration_minutes' | 'intensity'> & {
+  id: string; user_id: string; status: 'planned' | 'completed' | 'cancelled';
+  start_time: string | null; planned_duration_minutes: number | null; intensity: SportsWorkoutInput['intensity'] | null;
+};
+export type CalendarWorkout = {
+  id: string; scheduled_date: string; name: string; notes: string | null;
+  status: 'planned' | 'in_progress' | 'completed' | 'skipped'; superseded_at: string | null;
+  exercises: { id: string; name: string }[];
+};
+export type CalendarResponse = { workouts: CalendarWorkout[]; sports_workouts: SportsWorkout[]; revision: number | null };
 
 /** Use the device's named timezone, never a guessed UTC offset. */
 export function deviceTimezone(): string | undefined {
@@ -69,9 +78,18 @@ export function createBackend(request: ApiRequest) {
       method: 'PUT', body: JSON.stringify({ answers }),
     }),
     completeOnboarding: () => json<Onboarding>('/onboarding/complete', { method: 'POST' }),
+    /** Inclusive local dates, at most 31 days. Retry one read-only revision conflict. */
+    getCalendarRange: async (startDate: string, endDate: string) => {
+      const query = new URLSearchParams({ start_date: startDate, end_date: endDate });
+      const path = `/calendar?${query}`;
+      let response = await request(path);
+      if (response.status === 409) response = await request(path);
+      return (await checked(response)).json() as Promise<CalendarResponse>;
+    },
     createSportsWorkout: (workout: SportsWorkoutInput) => json<SportsWorkout>('/sports-workouts', {
       method: 'POST', body: JSON.stringify(workout),
     }),
+    deleteSportsWorkout: (id: string) => json<SportsWorkout>(`/sports-workouts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     getConversation: (id: string) => json<Conversation>(`/chat/conversations/${encodeURIComponent(id)}`),
     renameConversation: (id: string, title: string) => json<Conversation>(`/chat/conversations/${encodeURIComponent(id)}`, {
       method: 'PATCH', body: JSON.stringify({ title: title.trim() }),
@@ -107,10 +125,18 @@ function savedRecord(value: Partial<SavedMessage> | null | undefined, role: Save
   return value as SavedMessage;
 }
 
+/** Validate completion ids and optional saved rows together before updating the cache. */
+function completionEvent(event: { message_id?: unknown; message?: Partial<SavedMessage> }) {
+  if (typeof event.message_id !== 'string') throw new Error('Invalid chat stream event.');
+  const message = event.message ? savedRecord(event.message, 'assistant') : undefined;
+  if (message && message.id !== event.message_id) throw new Error('Invalid saved reply.');
+  return { id: event.message_id, message };
+}
+
 /** Return only after the server confirms persistence; EOF alone is not success. */
 export async function readChatStream(body: ReadableStream<Uint8Array>,
   onText: (delta: string) => void, onSources: (sources: ChatSource[]) => void,
-  onSaved?: (message: SavedMessage) => void): Promise<string> {
+  onSaved: (message: SavedMessage) => void = () => {}): Promise<string> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -126,18 +152,12 @@ export async function readChatStream(body: ReadableStream<Uint8Array>,
       case 'sources':
         if (!Array.isArray(event.sources)) break;
         onSources(event.sources); return;
-      case 'saved': {
-        const row = savedRecord(event.message, 'user');
-        onSaved?.(row); return;
+      case 'saved': onSaved(savedRecord(event.message, 'user')); return;
+      case 'done': {
+        const reply = completionEvent(event);
+        if (reply.message) onSaved(reply.message);
+        messageId = reply.id; return;
       }
-      case 'done':
-        if (typeof event.message_id !== 'string') break;
-        if (event.message) {
-          const row = savedRecord(event.message, 'assistant');
-          if (row.id !== event.message_id) throw new Error('Invalid saved reply.');
-          onSaved?.(row);
-        }
-        messageId = event.message_id; return;
     }
     throw new Error('Invalid chat stream event.');
   }

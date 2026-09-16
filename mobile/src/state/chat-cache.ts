@@ -1,4 +1,5 @@
 import type { Conversation, SavedMessage } from '../services/backend';
+import { createMemoryCache } from './memory-cache';
 
 type Api = {
   getConversations: (before?: string) => Promise<Conversation[]>;
@@ -14,28 +15,33 @@ const order = (a: { created_at: string; id: string }, b: { created_at: string; i
 const merge = <T extends { id: string }>(previous: T[], incoming: T[]) =>
   [...new Map([...previous, ...incoming].map(row => [row.id, row])).values()];
 
-function hasMore(older: boolean, full: boolean, overlap: boolean, trimmed: boolean, previous = false) {
-  if (older) return full;
-  if (trimmed) return true;
-  return full && (!overlap || previous);
+/** Prepend older rows without making the newest page look freshly fetched. */
+function olderWindow<T extends { id: string; created_at: string }>(
+  previous: Pick<Window<T>, 'rows' | 'more' | 'fetchedAt'> | undefined, incoming: T[],
+  pageSize: number, capacity: number, stamp: number,
+): Window<T> {
+  const combined = merge(previous?.rows ?? [], incoming).sort(order);
+  const rows = combined.slice(0, capacity);
+  // Evicting the newest rows makes the head stale, even if the older page is fresh.
+  return { rows, cursor: rows[0], more: incoming.length === pageSize,
+    fetchedAt: combined.length > capacity ? -Infinity : previous?.fetchedAt ?? stamp };
 }
 
-/** Merge either kind of history page chronologically, preserving gaps, bounds, and head freshness. */
+/** Refresh the newest page, preserving loaded history only while the pages overlap. */
 function pageWindow<T extends { id: string; created_at: string }>(
   previous: Pick<Window<T>, 'rows' | 'more' | 'fetchedAt'> | undefined, incoming: T[],
   older: boolean, pageSize: number, capacity: number, stamp: number,
 ): Window<T> {
+  if (older) return olderWindow(previous, incoming, pageSize, capacity, stamp);
   const previousRows = previous?.rows ?? [];
+  const full = incoming.length === pageSize;
   const ids = new Set(previousRows.map(row => row.id));
   const overlap = incoming.some(row => ids.has(row.id));
-  const full = incoming.length === pageSize;
   // A disconnected or exhausted newest page replaces the old window.
-  const combined = merge(older || (full && overlap) ? previousRows : [], incoming).sort(order);
-  const trimmed = combined.length > capacity;
-  const rows = older ? combined.slice(0, capacity) : combined.slice(-capacity);
-  const fetchedAt = older ? previous?.fetchedAt ?? stamp : stamp;
-  return { rows, cursor: rows[0], more: hasMore(older, full, overlap, trimmed, previous?.more),
-    fetchedAt: older && trimmed ? -Infinity : fetchedAt };
+  const combined = merge(full && overlap ? previousRows : [], incoming).sort(order);
+  const rows = combined.slice(-capacity);
+  return { rows, cursor: rows[0], more: combined.length > capacity || (full && (!overlap || Boolean(previous?.more))),
+    fetchedAt: stamp };
 }
 
 /**
@@ -44,96 +50,65 @@ function pageWindow<T extends { id: string; created_at: string }>(
  * Fresh reads share results (including empty lists); concurrent reads share work.
  */
 export function createChatCache(options: { now?: () => number; ttl?: number; maxThreads?: number; maxBytes?: number } = {}) {
-  const now = options.now ?? Date.now;
-  const ttl = options.ttl ?? 60_000;
-  const maxThreads = options.maxThreads ?? 5;
-  const maxBytes = options.maxBytes ?? 5 * 1024 * 1024;
-  const metadata = new Map<string, Conversation>();
-  const metadataAge = new Map<string, number>();
-  const windows = new Map<string, MessageWindow>();
-  const flights = new Map<string, { valid: boolean; promise?: Promise<unknown> }>();
-  let list: Window<string> | undefined;
-  const fresh = (stamp: number) => now() - stamp < ttl;
+  const clock = { now: options.now, ttl: options.ttl };
+  const metadata = createMemoryCache<{ row: Conversation; fetchedAt: number }>({ ...clock, maxEntries: 500 });
+  const lists = createMemoryCache<Window<string>>({ ...clock, maxEntries: 1 });
+  const windows = createMemoryCache<MessageWindow>({ ...clock, maxEntries: options.maxThreads ?? 5,
+    maxBytes: options.maxBytes ?? 5 * 1024 * 1024,
+    // Estimate retained content, not total JS/UI RAM; each window is also capped at 200 rows.
+    sizeOf: window => window.rows.reduce((size, row) => size + row.content.length * 2 + 256, 0) });
+  const now = windows.now;
 
   function reusable(window: { more: boolean; fetchedAt: number } | undefined, older: boolean, force = false) {
     if (!window) return false;
-    return older ? !window.more : !force && fresh(window.fetchedAt);
+    return older ? !window.more : !force && windows.fresh(window);
   }
 
-  function invalidate(prefix: string) {
-    for (const [key, ticket] of flights) {
-      if (key.startsWith(prefix)) { ticket.valid = false; flights.delete(key); }
-    }
-  }
-
-  function shared<T>(key: string, fetch: (valid: () => boolean) => Promise<T>): Promise<T> {
-    const existing = flights.get(key)?.promise;
-    if (existing) return existing as Promise<T>;
-    const ticket: { valid: boolean; promise?: Promise<unknown> } = { valid: true };
-    flights.set(key, ticket);
-    const work = fetch(() => ticket.valid).finally(() => { if (flights.get(key) === ticket) flights.delete(key); });
-    ticket.promise = work;
-    return work;
-  }
-
-  // Bound both strings and row counts. This estimates retained content, not total JS/UI RAM.
-  function retain(id: string, window: MessageWindow) {
-    windows.delete(id);
-    const bytes = (rows: SavedMessage[]) => rows.reduce((size, row) => size + row.content.length * 2 + 256, 0);
-    if (bytes(window.rows) > maxBytes) return;
-    windows.set(id, window);
-    while (windows.size > maxThreads || [...windows.values()].reduce((sum, item) => sum + bytes(item.rows), 0) > maxBytes) {
-      windows.delete(windows.keys().next().value!);
-    }
+  function fenceMessages(id: string) {
+    windows.fence(key => key.startsWith(id + ':'));
   }
 
   function remember(row: Conversation, fetchedAt = now()) {
-    metadata.delete(row.id);
-    metadata.set(row.id, row);
-    metadataAge.set(row.id, fetchedAt);
-    while (metadata.size > 500) {
-      const id = metadata.keys().next().value!;
-      metadata.delete(id); metadataAge.delete(id);
-    }
+    metadata.set(row.id, { row, fetchedAt });
   }
 
-  function peekMessages(id: string) {
-    const window = windows.get(id);
-    if (window) { windows.delete(id); windows.set(id, window); }
-    return window;
-  }
-
+  const peekMessages = (id: string) => windows.get(id);
+  const peekConversation = (id: string) => metadata.get(id, false)?.row;
   function peekList() {
-    return list && { ...list, rows: list.rows.flatMap(id => metadata.get(id) ? [metadata.get(id)!] : []) };
+    const list = lists.get('list');
+    return list && { ...list, rows: list.rows.flatMap(id => {
+      const row = peekConversation(id); return row ? [row] : [];
+    }) };
   }
 
   return {
-    peekList, peekMessages,
-    peekConversation: (id: string) => metadata.get(id),
+    peekList, peekMessages, peekConversation,
     /** Invalidate pending reads too: old sessions and pre-mutation results cannot refill the cache. */
-    clear() { invalidate(''); metadata.clear(); metadataAge.clear(); windows.clear(); list = undefined; },
+    clear() { metadata.clear(); windows.clear(); lists.clear(); },
     async loadList(api: Api, older = false) {
+      const list = lists.get('list');
       if (reusable(list, older)) return peekList();
       const cursor = older ? list?.cursor : undefined;
-      return shared('list:' + (cursor ?? ''), async valid => {
+      return lists.shared(cursor ?? '', async valid => {
         const rows = await api.getConversations(cursor);
         if (!valid()) return peekList();
-        if (!older) invalidate('list:'); // Older reads belong to the previous head/window.
+        if (!older) lists.fence(); // Older reads belong to the previous head/window.
         const window = pageWindow(peekList(), rows, older, 50, 500, now());
         const fetchedIds = new Set(rows.map(row => row.id));
-        window.rows.forEach(row => remember(row, fetchedIds.has(row.id) ? now() : metadataAge.get(row.id) ?? -Infinity));
-        list = {
+        window.rows.forEach(row => remember(row, fetchedIds.has(row.id) ? now() : metadata.get(row.id, false)?.fetchedAt ?? -Infinity));
+        lists.set('list', {
           ...window, rows: window.rows.map(row => row.id).reverse(), cursor: window.cursor?.id,
-        };
+        });
         return peekList();
       });
     },
     /** Metadata is shared by the list and heading; list refreshes update remote renames. */
     async loadConversation(api: Api, id: string) {
-      if (metadata.has(id) && fresh(metadataAge.get(id) ?? -Infinity)) return metadata.get(id);
-      return shared('conversation:' + id, async valid => {
+      const entry = metadata.get(id, false);
+      if (metadata.fresh(entry)) return entry!.row;
+      return metadata.shared(id, async valid => {
         const row = await api.getConversation(id);
-        if (!valid()) return metadata.get(id);
+        if (!valid()) return peekConversation(id);
         remember(row);
         return row;
       });
@@ -142,47 +117,51 @@ export function createChatCache(options: { now?: () => number; ttl?: number; max
       const cached = peekMessages(id);
       if (reusable(cached, older, force)) return cached;
       const cursor = older ? cached?.cursor : undefined;
-      return shared('messages:' + id + ':' + (cursor?.id ?? ''), async valid => {
+      return windows.shared(id + ':' + (cursor?.id ?? ''), async valid => {
         const rows = await api.getMessages(id, cursor);
         if (!valid()) return peekMessages(id);
-        if (!older) invalidate('messages:' + id + ':');
+        if (!older) fenceMessages(id);
         const window = pageWindow(windows.get(id), rows, older, 20, 200, now());
-        retain(id, window);
+        windows.set(id, window);
         return window;
       });
     },
     /** Apply confirmed writes without marking unrelated pages fresh. */
     putConversation(row: Conversation) {
-      invalidate('list:'); invalidate('conversation:' + row.id); remember(row);
+      lists.fence(); metadata.fence(id => id === row.id); remember(row);
+      const list = lists.get('list');
       if (list) {
         const rows = merge(peekList()!.rows, [row]).sort((a, b) => order(b, a));
-        list = { ...list, rows: rows.slice(0, 500).map(item => item.id),
-          cursor: rows.slice(0, 500).at(-1)?.id, more: list.more || rows.length > 500 };
+        const retained = rows.slice(0, 500).map(item => item.id);
+        lists.set('list', { ...list, rows: retained,
+          cursor: retained.at(-1), more: list.more || rows.length > 500 });
       }
     },
     putMessages(id: string, rows: SavedMessage[]) {
-      invalidate('messages:' + id + ':');
+      fenceMessages(id);
       const old = windows.get(id);
       const all = merge(old?.rows ?? [], rows).sort(order);
       const retained = all.slice(-200);
-      retain(id, { rows: retained, cursor: retained[0], more: all.length > 200 || (old?.more ?? true),
+      windows.set(id, { rows: retained, cursor: retained[0], more: all.length > 200 || (old?.more ?? true),
         fetchedAt: old?.fetchedAt ?? -Infinity });
     },
     /** Fence earlier reads while preserving page freshness; local writes do not refresh the TTL. */
     beginTurn(id: string, isNew: boolean) {
-      invalidate('messages:' + id + ':');
-      if (isNew) retain(id, { rows: [], more: false, fetchedAt: now() });
+      fenceMessages(id);
+      if (isNew) windows.set(id, { rows: [], more: false, fetchedAt: now() });
     },
     invalidateMessages(id: string) {
-      invalidate('messages:' + id + ':');
-      const old = windows.get(id);
-      if (old) old.fetchedAt = -Infinity;
+      fenceMessages(id);
+      windows.markStale((_value, key) => key === id);
     },
     removeConversation(id: string) {
-      invalidate('list:'); invalidate('conversation:' + id); invalidate('messages:' + id + ':');
-      metadata.delete(id); metadataAge.delete(id); windows.delete(id);
-      if (list) list = { ...list, rows: list.rows.filter(item => item !== id),
-        cursor: list.rows.filter(item => item !== id).at(-1), fetchedAt: -Infinity };
+      lists.fence(); metadata.fence(key => key === id); fenceMessages(id);
+      metadata.delete(id); windows.delete(id);
+      const list = lists.get('list');
+      if (list) {
+        const rows = list.rows.filter(item => item !== id);
+        lists.set('list', { ...list, rows, cursor: rows.at(-1), fetchedAt: -Infinity });
+      }
     },
   };
 }
