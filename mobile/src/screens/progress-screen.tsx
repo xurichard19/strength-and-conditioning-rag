@@ -28,15 +28,15 @@ function Trend({ metric, width }: { metric: ProgressMetric; width: number }) {
 }
 
 export default function ProgressScreen() {
-  const { colors, metrics } = useApp();
+  const { colors, metrics, refreshPreview } = useApp();
   const { width } = useWindowDimensions();
   const chartWidth = Math.max(250, Math.min(width - 64, 560));
   const maxSessions = 5;
 
-  if (!metrics.length) return <Screen title="Progress" wash="progress"><Card><AppText>No training history yet. Progress tracking is not connected in this build.</AppText></Card></Screen>;
+  if (!metrics.length) return <Screen title="Progress" wash="progress" onRefresh={refreshPreview}><Card><AppText>No training history yet. Progress tracking is not connected in this build.</AppText></Card></Screen>;
 
   return (
-    <Screen title="Progress" subtitle="Both threads, kept separate" context="my progress" wash="progress">
+    <Screen title="Progress" subtitle="Both threads, kept separate" context="my progress" wash="progress" onRefresh={refreshPreview}>
       <SectionTitle>12-week consistency</SectionTitle>
       <Card>
         <View style={styles.legend}>

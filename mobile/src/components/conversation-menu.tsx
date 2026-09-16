@@ -1,7 +1,7 @@
 import { SquarePen, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/app-context';
@@ -68,9 +68,10 @@ export function ConversationActions({ onClose }: { onClose: () => void }) {
 export function ConversationSidebar({ onClose, onSelect }: { onClose: () => void; onSelect: (id?: string, title?: string) => void }) {
   const { colors, conversations, conversationsLoading, conversationsError, hasOlderConversations, refreshConversations } = useApp();
   return <Modal transparent visible animationType="fade" onRequestClose={onClose}>
-    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: '#0008' }} accessibilityViewIsModal>
-      <SafeAreaView style={{ width: '85%', maxWidth: 340, backgroundColor: colors.background, padding: 20 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+    {/* Measure this modal's safe area independently; keep visual spacing outside inset padding. */}
+    <SafeAreaProvider style={{ flex: 1, flexDirection: 'row', backgroundColor: '#0008' }} accessibilityViewIsModal>
+      <SafeAreaView style={{ width: '85%', maxWidth: 340, backgroundColor: colors.background, paddingHorizontal: 20, paddingBottom: 20 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
           <AppText weight="bold">Conversations</AppText>
           <Pressable accessibilityRole="button" accessibilityLabel="Close conversations" onPress={onClose} style={{ padding: 12 }}><X color={colors.text} size={22} /></Pressable>
         </View>
@@ -89,6 +90,6 @@ export function ConversationSidebar({ onClose, onSelect }: { onClose: () => void
           </>} />
       </SafeAreaView>
       <Pressable accessibilityRole="button" accessibilityLabel="Close conversations" style={{ flex: 1 }} onPress={onClose} />
-    </View>
+    </SafeAreaProvider>
   </Modal>;
 }

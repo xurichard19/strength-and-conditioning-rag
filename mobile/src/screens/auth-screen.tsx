@@ -6,6 +6,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 're
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AuthCard, type AuthFeedback, type AuthMode } from '@/components/auth-card';
+import { PolicyLinks } from '@/components/policy-links';
 import { AppText } from '@/components/ui';
 import { liveApiConfigured } from '@/services/api';
 import { useApp } from '@/state/app-context';
@@ -101,6 +102,7 @@ export default function AuthScreen() {
             <AppText tone="secondary" style={styles.trustText}>Your account keeps your plan and training history in sync.</AppText>
           </View>
           <AppText tone="secondary" style={styles.legal}>By continuing, you agree to Arcel’s Terms and Privacy Policy.</AppText>
+          <PolicyLinks />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

@@ -135,6 +135,17 @@ class EndpointTests(unittest.TestCase):
                 if name == 'update_sports_workout':
                     self.assertEqual(handler.call_args.args[2].model_dump(exclude_unset=True), {'notes': None})
 
+    def test_mobile_sports_form_reaches_the_insert_handler_with_local_date_and_owner(self):
+        body = dict(sport='boxing', scheduled_date='2026-09-20', start_time='23:30:00',
+            planned_duration_minutes=180, intensity='variable', notes='Sparring')
+        row = {**SPORT.model_dump(mode='json'), **body}
+        with patch.object(sports_workouts.sports_workouts, 'insert_rows', return_value=[row]) as insert:
+            response = self.client.post('/sports-workouts', json=body)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['start_time'], '23:30:00')
+        self.assertEqual(response.json()['scheduled_date'], '2026-09-20')
+        insert.assert_called_once_with('sports_workouts', {'user_id': str(USER.id), **body}, USER.access_token)
+
     def test_sports_invalid_input_and_missing_record(self):
         with patch.object(sports_workouts.sports_workouts, 'update_sports_workout') as handler:
             for body in ({}, {'sport': None}, {'sport': '   '}, {'start_time': '12:00:00+00:00'}, {'user_id': USER.id}):

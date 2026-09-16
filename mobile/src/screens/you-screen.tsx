@@ -1,17 +1,18 @@
 import { router } from 'expo-router';
-import { Bell, CalendarClock, ChevronRight, CircleUserRound, Link2, Palette, RotateCcw, ShieldCheck } from 'lucide-react-native';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Bell, CalendarClock, CircleUserRound, Link2, Palette, RotateCcw, ShieldCheck } from 'lucide-react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { PolicyLinks } from '@/components/policy-links';
 import { AppText, Card, ChoiceChip, DisclosureRow, Screen, SectionTitle } from '@/components/ui';
 import { rememberedNotes } from '@/data/mock';
 import type { ThemeMode } from '@/design/tokens';
 import { useApp } from '@/state/app-context';
 
 export default function YouScreen() {
-  const { colors, profile, block, setThemeMode } = useApp();
+  const { colors, profile, block, setThemeMode, refreshLiveData } = useApp();
   const themes: { label: string; value: ThemeMode }[] = [{ label: 'System', value: 'system' }, { label: 'Light', value: 'light' }, { label: 'Dark', value: 'dark' }];
   return (
-    <Screen title={profile.displayName.trim() || 'You'} context="my plan and preferences" wash="you">
+    <Screen title={profile.displayName.trim() || 'You'} context="my plan and preferences" wash="you" onRefresh={refreshLiveData}>
       <SectionTitle>Your plan</SectionTitle>
       <Card>
         <AppText weight="bold" style={styles.planTitle}>{profile.goal}</AppText>
@@ -54,7 +55,7 @@ export default function YouScreen() {
         <DisclosureRow title="Connected apps" value="Not wired" icon={Link2} onPress={() => {}} />
         <DisclosureRow title="Run setup again" icon={RotateCcw} onPress={() => { router.push('/onboarding?edit=1'); }} last />
       </Card>
-      <Pressable style={styles.privacy}><AppText tone="secondary" style={styles.privacyText}>Privacy · Terms</AppText><ChevronRight color={colors.textTertiary} size={15} /></Pressable>
+      <PolicyLinks />
     </Screen>
   );
 }
@@ -81,6 +82,4 @@ const styles = StyleSheet.create({
   noteText: { fontSize: 14, lineHeight: 20 },
   noteWhen: { fontSize: 11, lineHeight: 15, marginTop: 4 },
   settingsCard: { paddingVertical: 1 },
-  privacy: { minHeight: 44, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 4 },
-  privacyText: { fontSize: 12 },
 });
