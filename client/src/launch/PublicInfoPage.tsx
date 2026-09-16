@@ -6,6 +6,7 @@ import appIcon from '../../../mobile/assets/images/splash-icon.png'
 import linkedinLogo from '../assets/linkedinlogo.png'
 import richardPortrait from '../assets/richard-xu.jpg'
 import dimitriosPortrait from '../assets/dimitrios-mahairas.jpg'
+import aaronPortrait from '../assets/aaron-jiang.jpg'
 import { LaunchFooter } from './LaunchFooter'
 import './ComingSoonPage.css'
 import './PublicInfoPage.css'
@@ -30,6 +31,7 @@ const purposeIcons = [BookOpen, RefreshCw, Sparkles, History]
 const teamPortraits: Record<string, string | undefined> = {
   'richard xu': richardPortrait,
   'dimitrios mahairas': dimitriosPortrait,
+  'aaron jiang': aaronPortrait,
 }
 
 export default function PublicInfoPage({ page }: { page: InfoPageName }) {
