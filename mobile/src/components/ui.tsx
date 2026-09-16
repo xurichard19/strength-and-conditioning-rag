@@ -9,10 +9,11 @@ import {
   Timer,
   type LucideIcon,
 } from 'lucide-react-native';
-import type { ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -27,6 +28,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { fonts, radius, shadow, type Palette } from '@/design/tokens';
 import type { Modality } from '@/domain/types';
+import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/app-context';
 
 type Tone = 'default' | 'secondary' | 'tint' | 'inverse';
@@ -91,6 +93,7 @@ export function Screen({
   children,
   contentContainerStyle,
   scrollProps,
+  onRefresh,
 }: {
   title: string;
   subtitle?: string;
@@ -99,14 +102,29 @@ export function Screen({
   children: ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
   scrollProps?: ScrollViewProps;
+  onRefresh?: () => Promise<void>;
 }) {
   const { colors, notice, previewMode } = useApp();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const refreshPending = useRef(false);
+  const refresh = async () => {
+    if (!onRefresh || refreshPending.current) return;
+    refreshPending.current = true;
+    setRefreshing(true); setRefreshError(null);
+    try { await onRefresh(); }
+    catch (error) { setRefreshError(errorMessage(error, 'Could not refresh this page. Pull down to retry.')); }
+    finally { refreshPending.current = false; setRefreshing(false); }
+  };
 
   return (
     <SafeAreaView edges={['top']} style={[styles.screen, { backgroundColor: colors.background }]}>
       <LinearGradient pointerEvents="none" colors={colors[washColorKeys[wash]]} style={styles.wash} />
       <ScrollView
         showsVerticalScrollIndicator={false}
+        alwaysBounceVertical={Boolean(onRefresh)}
+        refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={refresh}
+          tintColor={colors.tint} colors={[colors.tint]} progressBackgroundColor={colors.card} /> : undefined}
         contentContainerStyle={[styles.screenContent, contentContainerStyle]}
         {...scrollProps}>
         <View style={styles.pageHeader}>
@@ -130,9 +148,9 @@ export function Screen({
               <AppText tone="tint" weight="medium" style={styles.previewText}>Training preview · not synced</AppText>
           </View>
         ) : null}
-        {notice ? (
+        {refreshError || notice ? (
           <Card style={styles.noticeCard}>
-            <AppText tone="secondary" style={styles.noticeText}>{notice}</AppText>
+            <AppText tone="secondary" style={styles.noticeText}>{refreshError || notice}</AppText>
           </Card>
         ) : null}
         {children}

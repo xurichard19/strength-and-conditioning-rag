@@ -7,6 +7,11 @@ export type Onboarding = { answers: Answers; completed_at: string | null };
 export type Conversation = { id: string; title: string; created_at: string };
 export type SavedMessage = { id: string; role: 'user' | 'assistant'; content: string; created_at: string };
 export type ApiRequest = (path: string, options?: RequestInit) => Promise<Response>;
+export type SportsWorkoutInput = {
+  sport: string; scheduled_date: string; start_time: string; planned_duration_minutes: number;
+  intensity: 'easy' | 'moderate' | 'hard' | 'variable'; notes: string | null;
+};
+export type SportsWorkout = SportsWorkoutInput & { id: string; user_id: string; status: 'planned' | 'completed' | 'cancelled' };
 
 /** Use the device's named timezone, never a guessed UTC offset. */
 export function deviceTimezone(): string | undefined {
@@ -64,6 +69,9 @@ export function createBackend(request: ApiRequest) {
       method: 'PUT', body: JSON.stringify({ answers }),
     }),
     completeOnboarding: () => json<Onboarding>('/onboarding/complete', { method: 'POST' }),
+    createSportsWorkout: (workout: SportsWorkoutInput) => json<SportsWorkout>('/sports-workouts', {
+      method: 'POST', body: JSON.stringify(workout),
+    }),
     getConversation: (id: string) => json<Conversation>(`/chat/conversations/${encodeURIComponent(id)}`),
     renameConversation: (id: string, title: string) => json<Conversation>(`/chat/conversations/${encodeURIComponent(id)}`, {
       method: 'PATCH', body: JSON.stringify({ title: title.trim() }),

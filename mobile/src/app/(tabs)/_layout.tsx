@@ -31,7 +31,7 @@ export default function TabsLayout() {
         height: 64 + Math.max(insets.bottom, 18), paddingBottom: Math.max(insets.bottom, 18) }, keyboardShown && styles.hidden],
     }}>
       <TopTabs.Screen name="today" options={{ title: 'Today', tabBarIcon: ({ color }: { color: ColorValue }) => <Sparkles color={color} size={24} strokeWidth={1.8} /> }} />
-      <TopTabs.Screen name="week" options={{ title: 'Week', tabBarIcon: ({ color }: { color: ColorValue }) => <CalendarDays color={color} size={24} strokeWidth={1.8} /> }} />
+      <TopTabs.Screen name="week" options={{ title: 'Calendar', tabBarIcon: ({ color }: { color: ColorValue }) => <CalendarDays color={color} size={24} strokeWidth={1.8} /> }} />
       <TopTabs.Screen name="progress" options={{ title: 'Progress', tabBarIcon: ({ color }: { color: ColorValue }) => <ChartNoAxesCombined color={color} size={24} strokeWidth={1.8} /> }} />
       <TopTabs.Screen name="chat" options={{ title: 'Chat', tabBarIcon: ({ color }: { color: ColorValue }) => <MessageCircle color={color} size={24} strokeWidth={1.8} /> }} />
       <TopTabs.Screen name="you" options={{ title: 'You', tabBarIcon: ({ color }: { color: ColorValue }) => <UserRound color={color} size={24} strokeWidth={1.8} /> }} />

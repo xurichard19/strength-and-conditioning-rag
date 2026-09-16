@@ -7,12 +7,12 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
 insert into public.messages(user_id, conversation_id, role, content) values
-('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'user', 'first'),
+('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'user', E'  first\n\tmessage  '),
 ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'user', 'second');
 do $$ begin
   if (select count(*) from public.conversations) <> 1 then raise exception 'expected one thread'; end if;
-  if (select title from public.conversations) <> to_char(now() at time zone 'America/New_York', 'YYYY-MM-DD HH24:MI')
-    then raise exception 'wrong title timezone'; end if;
+  if (select title from public.conversations) <> 'first message'
+    then raise exception 'title must use the first message'; end if;
   update public.conversations set title = 'My training questions';
   begin
     update public.conversations set title = repeat(' ', 121) || 'name';
@@ -64,5 +64,31 @@ reset role;
 do $$ begin
   if exists(select 1 from public.messages where conversation_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
     then raise exception 'conversation delete did not cascade'; end if;
+end $$;
+set local role authenticated;
+do $$
+declare
+  v_id uuid;
+  v_text text;
+  v_expected text;
+begin
+  foreach v_text in array array[repeat('a', 120), repeat('a', 121), repeat('💪', 121)] loop
+    v_id := gen_random_uuid();
+    v_expected := case when char_length(v_text) > 120 then left(v_text, 119) || '…' else v_text end;
+    insert into public.messages(user_id, conversation_id, role, content)
+    values(auth.uid(), v_id, 'user', v_text);
+    if (select title from public.conversations where id = v_id) <> v_expected then
+      raise exception 'title truncation failed';
+    end if;
+    if (select content from public.messages where conversation_id = v_id) <> v_text then
+      raise exception 'title generation changed message content';
+    end if;
+    update public.conversations set title = 'Custom name' where id = v_id;
+    insert into public.messages(user_id, conversation_id, role, content)
+    values(auth.uid(), v_id, 'user', 'Follow-up question');
+    if (select title from public.conversations where id = v_id) <> 'Custom name' then
+      raise exception 'follow-up overwrote custom title';
+    end if;
+  end loop;
 end $$;
 rollback;

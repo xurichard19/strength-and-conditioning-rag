@@ -53,6 +53,7 @@ function Navigation() {
         <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
         <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
         <Stack.Screen name="session/[id]" />
+        <Stack.Screen name="sports-workout" />
         <Stack.Screen name="workout/[id]" options={{ gestureEnabled: false }} />
         <Stack.Screen name="account" options={{ presentation: 'modal' }} />
       </Stack>

@@ -512,6 +512,56 @@ test('failed onboarding stays incomplete and exposes the error', async () => {
   assert.equal(f.value.notice, 'offline');
 });
 
+test('account refresh replaces live data but preserves theme, chat cache, and pending replies', async () => {
+  let profileReads = 0; let onboardingReads = 0; let listReads = 0; let finish; let signal;
+  const f = providerFixture({
+    getProfile: async () => ({ id: 'user-a', display_name: ++profileReads === 1 ? 'Ada' : 'Updated', timezone: 'UTC' }),
+    getOnboarding: async () => ({ answers: { goal: ++onboardingReads === 1 ? 'Original' : 'Updated goal' }, completed_at: 'now' }),
+    getConversations: async () => { listReads++; return [convo('saved')]; },
+    streamChat: (_text, _delta, _sources, abort) => {
+      signal = abort; return new Promise(resolve => { finish = resolve; });
+    },
+  });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  f.value.setThemeMode('dark'); await f.flush();
+  await f.value.refreshConversations(); await f.flush();
+  const pending = f.value.sendChat('Still working'); await f.flush();
+  const selected = f.value.chatTitle;
+  const previews = f.value.sessions;
+  await f.value.refreshPreview(); await f.flush();
+  assert.equal(profileReads, 1);
+  assert.equal(onboardingReads, 1);
+  assert.match(f.value.notice, /preview training data/);
+  await f.value.refreshLiveData(); await f.flush();
+  assert.equal(profileReads, 2);
+  assert.equal(onboardingReads, 2);
+  assert.equal(f.value.profile.displayName, 'Updated');
+  assert.equal(f.value.profile.goal, 'Updated goal');
+  assert.equal(f.value.profile.theme, 'dark');
+  assert.equal(f.value.chatTitle, selected);
+  assert.equal(f.value.chatBusy, true);
+  assert.equal(signal.aborted, false);
+  assert.equal(f.value.sessions, previews);
+  await f.value.refreshConversations(); await f.flush();
+  assert.equal(listReads, 1);
+  finish('reply'); await pending; await f.flush();
+});
+
+test('a failed account refresh keeps the last good data and reports the failure', async () => {
+  let fail = false;
+  const f = providerFixture({ getProfile: async () => {
+    if (fail) throw new Error('offline');
+    return { id: 'user-a', display_name: 'Ada', timezone: 'UTC' };
+  } });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  const previous = f.value.profile;
+  fail = true;
+  await f.value.refreshLiveData(); await f.flush();
+  assert.equal(f.value.profile, previous);
+  assert.equal(f.value.accountReady, true);
+  assert.equal(f.value.notice, 'offline');
+});
+
 test('account loading errors do not unlock default onboarding as a valid account', async () => {
   const f = providerFixture({ getProfile: async () => { throw new Error('profile not found'); } });
   await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
@@ -577,14 +627,50 @@ test('conversation headings follow selection and saved renames; deletion opens a
 
 test('first send changes heading before the reply completes', async () => {
   let finish;
-  const f = providerFixture({ streamChat: () => new Promise(resolve => { finish = resolve; }) });
+  const f = providerFixture({
+    streamChat: () => new Promise(resolve => { finish = resolve; }),
+    getConversation: async id => convo(id, 'hello'),
+  });
   await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
   const pending = f.value.sendChat('hello'); await f.flush();
-  assert.match(f.value.chatTitle, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+  assert.equal(f.value.chatTitle, 'hello');
   assert.equal(f.value.activeConversationId, null);
   finish('saved'); await pending; await f.flush();
-  assert.equal(f.value.chatTitle, '2026-09-15 09:30');
+  assert.equal(f.value.chatTitle, 'hello');
   assert.notEqual(f.value.activeConversationId, null);
+});
+
+test('first-message titles normalize whitespace and truncate at 120 Unicode characters', async () => {
+  for (const [message, expected] of [
+    ['  How do\n\tI improve  my squat?  ', 'How do I improve my squat?'],
+    ['a'.repeat(120), 'a'.repeat(120)],
+    ['a'.repeat(121), 'a'.repeat(119) + '…'],
+    ['💪'.repeat(121), '💪'.repeat(119) + '…'],
+  ]) {
+    let sent;
+    const f = providerFixture({
+      streamChat: async text => { sent = text; return 'saved'; },
+      getConversation: async () => { throw new Error('offline'); },
+    });
+    await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+    await f.value.sendChat(message); await f.flush();
+    assert.equal(f.value.chatTitle, expected);
+    assert.equal(sent, message.trim()); // Only the title is collapsed/truncated.
+  }
+});
+
+test('follow-up messages preserve an existing title even when metadata is unavailable', async () => {
+  const f = providerFixture({
+    streamChat: async () => 'saved',
+    getConversation: async () => { throw new Error('offline'); },
+  });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  await f.value.sendChat('First question'); await f.flush();
+  await f.value.sendChat('Follow-up question'); await f.flush();
+  assert.equal(f.value.chatTitle, 'First question');
+  await f.value.renameConversation('My custom title'); await f.flush();
+  await f.value.sendChat('Another question'); await f.flush();
+  assert.equal(f.value.chatTitle, 'My custom title');
 });
 
 test('offline first send never enables saved-conversation actions and preserves its retry id', async () => {
@@ -820,4 +906,134 @@ test('a late profile load from the previous user cannot overwrite a new account'
   f.auth('SIGNED_IN', { user: { id: 'user-b' }, access_token: 'b' }); await f.flush();
   resolveOld({ id: 'user-a', display_name: 'Ada', timezone: 'UTC' }); await f.flush();
   assert.equal(f.value.profile.displayName, 'Bob');
+});
+
+// Verify the actual ScrollView/RefreshControl props and loading lifecycle without native UI.
+function refreshScreenFixture(onRefresh) {
+  const slots = []; let cursor = 0;
+  const jsx = (type, props) => ({ type, props });
+  const { Screen } = load('components/ui.tsx', {
+    react: {
+      useState: initial => {
+        const index = cursor++;
+        if (!(index in slots)) slots[index] = initial;
+        return [slots[index], value => { slots[index] = value; }];
+      },
+      useRef: initial => { const index = cursor++; return slots[index] ??= { current: initial }; },
+    },
+    'react/jsx-runtime': { jsx, jsxs: jsx },
+    'expo-linear-gradient': {}, 'expo-router': {}, 'lucide-react-native': {},
+    'react-native': { ScrollView: 'scroll', RefreshControl: 'refresh', StyleSheet: { create: value => value } },
+    'react-native-safe-area-context': {},
+    '@/design/tokens': { fonts: {}, radius: {}, shadow: {} },
+    '@/lib/errors': { errorMessage: (error, fallback) => error.message || fallback },
+    '@/state/app-context': { useApp: () => ({ colors: {}, previewMode: false }) },
+  });
+  const render = () => { cursor = 0; return Screen({ title: 'Test', onRefresh, children: null }); };
+  return {
+    scroll: () => render().props.children.find(node => node.type === 'scroll').props,
+    output: () => JSON.stringify(render()),
+  };
+}
+
+test('pull-to-refresh stays spinning until completion and blocks duplicate pulls', async () => {
+  let finish; let calls = 0;
+  const screen = refreshScreenFixture(() => {
+    calls++; return new Promise(resolve => { finish = resolve; });
+  });
+  assert.equal(screen.scroll().alwaysBounceVertical, true); // Short/empty pages can pull too.
+  assert.equal(screen.scroll().refreshControl.props.refreshing, false);
+  const pending = screen.scroll().refreshControl.props.onRefresh();
+  assert.equal(screen.scroll().refreshControl.props.refreshing, true);
+  await screen.scroll().refreshControl.props.onRefresh();
+  assert.equal(calls, 1);
+  finish(); await pending;
+  assert.equal(screen.scroll().refreshControl.props.refreshing, false);
+});
+
+test('pull-to-refresh stops on failure, shows the error, and allows retry', async () => {
+  let fail = true;
+  const screen = refreshScreenFixture(async () => { if (fail) throw new Error('offline'); });
+  await screen.scroll().refreshControl.props.onRefresh();
+  assert.equal(screen.scroll().refreshControl.props.refreshing, false);
+  assert.match(screen.output(), /offline/);
+  fail = false;
+  await screen.scroll().refreshControl.props.onRefresh();
+  assert.doesNotMatch(screen.output(), /offline/);
+  assert.equal(refreshScreenFixture().scroll().refreshControl, undefined);
+});
+
+test('only You refreshes account data; all four tabs expose refresh in filled and empty states', () => {
+  const refreshLiveData = async () => {};
+  const refreshPreview = async () => {};
+  for (const populated of [false, true]) {
+    const value = { colors: {}, profile, block: {}, proposal: null, refreshLiveData, refreshPreview,
+      sessions: populated ? [{ id: 's-today', status: 'planned', modality: 'strength', date: '2026-09-15', exercises: [] }] : [],
+      metrics: populated ? [{ id: 'metric', lane: 'strength', series: [1, 2] }] : [] };
+    const jsx = (type, props) => ({ type, props });
+    for (const tab of ['today', 'week', 'progress', 'you']) {
+      const page = load(`screens/${tab}-screen.tsx`, {
+        react: { useState: initial => [initial, () => {}], useMemo: fn => fn() },
+        'react/jsx-runtime': { jsx, jsxs: jsx },
+        'expo-router': {}, 'lucide-react-native': {}, 'react-native-svg': {},
+        'react-native': { StyleSheet: { create: value => value }, useWindowDimensions: () => ({ width: 390 }) },
+        '@/components/ui': { Screen: 'screen' },
+        '@/components/calendar-day-actions': { CalendarDayActions: 'day-actions' },
+        '@/components/policy-links': { PolicyLinks: 'policy-links' },
+        '@/data/mock': { milestones: [{ text: 'Preview' }], consistency: [], rememberedNotes: [] },
+        '@/lib/dates': { isToday: () => true, todayIso: () => '2026-09-15' },
+        '@/lib/calendar': load('lib/calendar.ts'), '@/state/app-context': { useApp: () => value },
+      }).default();
+      assert.equal(page.type, 'screen');
+      assert.equal(page.props.onRefresh, tab === 'you' ? refreshLiveData : refreshPreview);
+    }
+  }
+});
+
+test('sidebar owns its modal safe area and keeps header spacing separate from insets', () => {
+  const jsx = (type, props) => ({ type, props });
+  const { ConversationSidebar } = load('components/conversation-menu.tsx', {
+    react: {}, 'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react-native': {},
+    'react-native': { Modal: 'modal', View: 'view', StyleSheet: {} },
+    'react-native-safe-area-context': { SafeAreaProvider: 'safe-provider', SafeAreaView: 'safe-view' },
+    '@/lib/errors': {}, './ui': {}, '@/state/app-context': { useApp: () => ({ colors: {}, conversations: [] }) },
+  });
+  for (let opening = 0; opening < 3; opening++) {
+    const modal = ConversationSidebar({ onClose() {}, onSelect() {} });
+    const provider = modal.props.children;
+    assert.equal(provider.type, 'safe-provider');
+    const panel = provider.props.children[0];
+    assert.equal(panel.type, 'safe-view');
+    assert.equal(panel.props.style.paddingTop, undefined);
+    assert.equal(panel.props.children[0].props.style.marginTop, 8);
+  }
+});
+
+test('About Us appears before the policy links and public pages open without auth', async () => {
+  let error = null; let fail = false;
+  const urls = [];
+  const jsx = (type, props) => ({ type, props });
+  const { PolicyLinks } = load('components/policy-links.tsx', {
+    react: { useState: () => [error, value => { error = value; }] },
+    'react/jsx-runtime': { jsx, jsxs: jsx },
+    'react-native': { StyleSheet: { create: value => value } }, './ui': {},
+    'expo-web-browser': { openBrowserAsync: async url => {
+      urls.push(url); if (fail) throw new Error('browser unavailable');
+    } },
+  });
+  const links = () => PolicyLinks().props.children[0].props.children;
+  assert.deepEqual(plain(links().map(link => link.props.accessibilityLabel)), ['About Us', 'Privacy Policy', 'Terms of Service']);
+  for (const link of links()) {
+    assert.equal(link.props.accessibilityRole, 'link');
+    link.props.onPress();
+  }
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(urls, ['https://arcelassist.vercel.app/about', 'https://arcelassist.vercel.app/privacy', 'https://arcelassist.vercel.app/terms']);
+  assert.equal(error, null);
+  fail = true;
+  links()[0].props.onPress(); await new Promise(resolve => setImmediate(resolve));
+  assert.match(error, /Could not open/);
+  fail = false;
+  links()[0].props.onPress(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(error, null);
 });

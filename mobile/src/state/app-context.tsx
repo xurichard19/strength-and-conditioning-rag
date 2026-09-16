@@ -74,6 +74,7 @@ type AppContextValue = {
   updatePassword: (password: string) => Promise<AuthActionResult>;
   signOut: () => Promise<void>;
   refreshLiveData: () => Promise<void>;
+  refreshPreview: () => Promise<void>;
   sendChat: (question: string, context?: string) => Promise<void>;
 };
 
@@ -186,6 +187,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => { active = false; subscription?.data.subscription.unsubscribe(); links.remove(); activeRuns.forEach(run => run.controller.abort()); activeRuns.clear(); cache.clear(); };
   }, [acceptSession, cache]);
 
+  // Replace account data after a fresh read; leave chat caches and local previews intact.
   const refreshLiveData = useCallback(async () => {
     const userId = owner.current;
     if (!userId) return;
@@ -211,6 +213,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
   useEffect(() => { if (authSession?.user.id) void refreshLiveData(); }, [authSession?.user.id, refreshLiveData]);
+
+  const refreshPreview = async () => {
+    setNotice('This page uses preview training data; there is nothing to sync yet.');
+  };
 
   // Rendering selection and running requests are independent.
   const publishChat = useCallback(() => {
@@ -525,9 +531,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     conversation.current ??= randomUUID();
     const id = conversation.current;
     const client = backendFor(userId);
-    const now = new Date();
-    const pad = (value: number) => String(value).padStart(2, '0');
-    const title = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const titleCharacters = Array.from(question.replace(/\s+/g, ' '));
+    const firstMessageTitle = titleCharacters.length > 120 ? titleCharacters.slice(0, 119).join('') + '…' : titleCharacters.join('');
+    const title = isNew ? firstMessageTitle : chatTitle;
     const pendingId = randomUUID();
     const run: ChatRun = { controller: new AbortController(), title, error: null, confirmed: false,
       rows: [{ id: pendingId + '-user', role: 'user', text: question },
@@ -580,7 +586,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setThemeMode, updateProfile, acceptProposal, declineProposal, shortenToday,
     updateSet, addSet, removeSet, skipExercise, setEffort, finishSession,
     signIn, signInWithGoogle, signUp, requestPasswordReset, updatePassword,
-    signOut, refreshLiveData, sendChat,
+    signOut, refreshLiveData, refreshPreview, sendChat,
   };
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

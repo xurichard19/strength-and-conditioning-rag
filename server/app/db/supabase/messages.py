@@ -63,7 +63,7 @@ def get_conversations(user_id: str | UUID, access_token: str, *, before: UUID | 
     - **user_id**: verified owner; both the filter and rls restrict visibility
     - **access_token**: owner's jwt
     - **before**: last conversation id from the previous page; omit for newest
-    - **returns**: dated conversations; empty when no further threads remain
+    - **returns**: saved conversations; empty when no further threads remain
     """
     cursor = []
     if before is not None:
@@ -146,7 +146,8 @@ def append_message(
     retrying after an ambiguous timeout can create a duplicate.
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
-    - **conversation_id**: thread id; a first human insert creates the dated thread atomically;
+    - **conversation_id**: thread id; a first human insert atomically creates a thread named
+      from that message (at most 120 characters); later messages never replace the title;
       assistant inserts require an existing thread belonging to the same owner
     - **role**: message author, user or assistant
     - **content**: nonblank message text
