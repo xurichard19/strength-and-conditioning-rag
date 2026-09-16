@@ -5,6 +5,7 @@ from langgraph.graph import END, START, StateGraph
 
 from app.ai.workflows.chat.nodes.generate import generate_node
 from app.ai.workflows.chat.nodes.search import search_node
+from app.ai.workflows.chat.nodes.load_history import history_node
 from app.ai.workflows.chat.state import ChatState, WorkflowContext
 
 
@@ -13,10 +14,12 @@ def build_chat_workflow():
 
     graph = StateGraph(ChatState, context_schema=WorkflowContext)
 
+    graph.add_node("history", history_node)
     graph.add_node("search", search_node)
     graph.add_node("generate", generate_node)
 
-    graph.add_edge(START, "search")
+    graph.add_edge(START, "history")
+    graph.add_edge("history", "search")
     graph.add_edge("search", "generate")
     graph.add_edge("generate", END)
 

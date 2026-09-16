@@ -1,37 +1,36 @@
-const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
-const { resolve } = require('node:path');
-const { test } = require('node:test');
-const vm = require('node:vm');
-const ts = require('typescript');
-
-// Transpile pure TypeScript in memory; no real credentials, network, Expo runtime, or build artifacts.
-function load(file, modules = {}) {
-  const source = readFileSync(resolve(__dirname, '../src', file), 'utf8');
-  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS,
-    target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
-  const exports = {};
-  vm.runInNewContext(code, { exports, require: name => {
-    if (!(name in modules)) throw new Error(`unexpected import: ${name}`);
-    return modules[name];
-  }, URL, URLSearchParams, Headers, TextDecoder, AbortController, process: { env: {
-    EXPO_PUBLIC_API_BASE_URL: 'https://api.test', EXPO_PUBLIC_SUPABASE_URL: 'https://db.test',
-    EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
-  } }, console });
-  return exports;
-}
-const backend = load('services/backend.ts');
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { test } from 'node:test';
+import { load, plain, jsx, type TestValue, type TestModule, type TestNode, type Stubs } from './helpers.ts';
+import type { Profile, ChatSource } from '../src/domain/types';
+import type { SavedMessage, Conversation } from '../src/services/backend';
+const backend = load<typeof import('../src/services/backend')>('services/backend.ts');
 const memoryCache = load('state/memory-cache.ts');
-const { createChatCache } = load('state/chat-cache.ts', { './memory-cache': memoryCache });
-const { createCalendarCache } = load('state/calendar-cache.ts', { './memory-cache': memoryCache, '../lib/calendar': load('lib/calendar.ts') });
-const { webUrl } = load('lib/links.ts');
-const plain = value => JSON.parse(JSON.stringify(value));
-const profile = { displayName: 'Ada', goal: 'Strong and fit', experienceLevel: 'new',
+const { createChatCache: chatCache } = load<typeof import('../src/state/chat-cache')>('state/chat-cache.ts', { './memory-cache': memoryCache });
+const { createCalendarCache } = load<typeof import('../src/state/calendar-cache')>('state/calendar-cache.ts', { './memory-cache': memoryCache, '../lib/calendar': load('lib/calendar.ts') });
+const { webUrl } = load<typeof import('../src/lib/links')>('lib/links.ts');
+type CacheApi = Parameters<ReturnType<typeof chatCache>['loadList']>[0];
+const unexpectedRead = () => { throw new Error('unexpected cache read'); };
+const unusedReads: CacheApi = { getConversations: unexpectedRead, getConversation: unexpectedRead, getMessages: unexpectedRead };
+// Each test supplies only the endpoint it expects the real cache to call.
+function createChatCache(options?: Parameters<typeof chatCache>[0]) {
+  const cache = chatCache(options);
+  return { ...cache,
+    loadList: (api: Pick<CacheApi, 'getConversations'>, older = false) => cache.loadList({ ...unusedReads, ...api }, older),
+    loadConversation: (api: Pick<CacheApi, 'getConversation'>, id: string) => cache.loadConversation({ ...unusedReads, ...api }, id),
+    loadMessages: (api: Pick<CacheApi, 'getMessages'>, id: string, older = false, force = false) => cache.loadMessages({ ...unusedReads, ...api }, id, older, force),
+  };
+}
+const profile: Profile = { displayName: 'Ada', goal: 'Strong and fit', experienceLevel: 'new',
   trainingDays: ['Mon', 'Wed'], daysPerWeek: 3, sessionMinutes: 45, equipment: 'Dumbbells',
   cardio: 'Bike', theme: 'system', onboardingComplete: false };
-const response = (body, status = 200) => new Response(JSON.stringify(body), { status });
-const convo = (id, title = id) => ({ id, title, created_at: '2026-09-15T12:00:00Z' });
-const savedMessage = (id, content = id) => ({ id, role: 'user', content, created_at: '2026-09-15T12:00:00Z' });
+const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+const jsonBody = (options?: RequestInit): TestModule => {
+  assert.ok(typeof options?.body === 'string');
+  return JSON.parse(options.body);
+};
+const convo = (id: string, title = id): Conversation => ({ id, title, created_at: '2026-09-15T12:00:00Z' });
+const savedMessage = (id: string, content = id): SavedMessage => ({ id, role: 'user', content, created_at: '2026-09-15T12:00:00Z' });
 
 test('AI and retrieved links cannot launch script, file, or native app schemes', () => {
   for (const url of ['javascript:alert(1)', 'data:text/html,unsafe', 'file:///secret',
@@ -45,25 +44,25 @@ test('AI and retrieved links cannot launch script, file, or native app schemes',
 test('refreshing a disconnected newest page drops older cached rows rather than hiding a gap', async () => {
   let clock = 0;
   const cache = createChatCache({ now: () => clock });
-  const page = start => Array.from({ length: 20 }, (_, i) => savedMessage(String(start + i).padStart(4, '0')));
+  const page = (start: number) => Array.from({ length: 20 }, (_, i) => savedMessage(String(start + i).padStart(4, '0')));
   await cache.loadMessages({ getMessages: async () => page(0) }, 'thread');
   clock = 60_001;
   await cache.loadMessages({ getMessages: async () => page(100) }, 'thread');
-  assert.equal(cache.peekMessages('thread').rows.length, 20);
-  assert.equal(cache.peekMessages('thread').rows[0].id, '0100');
-  assert.equal(cache.peekMessages('thread').more, true);
+  assert.equal(cache.peekMessages('thread')!.rows.length, 20);
+  assert.equal(cache.peekMessages('thread')!.rows[0].id, '0100');
+  assert.equal(cache.peekMessages('thread')!.more, true);
 });
 
 test('late older pages cannot splice a gap into a newly refreshed history window', async () => {
   const cache = createChatCache();
-  const page = (start, count, row) => Array.from({ length: count }, (_, i) => row(String(start + i).padStart(4, '0')));
-  let finish;
+  const page = <T>(start: number, count: number, row: (id: string) => T) => Array.from({ length: count }, (_, i) => row(String(start + i).padStart(4, '0')));
+  let finish!: (value?: TestValue) => void;
   await cache.loadMessages({ getMessages: async () => page(100, 20, savedMessage) }, 'thread');
   const olderMessages = cache.loadMessages({ getMessages: () => new Promise(resolve => { finish = resolve; }) }, 'thread', true);
   await cache.loadMessages({ getMessages: async () => page(200, 20, savedMessage) }, 'thread', false, true);
   finish(page(80, 20, savedMessage)); await olderMessages;
-  assert.equal(cache.peekMessages('thread').rows[0].id, '0200');
-  assert.equal(cache.peekMessages('thread').rows.length, 20);
+  assert.equal(cache.peekMessages('thread')!.rows[0].id, '0200');
+  assert.equal(cache.peekMessages('thread')!.rows.length, 20);
 
   let clock = 0;
   const list = createChatCache({ now: () => clock });
@@ -72,61 +71,61 @@ test('late older pages cannot splice a gap into a newly refreshed history window
   clock = 60_001;
   await list.loadList({ getConversations: async () => page(200, 50, convo) });
   finish(page(50, 50, convo)); await olderList;
-  assert.equal(list.peekList().rows.at(-1).id, '0200');
-  assert.equal(list.peekList().rows.length, 50);
+  assert.equal(list.peekList()!.rows.at(-1)!.id, '0200');
+  assert.equal(list.peekList()!.rows.length, 50);
 });
 
 test('conversation windows remain bounded and reopen at the newest page after older-page eviction', async () => {
   const cache = createChatCache();
-  const api = { getConversations: async before => {
+  const api = { getConversations: async (before?: string) => {
     const end = before ? Number(before) : 1000;
     return Array.from({ length: 50 }, (_, i) => convo(String(end - 1 - i).padStart(4, '0')));
   } };
   await cache.loadList(api);
   for (let i = 0; i < 10; i++) await cache.loadList(api, true);
-  assert.equal(cache.peekList().rows.length, 500);
-  assert.equal(cache.peekList().rows[0].id, '0949');
+  assert.equal(cache.peekList()!.rows.length, 500);
+  assert.equal(cache.peekList()!.rows[0].id, '0949');
   await cache.loadList(api);
-  assert.equal(cache.peekList().rows[0].id, '0999');
+  assert.equal(cache.peekList()!.rows[0].id, '0999');
 });
 
 test('cache stores empty lists, coalesces reads, and refreshes only after expiry', async () => {
-  let clock = 0; let calls = 0; let finish;
+  let clock = 0; let calls = 0; let finish!: (value?: TestValue) => void;
   const cache = createChatCache({ now: () => clock });
-  const api = { getConversations: () => { calls++; return new Promise(resolve => { finish = resolve; }); } };
+  const api: Pick<CacheApi, 'getConversations'> = { getConversations: () => { calls++; return new Promise(resolve => { finish = resolve; }); } };
   const first = cache.loadList(api); const second = cache.loadList(api);
   assert.equal(calls, 1); finish([]); await Promise.all([first, second]);
   await cache.loadList(api); assert.equal(calls, 1);
   clock = 60_001;
   const refresh = cache.loadList(api);
-  assert.equal(cache.peekList().rows.length, 0);
+  assert.equal(cache.peekList()!.rows.length, 0);
   finish([convo('a')]); await refresh;
   assert.equal(calls, 2);
-  assert.equal((await cache.loadConversation(api, 'a')).id, 'a');
+  assert.equal((await cache.loadConversation(unusedReads, 'a'))?.id, 'a');
 });
 
 test('cache rename and deletion defeat older reads without refreshing unrelated list freshness', async () => {
-  let clock = 0; let finish;
+  let clock = 0; let finish!: (value?: TestValue) => void;
   const cache = createChatCache({ now: () => clock });
   await cache.loadList({ getConversations: async () => [convo('a')] });
   clock = 60_001;
   const old = cache.loadList({ getConversations: () => new Promise(resolve => { finish = resolve; }) });
   cache.putConversation(convo('a', 'Renamed'));
   finish([convo('a', 'Old')]); await old;
-  assert.equal(cache.peekList().rows[0].title, 'Renamed');
-  assert.equal(cache.peekList().fetchedAt, 0);
+  assert.equal(cache.peekList()!.rows[0].title, 'Renamed');
+  assert.equal(cache.peekList()!.fetchedAt, 0);
   const old2 = cache.loadList({ getConversations: () => new Promise(resolve => { finish = resolve; }) });
   cache.removeConversation('a'); finish([convo('a')]); await old2;
-  assert.equal(cache.peekList().rows.length, 0);
+  assert.equal(cache.peekList()!.rows.length, 0);
 });
 
 test('cache clear rejects late account reads and failed refresh retains stale data', async () => {
-  let clock = 0; let finish;
+  let clock = 0; let finish!: (value?: TestValue) => void;
   const cache = createChatCache({ now: () => clock });
   await cache.loadList({ getConversations: async () => [convo('a')] });
   clock = 60_001;
   await assert.rejects(cache.loadList({ getConversations: async () => { throw new Error('offline'); } }), /offline/);
-  assert.equal(cache.peekList().rows[0].id, 'a');
+  assert.equal(cache.peekList()!.rows[0].id, 'a');
   const old = cache.loadList({ getConversations: () => new Promise(resolve => { finish = resolve; }) });
   cache.clear(); finish([convo('private')]); await old;
   assert.equal(cache.peekList(), undefined);
@@ -134,7 +133,7 @@ test('cache clear rejects late account reads and failed refresh retains stale da
 });
 
 test('message cache deduplicates pages, reuses history, and fences pre-send reads', async () => {
-  let clock = 0; let calls = 0; let finish;
+  let clock = 0; let calls = 0; let finish!: (value?: TestValue) => void;
   const cache = createChatCache({ now: () => clock });
   const api = { getMessages: async () => { calls++; return [savedMessage('a')]; } };
   await cache.loadMessages(api, 'thread'); await cache.loadMessages(api, 'thread');
@@ -143,7 +142,7 @@ test('message cache deduplicates pages, reuses history, and fences pre-send read
   const old = cache.loadMessages({ getMessages: () => new Promise(resolve => { finish = resolve; }) }, 'thread');
   cache.putMessages('thread', [savedMessage('a'), savedMessage('b')]);
   finish([savedMessage('a')]); await old;
-  assert.deepEqual(plain(cache.peekMessages('thread').rows.map(row => row.id)), ['a', 'b']);
+  assert.deepEqual(plain(cache.peekMessages('thread')!.rows.map(row => row.id)), ['a', 'b']);
 });
 
 test('message cache enforces LRU and content budgets', async () => {
@@ -160,23 +159,23 @@ test('message cache enforces LRU and content budgets', async () => {
 
 test('writes invalidate only related reads, not other conversations', async () => {
   const cache = createChatCache();
-  let finish;
+  let finish!: (value?: TestValue) => void;
   const read = cache.loadMessages({ getMessages: () => new Promise(resolve => { finish = resolve; }) }, 'b');
   cache.putMessages('a', [savedMessage('a-message')]);
   finish([savedMessage('b-message')]); await read;
-  assert.equal(cache.peekMessages('b').rows[0].id, 'b-message');
+  assert.equal(cache.peekMessages('b')!.rows[0].id, 'b-message');
 });
 
 test('conversation pagination retains previously loaded pages across sidebar opens', async () => {
   const cache = createChatCache();
   let calls = 0;
-  const api = { getConversations: async before => {
+  const api = { getConversations: async (before?: string) => {
     calls++;
     return before ? [convo('000')] : Array.from({ length: 50 }, (_, i) => convo(String(i + 1).padStart(3, '0')));
   } };
   await cache.loadList(api); await cache.loadList(api, true); await cache.loadList(api);
   assert.equal(calls, 2);
-  assert.equal(cache.peekList().rows.length, 51);
+  assert.equal(cache.peekList()!.rows.length, 51);
 });
 
 test('metadata lookup respects its own TTL and an exhausted refresh removes stale list entries', async () => {
@@ -184,29 +183,29 @@ test('metadata lookup respects its own TTL and an exhausted refresh removes stal
   const cache = createChatCache({ now: () => clock });
   const api = {
     getConversations: async () => [convo('a'), convo('b')],
-    getConversation: async id => { reads++; return convo(id, 'Remote rename'); },
+    getConversation: async (id: string) => { reads++; return convo(id, 'Remote rename'); },
   };
   await cache.loadList(api);
   await cache.loadConversation(api, 'a'); assert.equal(reads, 0);
   clock = 60_001;
   await cache.loadConversation(api, 'a'); assert.equal(reads, 1);
   await cache.loadList({ getConversations: async () => [convo('a')] });
-  assert.equal(cache.peekList().rows.length, 1);
+  assert.equal(cache.peekList()!.rows.length, 1);
 });
 
 test('older message windows stay bounded and reopening reloads evicted newest history', async () => {
   const cache = createChatCache();
   let reads = 0;
-  const api = { getMessages: async (_id, before) => {
+  const api = { getMessages: async (_id: string, before?: SavedMessage) => {
     reads++;
     const end = before ? Number(before.id) : 1000;
     return Array.from({ length: 20 }, (_, i) => savedMessage(String(end - 20 + i).padStart(4, '0')));
   } };
   await cache.loadMessages(api, 'thread');
   for (let i = 0; i < 10; i++) await cache.loadMessages(api, 'thread', true);
-  assert.equal(cache.peekMessages('thread').rows.length, 200);
+  assert.equal(cache.peekMessages('thread')!.rows.length, 200);
   await cache.loadMessages(api, 'thread');
-  assert.equal(cache.peekMessages('thread').rows.at(-1).id, '0999');
+  assert.equal(cache.peekMessages('thread')!.rows.at(-1)!.id, '0999');
   assert.equal(reads, 12);
 });
 
@@ -216,21 +215,21 @@ test('message ordering preserves database microseconds before using the UUID tie
     { ...savedMessage('a'), created_at: '2026-09-15T12:00:00.000900+00:00' },
     { ...savedMessage('z'), created_at: '2026-09-15T12:00:00.000100+00:00' },
   ]);
-  assert.deepEqual(plain(cache.peekMessages('thread').rows.map(row => row.id)), ['z', 'a']);
+  assert.deepEqual(plain(cache.peekMessages('thread')!.rows.map(row => row.id)), ['z', 'a']);
 });
 
 test('stream confirmations deliver exact saved human and assistant rows to the cache callback', async () => {
   const human = savedMessage('human', 'question');
   const reply = { ...savedMessage('reply', 'answer'), role: 'assistant' };
-  const received = [];
+  const received: SavedMessage[] = [];
   await backend.readChatStream(new Response([
     JSON.stringify({ type: 'saved', message: human }),
     JSON.stringify({ type: 'text', delta: 'answer' }),
     JSON.stringify({ type: 'done', message_id: reply.id, message: reply }),
-  ].join('\n')).body, () => {}, () => {}, row => received.push(plain(row)));
+  ].join('\n')).body!, () => {}, () => {}, row => received.push(plain(row)));
   assert.deepEqual(received, [human, reply]);
 });
-const stream = text => {
+const stream = (text: string) => {
   const bytes = new TextEncoder().encode(text);
   return new ReadableStream({ start(controller) {
     for (const byte of bytes) controller.enqueue(Uint8Array.of(byte));
@@ -238,38 +237,38 @@ const stream = text => {
   } });
 };
 function authFixture() {
-  let session = { user: { id: 'user-a' }, access_token: 'fresh-token' };
-  const requests = [];
-  const auth = { getSession: async () => ({ data: { session } }),
+  let session: { user: { id: string }; access_token: string } | null = { user: { id: 'user-a' }, access_token: 'fresh-token' };
+  const requests: [string, RequestInit?][] = [];
+  const auth: Record<string, (...args: TestValue[]) => TestValue> = { getSession: async () => ({ data: { session } }),
     signUp: async () => ({ data: { session } }),
     signInWithPassword: async () => ({ data: { session } }),
     setSession: async tokens => ({ data: { session: { ...session, ...tokens } } }),
     signOut: async () => (session = null, {}),
     startAutoRefresh() {}, stopAutoRefresh() {} };
-  let options;
-  const api = load('services/api.ts', {
+  let options!: TestModule;
+  const api = load<typeof import('../src/services/api')>('services/api.ts', {
     'react-native-url-polyfill/auto': {}, '@react-native-async-storage/async-storage': {},
     '@supabase/supabase-js': { createClient: (_url, key, opts) => {
       assert.equal(key, 'sb_publishable_test'); options = opts; return { auth };
     } },
     'expo-auth-session': { makeRedirectUri: () => 'arcel://' },
-    'expo/fetch': { fetch: async (...args) => { requests.push(args); return response({}); } },
+    'expo/fetch': { fetch: async (url: string, options?: RequestInit) => { requests.push([url, options]); return response({}); } },
     'expo-linking': { createURL: path => `arcel://${path}` },
     'expo-web-browser': {}, 'react-native': { Platform: { OS: 'ios' }, AppState: { addEventListener() {} } },
     './backend': backend,
   });
-  return { api, auth, requests, options, setSession: value => { session = value; } };
+  return { api, auth, requests, options, setSession: (value: typeof session) => { session = value; } };
 }
 
 test('all survey answers round-trip as one dictionary, without local flags or profile identity', async () => {
   const answers = backend.surveyAnswers(profile, { runCapacity: '10–20 min', pushups: '5–10',
     pain: 'Ankle', note: 'Travel', futureQuestion: { nested: ['value'] } });
-  const calls = [];
+  const calls: [string, RequestInit?][] = [];
   const api = backend.createBackend(async (path, opts) => { calls.push([path, opts]); return response({ answers, completed_at: null }); });
   await api.saveAnswers(answers);
   assert.equal(calls[0][0], '/onboarding');
-  assert.equal(calls[0][1].method, 'PUT');
-  assert.deepEqual(JSON.parse(calls[0][1].body), { answers: plain(answers) });
+  assert.equal(calls[0][1]?.method, 'PUT');
+  assert.deepEqual(jsonBody(calls[0][1]), { answers: plain(answers) });
   assert.equal(answers.theme, undefined);
   assert.equal(answers.displayName, undefined);
   assert.equal(answers.onboardingComplete, undefined);
@@ -280,23 +279,23 @@ test('all survey answers round-trip as one dictionary, without local flags or pr
 });
 
 test('profile and onboarding use only current endpoints, never planning', async () => {
-  const calls = [];
+  const calls: [string, RequestInit?][] = [];
   const api = backend.createBackend(async (path, opts) => { calls.push([path, opts]); return response({}); });
   await api.getProfile(); await api.getOnboarding(); await api.saveProfile(' Ada ', 'UTC');
   await api.saveAnswers({ anything: ['works'] }); await api.completeOnboarding();
   assert.deepEqual(calls.map(call => call[0]), ['/profile', '/onboarding', '/profile', '/onboarding', '/onboarding/complete']);
-  assert.deepEqual(JSON.parse(calls[2][1].body), { display_name: 'Ada', timezone: 'UTC' });
+  assert.deepEqual(jsonBody(calls[2][1]), { display_name: 'Ada', timezone: 'UTC' });
 });
 
 test('new users have no completed onboarding even when defaults were previously completed', () => {
-  assert.equal(backend.profileFromApi({ display_name: null }, null, { ...profile, onboardingComplete: true }).onboardingComplete, false);
+  assert.equal(backend.profileFromApi({ id: 'new-user', display_name: null, timezone: 'UTC' }, null, { ...profile, onboardingComplete: true }).onboardingComplete, false);
 });
 
 test('chat sends its conversation id and conversation listing supports pagination', async () => {
-  const calls = [];
+  const calls: [string, TestModule | undefined][] = [];
   const api = backend.createBackend(async (path, options) => {
-    if (path === '/chat') assert.equal(options.headers['X-Chat-Saved-Events'], '1');
-    calls.push([path, options?.body && JSON.parse(options.body)]);
+    if (path === '/chat') assert.equal(new Headers(options?.headers).get('X-Chat-Saved-Events'), '1');
+    calls.push([path, options?.body ? jsonBody(options) : undefined]);
     return path === '/chat'
       ? new Response('{"type":"done","message_id":"saved"}\n')
       : response([]);
@@ -308,16 +307,16 @@ test('chat sends its conversation id and conversation listing supports paginatio
 });
 
 test('saved stream events validate their shape even without a cache callback', async () => {
-  for (const message of [null, {}, savedMessage(42), { ...savedMessage('a'), created_at: 'invalid' }]) {
-    await assert.rejects(backend.readChatStream(new Response(JSON.stringify({ type: 'saved', message })).body,
+  for (const message of [null, {}, { ...savedMessage('a'), id: 42 }, { ...savedMessage('a'), created_at: 'invalid' }]) {
+    await assert.rejects(backend.readChatStream(new Response(JSON.stringify({ type: 'saved', message })).body!,
       () => {}, () => {}), /Invalid saved message/);
   }
 });
 
 test('history passes both cursor fields and a bounded page size', async () => {
-  let url;
+  let url!: string;
   await backend.createBackend(async path => { url = path; return response([]); })
-    .getMessages('conversation-a', { id: 'message-a', created_at: '2026-09-15T00:00:00+00:00' });
+    .getMessages('conversation-a', { ...savedMessage('message-a'), created_at: '2026-09-15T00:00:00+00:00' });
   const query = new URL(url, 'https://api.test').searchParams;
   assert.equal(query.get('conversation_id'), 'conversation-a');
   assert.equal(query.get('limit'), '20');
@@ -326,7 +325,7 @@ test('history passes both cursor fields and a bounded page size', async () => {
 });
 
 test('chat handles split UTF-8, sources, and final persistence receipt without trailing newline', async () => {
-  let text = ''; let sources;
+  let text = ''; let sources!: ChatSource[];
   const id = await backend.readChatStream(stream([
     JSON.stringify({ type: 'text', delta: 'café 🏋️' }),
     JSON.stringify({ type: 'sources', sources: [{ title: 'Source' }] }),
@@ -341,7 +340,7 @@ test('chat rejects interrupted, malformed, and server-error streams', async () =
     ['{"type":"error","message":"save failed"}', /save failed/],
     ['not-json', /JSON|Unexpected/],
     ['{"type":"done"}', /Invalid chat/],
-  ]) await assert.rejects(backend.readChatStream(stream(body), () => {}, () => {}), expected);
+  ] as const) await assert.rejects(backend.readChatStream(stream(body), () => {}, () => {}), expected);
 });
 
 test('invalid stream events never reach callbacks and always release the reader', async () => {
@@ -351,7 +350,7 @@ test('invalid stream events never reach callbacks and always release the reader'
     { type: 'done', message_id: 'a', message: savedMessage('a') },
     { type: 'done', message_id: 'a', message: { ...savedMessage('b'), role: 'assistant' } },
   ]) {
-    const body = new Response(JSON.stringify(event)).body;
+    const body = new Response(JSON.stringify(event)).body!;
     const unexpected = () => assert.fail('invalid event reached a callback');
     await assert.rejects(backend.readChatStream(body, unexpected, unexpected, unexpected), /Invalid/);
     assert.equal(body.locked, false);
@@ -359,12 +358,12 @@ test('invalid stream events never reach callbacks and always release the reader'
 });
 
 test('blank stream lines are ignored but an empty completion id is not a saved reply', async () => {
-  const body = new Response('\n  \n{"type":"text","delta":"answer"}\n\n{"type":"done","message_id":"saved"}').body;
-  const chunks = [];
+  const body = new Response('\n  \n{"type":"text","delta":"answer"}\n\n{"type":"done","message_id":"saved"}').body!;
+  const chunks: string[] = [];
   assert.equal(await backend.readChatStream(body, text => chunks.push(text), () => {}), 'saved');
   assert.deepEqual(chunks, ['answer']);
   assert.equal(body.locked, false);
-  await assert.rejects(backend.readChatStream(new Response('{"type":"done","message_id":""}').body,
+  await assert.rejects(backend.readChatStream(new Response('{"type":"done","message_id":""}').body!,
     () => {}, () => {}), /before the reply was confirmed/);
 });
 
@@ -377,7 +376,7 @@ test('failed POST exposes the server error and is not retried', async () => {
 
 test('signup delegates to Supabase only, with or without email confirmation', async () => {
   const f = authFixture();
-  assert.equal((await f.api.signUp('a@test.invalid', 'password')).user.id, 'user-a');
+  assert.equal((await f.api.signUp('a@test.invalid', 'password'))?.user.id, 'user-a');
   f.setSession(null);
   assert.equal(await f.api.signUp('a@test.invalid', 'password'), null);
   assert.equal(f.requests.length, 0);
@@ -387,16 +386,16 @@ test('signup delegates to Supabase only, with or without email confirmation', as
 
 test('signup includes client timezone even before email confirmation', async () => {
   const f = authFixture();
-  let payload;
+  let payload!: TestModule;
   f.auth.signUp = async input => { payload = input; return { data: { session: null } }; };
   await f.api.signUp('a@test.invalid', 'password');
   assert.equal(payload.options.data.timezone, Intl.DateTimeFormat().resolvedOptions().timeZone);
 });
 
 test('timezone sync patches only timezone, not the display name', async () => {
-  let payload;
+  let payload!: TestModule;
   const api = backend.createBackend(async (path, options) => {
-    assert.equal(path, '/profile'); payload = JSON.parse(options.body); return response({});
+    assert.equal(path, '/profile'); payload = jsonBody(options); return response({});
   });
   await api.saveTimezone('America/New_York');
   assert.deepEqual(payload, { timezone: 'America/New_York' });
@@ -412,7 +411,7 @@ test('requests use the refreshed session token and reject account switches befor
   const f = authFixture();
   const api = f.api.backendFor('user-a');
   await api.getProfile();
-  assert.equal(f.requests[0][1].headers.get('Authorization'), 'Bearer fresh-token');
+  assert.equal(new Headers(f.requests[0][1]?.headers).get('Authorization'), 'Bearer fresh-token');
   f.setSession({ user: { id: 'user-b' }, access_token: 'other-token' });
   await assert.rejects(api.saveAnswers({}), /sign in again/);
   assert.equal(f.requests.length, 1);
@@ -422,21 +421,21 @@ test('requests use the refreshed session token and reject account switches befor
 
 test('native auth callback restores tokens and rejects invalid links', async () => {
   const f = authFixture();
-  assert.equal((await f.api.sessionFromAuthUrl('arcel:///#access_token=access&refresh_token=refresh')).access_token, 'access');
+  assert.equal((await f.api.sessionFromAuthUrl('arcel:///#access_token=access&refresh_token=refresh'))?.access_token, 'access');
   await assert.rejects(f.api.sessionFromAuthUrl('arcel:///#error_description=Expired'), /Expired/);
   await assert.rejects(f.api.sessionFromAuthUrl('arcel:///'), /valid session/);
 });
 
 // Deterministic hook harness: exercise the provider without mounting native views.
-function providerFixture(apiOverrides = {}) {
-  const slots = []; let cursor = 0; let dirty = true; let value; let effects = [];
-  const changed = (a, b) => !a || !b || a.length !== b.length || a.some((item, i) => item !== b[i]);
+function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => TestValue> = {}) {
+  const slots: TestValue[] = []; let cursor = 0; let dirty = true; let value!: ReturnType<typeof import('../src/state/app-context').useApp>; let effects: (() => void)[] = [];
+  const changed = (a: unknown[] | undefined, b: unknown[] | undefined) => !a || !b || a.length !== b.length || a.some((item, i) => item !== b[i]);
   const hooks = {
     createContext: () => ({ Provider: 'provider' }),
     useState: initial => {
       const index = cursor++;
       if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial;
-      return [slots[index], update => { slots[index] = typeof update === 'function' ? update(slots[index]) : update; dirty = true; }];
+      return [slots[index], (update: TestValue) => { slots[index] = typeof update === 'function' ? update(slots[index]) : update; dirty = true; }];
     },
     useRef: initial => { const index = cursor++; return slots[index] ??= { current: initial }; },
     useCallback: (fn, deps) => {
@@ -452,25 +451,25 @@ function providerFixture(apiOverrides = {}) {
         effects.push(() => { previous?.cleanup?.(); slots[index].cleanup = fn(); });
       }
     },
-  };
-  const calls = [];
+  } satisfies Stubs;
+  const calls: TestValue[] = [];
   const api = {
     getProfile: async () => ({ id: 'user-a', display_name: 'Ada', timezone: 'UTC' }),
     getOnboarding: async () => null,
     getMessages: async () => [],
     getConversations: async () => [],
-    getConversation: async id => ({ id, title: '2026-09-15 09:30', created_at: 'now' }),
+    getConversation: async (id: string) => ({ id, title: '2026-09-15 09:30', created_at: 'now' }),
     renameConversation: async (id, title) => ({ id, title: title.trim(), created_at: 'now' }),
     deleteConversation: async () => {},
     saveProfile: async () => { calls.push('profile'); },
     saveAnswers: async answers => { calls.push(['answers', plain(answers)]); },
     completeOnboarding: async () => { calls.push('complete'); return { answers: { note: 'saved' }, completed_at: 'now' }; },
     ...apiOverrides,
-  };
-  let authListener;
+  } satisfies Stubs;
+  let authListener!: (...args: TestValue[]) => void;
   const provider = load('state/app-context.tsx', {
     react: hooks, 'react/jsx-runtime': { jsx: (_type, props) => (value = props.value) },
-    'expo-crypto': { randomUUID: require('node:crypto').randomUUID },
+    'expo-crypto': { randomUUID },
     './chat-cache': { createChatCache },
     './calendar-cache': { createCalendarCache },
     'expo-haptics': {},
@@ -494,7 +493,7 @@ function providerFixture(apiOverrides = {}) {
       await new Promise(resolve => setImmediate(resolve));
     }
   }
-  return { flush, calls, get value() { return value; }, auth: (...args) => authListener(...args) };
+  return { flush, calls, get value() { return value; }, auth: (...args: TestValue[]) => authListener(...args) };
 }
 
 test('provider finishes onboarding only after API save and never calls planning', async () => {
@@ -508,7 +507,7 @@ test('provider finishes onboarding only after API save and never calls planning'
 });
 
 test('an older account read cannot overwrite newly completed onboarding', async () => {
-  let finish; let delayed = false;
+  let finish!: (value?: TestValue) => void; let delayed = false;
   const f = providerFixture({ getOnboarding: () => delayed
     ? new Promise(resolve => { finish = resolve; }) : Promise.resolve(null) });
   await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
@@ -523,7 +522,7 @@ test('an older account read cannot overwrite newly completed onboarding', async 
 test('newer account refresh wins over a late success or failure from the same account', async () => {
   for (const failOlder of [false, true]) {
     let delayed = false;
-    const requests = []; const timezoneWrites = [];
+    const requests: { resolve: (value: TestValue) => void; reject: (error: unknown) => void }[] = []; const timezoneWrites: string[] = [];
     const identity = { id: 'user-a', display_name: 'Original', timezone: 'UTC' };
     const f = providerFixture({
       getProfile: () => delayed ? new Promise((resolve, reject) => requests.push({ resolve, reject })) : Promise.resolve(identity),
@@ -544,7 +543,7 @@ test('newer account refresh wins over a late success or failure from the same ac
 });
 
 test('account loading syncs a changed device timezone before onboarding', async () => {
-  const writes = [];
+  const writes: string[] = [];
   const f = providerFixture({
     getProfile: async () => ({ id: 'user-a', display_name: 'Ada', timezone: 'America/New_York' }),
     saveTimezone: async timezone => { writes.push(timezone); },
@@ -565,25 +564,25 @@ test('failed onboarding stays incomplete and exposes the error', async () => {
 test('calendar cache is account-scoped and old-account writes cannot invalidate the new account', async () => {
   const f = providerFixture(); await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
   const calendar = f.value.calendarCache;
-  const dates = ['2026-09-01', '2026-09-30'];
+  const dates: [string, string] = ['2026-09-01', '2026-09-30'];
   const response = { workouts: [], sports_workouts: [], revision: null };
   await calendar.load({ getCalendarRange: async () => response }, ...dates);
   f.value.invalidateCalendar('user-a', '2026-09-15', '2026-09-15');
-  assert.equal(calendar.peek(...dates).fresh, false);
-  let finish;
+  assert.equal(calendar.peek(...dates)?.fresh, false);
+  let finish!: (value?: TestValue) => void;
   const old = calendar.load({ getCalendarRange: () => new Promise(resolve => { finish = resolve; }) }, ...dates);
   f.auth('SIGNED_IN', { user: { id: 'user-b' }, access_token: 'other-token' }); await f.flush();
   assert.equal(calendar.peek(...dates), undefined);
   finish(response); assert.equal(await old, undefined);
   await calendar.load({ getCalendarRange: async () => response }, ...dates);
   f.value.invalidateCalendar('user-a', ...dates);
-  assert.equal(calendar.peek(...dates).fresh, true);
+  assert.equal(calendar.peek(...dates)?.fresh, true);
   await f.value.signOut(); await f.flush();
   assert.equal(calendar.peek(...dates), undefined);
 });
 
 test('account refresh replaces live data but preserves theme, chat cache, and pending replies', async () => {
-  let profileReads = 0; let onboardingReads = 0; let listReads = 0; let finish; let signal;
+  let profileReads = 0; let onboardingReads = 0; let listReads = 0; let finish!: (value?: TestValue) => void; let signal!: AbortSignal;
   const f = providerFixture({
     getProfile: async () => ({ id: 'user-a', display_name: ++profileReads === 1 ? 'Ada' : 'Updated', timezone: 'UTC' }),
     getOnboarding: async () => ({ answers: { goal: ++onboardingReads === 1 ? 'Original' : 'Updated goal' }, completed_at: 'now' }),
@@ -601,7 +600,7 @@ test('account refresh replaces live data but preserves theme, chat cache, and pe
   await f.value.refreshPreview(); await f.flush();
   assert.equal(profileReads, 1);
   assert.equal(onboardingReads, 1);
-  assert.match(f.value.notice, /preview training data/);
+  assert.match(f.value.notice ?? '', /preview training data/);
   await f.value.refreshLiveData(); await f.flush();
   assert.equal(profileReads, 2);
   assert.equal(onboardingReads, 2);
@@ -640,7 +639,7 @@ test('account loading errors do not unlock default onboarding as a valid account
 });
 
 test('logout aborts chat and discards late reply updates', async () => {
-  let finish; let sendDelta; let signal;
+  let finish!: (value?: TestValue) => void; let sendDelta!: (text: string) => void; let signal!: AbortSignal;
   const f = providerFixture({ streamChat: (_text, delta, _sources, abortSignal) => {
     signal = abortSignal; sendDelta = delta; return new Promise(resolve => { finish = resolve; });
   } });
@@ -654,7 +653,7 @@ test('logout aborts chat and discards late reply updates', async () => {
 });
 
 test('new chats are lazy, reuse their id for replies, and reset only on explicit new chat', async () => {
-  const ids = [];
+  const ids: string[] = [];
   const f = providerFixture({ streamChat: async (_text, _delta, _sources, _signal, id) => {
     ids.push(id); return 'saved';
   } });
@@ -696,10 +695,10 @@ test('conversation headings follow selection and saved renames; deletion opens a
 });
 
 test('first send changes heading before the reply completes', async () => {
-  let finish;
+  let finish!: (value?: TestValue) => void;
   const f = providerFixture({
     streamChat: () => new Promise(resolve => { finish = resolve; }),
-    getConversation: async id => convo(id, 'hello'),
+    getConversation: async (id: string) => convo(id, 'hello'),
   });
   await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
   const pending = f.value.sendChat('hello'); await f.flush();
@@ -744,7 +743,7 @@ test('follow-up messages preserve an existing title even when metadata is unavai
 });
 
 test('offline first send never enables saved-conversation actions and preserves its retry id', async () => {
-  const ids = [];
+  const ids: string[] = [];
   const f = providerFixture({
     streamChat: async (_text, _delta, _sources, _signal, id) => { ids.push(id); throw new Error('offline'); },
     getConversation: async () => { throw new Error('offline'); },
@@ -766,7 +765,7 @@ test('failed reply still recognizes a persisted conversation without retrying th
   assert.equal(sends, 1);
   assert.notEqual(f.value.activeConversationId, null);
   assert.equal(f.value.chatTitle, '2026-09-15 09:30');
-  assert.match(f.value.chatError, /interrupted/);
+  assert.match(f.value.chatError ?? '', /interrupted/);
 });
 
 test('saved reply confirms the conversation even when the title lookup fails', async () => {
@@ -782,7 +781,7 @@ test('saved reply confirms the conversation even when the title lookup fails', a
 });
 
 test('late conversation confirmation cannot activate a newly opened empty chat', async () => {
-  let finish;
+  let finish!: (value?: TestValue) => void;
   const f = providerFixture({
     streamChat: async () => { throw new Error('interrupted'); },
     getConversation: () => new Promise(resolve => { finish = resolve; }),
@@ -797,7 +796,7 @@ test('late conversation confirmation cannot activate a newly opened empty chat',
 
 test('failed rename/delete preserves the current heading and conversation', async () => {
   const f = providerFixture({
-    getConversation: async id => convo(id, 'Original'),
+    getConversation: async (id: string) => convo(id, 'Original'),
     renameConversation: async () => { throw new Error('offline'); },
     deleteConversation: async () => { throw new Error('offline'); },
   });
@@ -811,7 +810,7 @@ test('failed rename/delete preserves the current heading and conversation', asyn
 });
 
 test('switching conversations discards a late history response', async () => {
-  let finish;
+  let finish!: (value?: TestValue) => void;
   const f = providerFixture({ getMessages: id => id === 'old'
     ? new Promise(resolve => { finish = resolve; })
     : Promise.resolve([{ id: 'new-message', role: 'user', content: 'new', created_at: 'now' }]) });
@@ -823,15 +822,14 @@ test('switching conversations discards a late history response', async () => {
 });
 
 // Exercise the real screen's focus and sidebar callbacks without a native renderer.
-function chatScreenFixture(provider) {
-  const slots = []; let cursor = 0; let onFocus; let cleanup;
-  const jsx = (type, props) => ({ type, props });
+function chatScreenFixture(provider: ReturnType<typeof providerFixture>) {
+  const slots: TestValue[] = []; let cursor = 0; let onFocus: (() => (() => void) | undefined) | undefined; let cleanup: (() => void) | undefined;
   const screen = load('screens/chat-screen.tsx', {
     react: {
       useState: initial => {
         const index = cursor++;
         if (!(index in slots)) slots[index] = initial;
-        return [slots[index], value => { slots[index] = value; }];
+        return [slots[index], (value: TestValue) => { slots[index] = value; }];
       },
       useRef: initial => { const index = cursor++; return slots[index] ??= { current: initial }; },
       useCallback: fn => fn, useEffect: () => {},
@@ -848,8 +846,8 @@ function chatScreenFixture(provider) {
     '@/lib/links': { webUrl }, '@/state/app-context': { useApp: () => provider.value },
   });
   const render = () => { cursor = 0; return screen.default(); };
-  function find(predicate) {
-    function visit(node) {
+  function find(predicate: (node: TestNode) => boolean) {
+    function visit(node: TestValue): TestNode | undefined {
       if (!node || typeof node !== 'object') return;
       if (predicate(node)) return node;
       if (typeof node.type === 'function') return visit(node.type(node.props));
@@ -871,7 +869,7 @@ test('returning to the chat tab preserves selection, messages, and draft without
   let reads = 0;
   const f = providerFixture({
     getMessages: async () => { reads++; return [savedMessage('human', 'hello')]; },
-    getConversation: async id => { reads++; return convo(id, 'Strength questions'); },
+    getConversation: async (id: string) => { reads++; return convo(id, 'Strength questions'); },
   });
   await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
   f.value.openConversation('thread-a'); await f.flush();
@@ -896,7 +894,7 @@ test('returning to the chat tab preserves selection, messages, and draft without
 });
 
 test('returning to the chat tab keeps a pending reply selected through completion', async () => {
-  let finish; let onText; let saved; let signal; let id;
+  let finish!: (value?: TestValue) => void; let onText!: (text: string) => void; let saved!: (message: SavedMessage) => void; let signal!: AbortSignal; let id!: string;
   const f = providerFixture({ streamChat: (_text, delta, _sources, abort, key, onSaved) => {
     onText = delta; signal = abort; id = key; saved = onSaved;
     onSaved(savedMessage('human', 'hello'));
@@ -910,7 +908,7 @@ test('returning to the chat tab keeps a pending reply selected through completio
   assert.equal(signal.aborted, false);
   assert.equal(f.value.activeConversationId, id);
   assert.equal(f.value.chatBusy, true);
-  assert.equal(f.value.chatMessages.at(-1).text, 'partial answer');
+  assert.equal(f.value.chatMessages.at(-1)!.text, 'partial answer');
   saved({ ...savedMessage('reply', 'answer'), role: 'assistant' });
   finish('reply'); await pending; await f.flush();
   assert.equal(f.value.activeConversationId, id);
@@ -919,7 +917,7 @@ test('returning to the chat tab keeps a pending reply selected through completio
 });
 
 test('completed background reply reopens from cache without reloading messages or metadata', async () => {
-  let finish; let saved; let onText; let id; let reads = 0; let metadataReads = 0;
+  let finish!: (value?: TestValue) => void; let saved!: (message: SavedMessage) => void; let onText!: (text: string) => void; let id!: string; let reads = 0; let metadataReads = 0;
   const f = providerFixture({
     getMessages: async () => { reads++; return []; },
     getConversation: async key => { metadataReads++; return convo(key); },
@@ -956,7 +954,7 @@ test('sidebar reads are reused, including after opening and closing it repeatedl
 });
 
 test('switching conversations keeps the old stream alive without displaying its text in the new chat', async () => {
-  let finish; let delta; let signal;
+  let finish!: (value?: TestValue) => void; let delta!: (text: string) => void; let signal!: AbortSignal;
   const f = providerFixture({ streamChat: (_text, onText, _sources, abort) => {
     delta = onText; signal = abort; return new Promise(resolve => { finish = resolve; });
   } });
@@ -970,7 +968,7 @@ test('switching conversations keeps the old stream alive without displaying its 
 });
 
 test('a late profile load from the previous user cannot overwrite a new account', async () => {
-  let resolveOld; let count = 0;
+  let resolveOld!: (value: TestValue) => void; let count = 0;
   const f = providerFixture({ getProfile: () => ++count === 1
     ? new Promise(resolve => { resolveOld = resolve; })
     : Promise.resolve({ id: 'user-b', display_name: 'Bob', timezone: 'UTC' }) });
@@ -981,15 +979,14 @@ test('a late profile load from the previous user cannot overwrite a new account'
 });
 
 // Verify the actual ScrollView/RefreshControl props and loading lifecycle without native UI.
-function refreshScreenFixture(onRefresh) {
-  const slots = []; let cursor = 0;
-  const jsx = (type, props) => ({ type, props });
+function refreshScreenFixture(onRefresh?: () => Promise<void>) {
+  const slots: TestValue[] = []; let cursor = 0;
   const { Screen } = load('components/ui.tsx', {
     react: {
       useState: initial => {
         const index = cursor++;
         if (!(index in slots)) slots[index] = initial;
-        return [slots[index], value => { slots[index] = value; }];
+        return [slots[index], (value: TestValue) => { slots[index] = value; }];
       },
       useRef: initial => { const index = cursor++; return slots[index] ??= { current: initial }; },
     },
@@ -1003,13 +1000,13 @@ function refreshScreenFixture(onRefresh) {
   });
   const render = () => { cursor = 0; return Screen({ title: 'Test', onRefresh, children: null }); };
   return {
-    scroll: () => render().props.children.find(node => node.type === 'scroll').props,
+    scroll: () => render().props.children.find((node: TestNode) => node.type === 'scroll').props,
     output: () => JSON.stringify(render()),
   };
 }
 
 test('pull-to-refresh stays spinning until completion and blocks duplicate pulls', async () => {
-  let finish; let calls = 0;
+  let finish!: (value?: TestValue) => void; let calls = 0;
   const screen = refreshScreenFixture(() => {
     calls++; return new Promise(resolve => { finish = resolve; });
   });
@@ -1043,7 +1040,6 @@ test('You refreshes account data, Calendar refreshes ranges, other training tabs
     const value = { colors: {}, profile, block: {}, proposal: null, refreshLiveData, refreshPreview,
       sessions: populated ? [{ id: 's-today', status: 'planned', modality: 'strength', date: '2026-09-15', exercises: [] }] : [],
       metrics: populated ? [{ id: 'metric', lane: 'strength', series: [1, 2] }] : [] };
-    const jsx = (type, props) => ({ type, props });
     for (const tab of ['today', 'week', 'progress', 'you']) {
       const page = load(`screens/${tab}-screen.tsx`, {
         react: { useState: initial => [initial, () => {}], useMemo: fn => fn() },
@@ -1066,7 +1062,6 @@ test('You refreshes account data, Calendar refreshes ranges, other training tabs
 });
 
 test('sidebar owns its modal safe area and keeps header spacing separate from insets', () => {
-  const jsx = (type, props) => ({ type, props });
   const { ConversationSidebar } = load('components/conversation-menu.tsx', {
     react: {}, 'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react-native': {},
     'react-native': { Modal: 'modal', View: 'view', StyleSheet: {} },
@@ -1085,18 +1080,17 @@ test('sidebar owns its modal safe area and keeps header spacing separate from in
 });
 
 test('About Us appears before the policy links and public pages open without auth', async () => {
-  let error = null; let fail = false;
-  const urls = [];
-  const jsx = (type, props) => ({ type, props });
+  let error: string | null = null; let fail = false;
+  const urls: string[] = [];
   const { PolicyLinks } = load('components/policy-links.tsx', {
-    react: { useState: () => [error, value => { error = value; }] },
+    react: { useState: () => [error, (value: string | null) => { error = value; }] },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     'react-native': { StyleSheet: { create: value => value } }, './ui': {},
     'expo-web-browser': { openBrowserAsync: async url => {
       urls.push(url); if (fail) throw new Error('browser unavailable');
     } },
   });
-  const links = () => PolicyLinks().props.children[0].props.children;
+  const links = (): TestNode[] => PolicyLinks().props.children[0].props.children;
   assert.deepEqual(plain(links().map(link => link.props.accessibilityLabel)), ['About Us', 'Privacy Policy', 'Terms of Service']);
   for (const link of links()) {
     assert.equal(link.props.accessibilityRole, 'link');
@@ -1107,7 +1101,7 @@ test('About Us appears before the policy links and public pages open without aut
   assert.equal(error, null);
   fail = true;
   links()[0].props.onPress(); await new Promise(resolve => setImmediate(resolve));
-  assert.match(error, /Could not open/);
+  assert.match(error ?? '', /Could not open/);
   fail = false;
   links()[0].props.onPress(); await new Promise(resolve => setImmediate(resolve));
   assert.equal(error, null);

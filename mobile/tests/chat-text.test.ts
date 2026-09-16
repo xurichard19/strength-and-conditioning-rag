@@ -1,22 +1,18 @@
-const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
-const { resolve } = require('node:path');
-const { test } = require('node:test');
-const vm = require('node:vm');
-const ts = require('typescript');
-
-const jsx = (type, props) => ({ type, props });
-const messages = [
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { load as loadModule, jsx, type TestValue, type TestModule, type TestNode, type Stubs } from './helpers.ts';
+import type { ChatMessage } from '../src/domain/types';
+const messages: ChatMessage[] = [
   { id: 'human', role: 'user', text: 'My question' },
   { id: 'ai', role: 'assistant', text: '# Heading\nPlain **bold** and *italic* with `code`\n- Bullet\n1. Numbered\n> Quote\n```\nCode block\n```', basis: 'Research' },
 ];
-const app = { colors: {}, chatMessages: messages, chatTitle: 'My question', authSession: { user: { id: 'owner' } }, activeConversationId: 'thread' };
-const slots = []; let cursor = 0; let onFocus; let dismissals = 0;
-const modules = {
+const app = { colors: {}, chatMessages: messages, chatTitle: 'My question', authSession: { user: { id: 'owner' } } as { user: { id: string } } | null, activeConversationId: 'thread' };
+const slots: TestValue[] = []; let cursor = 0; let onFocus!: () => () => void; let dismissals = 0;
+const modules: TestModule = {
   react: {
     useState: initial => {
       const index = cursor++; if (!(index in slots)) slots[index] = initial;
-      return [slots[index], value => { slots[index] = value; }];
+      return [slots[index], (value: TestValue) => { slots[index] = value; }];
     },
     useRef: initial => { const index = cursor++; return slots[index] ??= { current: initial }; },
     useEffect() {}, useCallback: fn => fn,
@@ -28,18 +24,8 @@ const modules = {
   'expo-linking': {}, 'expo-linear-gradient': {}, 'lucide-react-native': {}, 'react-native-safe-area-context': {},
   '@/state/app-context': { useApp: () => app }, '@/design/tokens': { fonts: {}, radius: {}, shadow: {} },
   '@/lib/errors': {}, '@/lib/links': {}, '@/data/mock': { quickQuestions: [] }, '@/components/conversation-menu': {},
-};
-function load(file) {
-  const code = ts.transpileModule(readFileSync(resolve(__dirname, '../src', file), 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText;
-  const exports = {};
-  vm.runInNewContext(code, { exports, require: name => {
-    if (!(name in modules)) throw new Error(`unexpected import: ${name}`);
-    return modules[name];
-  } });
-  return exports;
-}
+} satisfies Stubs;
+const load = (file: string) => loadModule(file, modules);
 modules['@/components/ui'] = load('components/ui.tsx');
 modules['./ui'] = modules['@/components/ui'];
 const selection = load('components/message-text-selection.tsx');
@@ -53,16 +39,16 @@ function reset(platform = 'ios') {
   modules['react-native'].Platform.OS = platform;
   app.chatMessages = messages; app.authSession = { user: { id: 'owner' } }; app.activeConversationId = 'thread';
 }
-function nodes(node) {
+function nodes(node: TestValue): TestNode[] {
   if (!node || typeof node !== 'object') return [];
   if (Array.isArray(node)) return node.flatMap(nodes);
   if (typeof node.type === 'function') return nodes(node.type(node.props));
   return [node, ...nodes(node.props.children)];
 }
 const selectedInput = () => nodes(render()).find(node => node.type === 'input' && node.props.accessibilityLabel === 'Message text');
-const messageText = value => textRoots(render()).find(node => JSON.stringify(node.props.children).includes(value) && node.props.onLongPress);
+const messageText = (value: string) => textRoots(render()).find(node => JSON.stringify(node.props.children).includes(value) && node.props.onLongPress)!;
 
-function textRoots(node, insideText = false) {
+function textRoots(node: TestValue, insideText = false): TestNode[] {
   if (!node || typeof node !== 'object') return [];
   if (Array.isArray(node)) return node.flatMap(child => textRoots(child, insideText));
   if (typeof node.type === 'function') return textRoots(node.type(node.props), insideText);
@@ -90,7 +76,7 @@ test('iOS long-press on every message block opens a read-only multiline selectio
     const text = messageText(value); assert.ok(text, value);
     assert.equal(text.props.selectable, false);
     text.props.onLongPress();
-    const input = selectedInput().props;
+    const input = selectedInput()!.props;
     assert.equal(input.multiline, true);
     assert.equal(input.editable, false);
     assert.equal(input.showSoftInputOnFocus, false);
@@ -100,7 +86,7 @@ test('iOS long-press on every message block opens a read-only multiline selectio
     assert.equal(input.onChangeText, undefined);
     assert.ok(input.defaultValue.includes(value === 'My question' ? value : 'Code block'));
     assert.equal(dismissals, 1);
-    nodes(render()).find(node => node.props.accessibilityLabel === 'Close text selection').props.onPress();
+    nodes(render()).find(node => node.props.accessibilityLabel === 'Close text selection')!.props.onPress();
     assert.equal(selectedInput(), undefined);
   }
 });
@@ -112,11 +98,11 @@ test('selection supports accessibility actions and preserves a snapshot while mo
   text.props.onAccessibilityAction({ nativeEvent: { actionName: 'other' } });
   assert.equal(selectedInput(), undefined);
   text.props.onAccessibilityAction({ nativeEvent: { actionName: 'selectText' } });
-  const snapshot = selectedInput().props.defaultValue;
+  const snapshot = selectedInput()!.props.defaultValue;
   app.chatMessages = [...messages.slice(0, 1), { ...messages[1], text: messages[1].text + '\nMore tokens' }];
-  assert.equal(selectedInput().props.defaultValue, snapshot);
+  assert.equal(selectedInput()!.props.defaultValue, snapshot);
   assert.equal(app.chatMessages[1].text.includes('More tokens'), true);
-  nodes(render()).find(node => node.type === 'modal').props.onRequestClose();
+  nodes(render()).find(node => node.type === 'modal')!.props.onRequestClose();
   assert.equal(selectedInput(), undefined);
 });
 
@@ -140,5 +126,5 @@ test('selection uses rendered markdown text but preserves literal fenced/inline 
   assert.equal(markdownPlainText('```\nUnclosed **code**'), 'Unclosed **code**');
   reset(); app.chatMessages = [{ id: 'user', role: 'user', text: '# Keep **my** original text' }];
   messageText('Keep').props.onLongPress();
-  assert.equal(selectedInput().props.defaultValue, '# Keep **my** original text');
+  assert.equal(selectedInput()!.props.defaultValue, '# Keep **my** original text');
 });
