@@ -134,14 +134,13 @@ jobs:
             LANGSMITH_ENDPOINT=${{ vars.LANGSMITH_ENDPOINT || 'https://api.smith.langchain.com' }}
             LANGSMITH_WORKSPACE_ID=${{ vars.LANGSMITH_WORKSPACE_ID }}
             LANGSMITH_TRACING_SAMPLING_RATE=${{ vars.LANGSMITH_TRACING_SAMPLING_RATE || '0.1' }}
-            LANGSMITH_HIDE_INPUTS=true
-            LANGSMITH_HIDE_OUTPUTS=true
             LANGSMITH_HIDE_METADATA=true
             LANGCHAIN_CALLBACKS_BACKGROUND=false
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}
             SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
             SUPABASE_SECRET_KEY=${{ secrets.SUPABASE_SECRET_KEY }}
           flags: >-
+            --remove-env-vars=LANGSMITH_HIDE_INPUTS,LANGSMITH_HIDE_OUTPUTS
             --port=8000
             --memory=2Gi
             --max-instances=10
