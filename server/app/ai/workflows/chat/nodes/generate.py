@@ -1,5 +1,6 @@
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, SystemMessage
+from langgraph.config import get_stream_writer
 
 from app.ai.services.search import format_sources_for_prompt
 from app.ai.workflows.chat.prompts import CHAT_SYSTEM_PROMPT
@@ -19,6 +20,7 @@ generation_model = init_chat_model(
 async def generate_node(state: ChatState) -> dict:
     """generate the final answer from messages and retrieved evidence"""
 
+    get_stream_writer()({"type": "status", "stage": "thinking"})
     evidence = format_sources_for_prompt(state.get("sources", []))
 
     response = await generation_model.ainvoke([

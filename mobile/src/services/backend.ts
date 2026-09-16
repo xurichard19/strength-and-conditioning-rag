@@ -1,4 +1,4 @@
-import type { ChatSource, Profile } from '../domain/types';
+import type { ChatSource, ChatStage, Profile } from '../domain/types';
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type Answers = Record<string, JsonValue>;
@@ -105,13 +105,13 @@ export function createBackend(request: ApiRequest) {
     },
     streamChat: async (text: string, onText: (delta: string) => void,
       onSources: (sources: ChatSource[]) => void, signal: AbortSignal | undefined, conversationId: string,
-      onSaved?: (message: SavedMessage) => void) => {
+      onSaved?: (message: SavedMessage) => void, onStatus?: (stage: ChatStage) => void) => {
       const response = await checked(await request('/chat', {
         method: 'POST', body: JSON.stringify({ text, conversation_id: conversationId }), signal,
-        headers: { Accept: 'application/x-ndjson', 'X-Chat-Saved-Events': '1' },
+        headers: { Accept: 'application/x-ndjson', 'X-Chat-Saved-Events': '1', 'X-Chat-Status-Events': '1' },
       }));
       if (!response.body) throw new Error('Chat stream is unavailable.');
-      return readChatStream(response.body, onText, onSources, onSaved);
+      return readChatStream(response.body, onText, onSources, onSaved, onStatus);
     },
   };
 }
@@ -136,7 +136,7 @@ function completionEvent(event: { message_id?: unknown; message?: Partial<SavedM
 /** Return only after the server confirms persistence; EOF alone is not success. */
 export async function readChatStream(body: ReadableStream<Uint8Array>,
   onText: (delta: string) => void, onSources: (sources: ChatSource[]) => void,
-  onSaved: (message: SavedMessage) => void = () => {}): Promise<string> {
+  onSaved: (message: SavedMessage) => void = () => {}, onStatus: (stage: ChatStage) => void = () => {}): Promise<string> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -149,6 +149,9 @@ export async function readChatStream(body: ReadableStream<Uint8Array>,
       case 'text':
         if (typeof event.delta !== 'string') break;
         onText(event.delta); return;
+      case 'status':
+        if (event.stage !== 'fetching_user_context' && event.stage !== 'researching' && event.stage !== 'thinking') break;
+        onStatus(event.stage); return;
       case 'sources':
         if (!Array.isArray(event.sources)) break;
         onSources(event.sources); return;

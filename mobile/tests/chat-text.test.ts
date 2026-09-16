@@ -24,6 +24,8 @@ const modules: TestModule = {
   'expo-linking': {}, 'expo-linear-gradient': {}, 'lucide-react-native': {}, 'react-native-safe-area-context': {},
   '@/state/app-context': { useApp: () => app }, '@/design/tokens': { fonts: {}, radius: {}, shadow: {} },
   '@/lib/errors': {}, '@/lib/links': {}, '@/data/mock': { quickQuestions: [] }, '@/components/conversation-menu': {},
+  '@/components/chat-mode-selector': { ChatModeSelector: 'mode-selector' },
+  '@/components/chat-progress': { ChatProgress: 'progress' },
 } satisfies Stubs;
 const load = (file: string) => loadModule(file, modules);
 modules['@/components/ui'] = load('components/ui.tsx');
@@ -47,6 +49,28 @@ function nodes(node: TestValue): TestNode[] {
 }
 const selectedInput = () => nodes(render()).find(node => node.type === 'input' && node.props.accessibilityLabel === 'Message text');
 const messageText = (value: string) => textRoots(render()).find(node => JSON.stringify(node.props.children).includes(value) && node.props.onLongPress)!;
+
+test('mode selector sits inside the message box immediately before Send without stretching', () => {
+  reset();
+  const box = nodes(render()).find(node => node.props.children?.[1]?.type === 'mode-selector')!;
+  assert.ok(box);
+  assert.equal(box.props.style[0].alignItems, 'flex-end');
+  assert.equal(box.props.children[0].props.accessibilityLabel, 'Message Arcel');
+  assert.equal(box.props.children[2].props.accessibilityLabel, 'Send message');
+});
+
+test('chat shows stages only until response text arrives, never beside streaming or saved text', () => {
+  reset();
+  for (const progress of [undefined, 'fetching_user_context', 'researching', 'thinking'] as const) {
+    app.chatMessages = [{ id: 'pending', role: 'assistant', text: '', pending: true, progress }];
+    assert.equal(nodes(render()).find(node => node.type === 'progress')?.props.stage, progress);
+    app.chatMessages[0].text = 'Partial answer';
+    assert.equal(nodes(render()).some(node => node.type === 'progress'), false);
+    assert.ok(textRoots(render()).some(node => JSON.stringify(node.props.children).includes('Partial answer')));
+  }
+  app.chatMessages = [{ id: 'reply', role: 'assistant', text: 'Saved answer', pending: false }];
+  assert.equal(nodes(render()).some(node => node.type === 'progress'), false);
+});
 
 function textRoots(node: TestValue, insideText = false): TestNode[] {
   if (!node || typeof node !== 'object') return [];

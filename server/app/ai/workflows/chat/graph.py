@@ -42,6 +42,7 @@ async def stream_chat(
     any future history retrieval belongs in workflow nodes.
 
     yields dictionaries with one of these shapes:
+    - `{"type": "status", "stage": str}` when a node starts work
     - `{"type": "text", "delta": str}`
     - `{"type": "sources", "sources": list[dict]}`
     - `{"type": "done"}`
@@ -52,7 +53,7 @@ async def stream_chat(
     async for part in graph.astream(
         {"messages": [{"role": "user", "content": message}]},
         context=context,
-        stream_mode=["messages", "updates"],
+        stream_mode=["messages", "updates", "custom"],
         version="v2",
     ):
         if part["type"] == "messages":
@@ -61,6 +62,9 @@ async def stream_chat(
                 continue
             if isinstance(chunk.content, str):
                 yield {"type": "text", "delta": chunk.content}
+
+        elif part["type"] == "custom" and isinstance(part["data"], dict) and part["data"].get("type") == "status":
+            yield {"type": "status", "stage": part["data"]["stage"]}
 
         elif part["type"] == "updates" and "search" in part["data"]:
             sources = part["data"]["search"].get("sources", [])

@@ -97,6 +97,8 @@ export type ChatSource = {
   source_type?: string;
 };
 
+export type ChatStage = 'fetching_user_context' | 'researching' | 'thinking';
+
 export type ChatMessage = {
   id: string;
   role: 'user' | 'assistant';
@@ -104,4 +106,5 @@ export type ChatMessage = {
   basis?: string;
   sources?: ChatSource[];
   pending?: boolean;
+  progress?: ChatStage; // Transient run state, never persisted as message content.
 };

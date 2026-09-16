@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { load, plain, jsx, type TestValue, type TestModule, type TestNode, type Stubs } from './helpers.ts';
-import type { Profile, ChatSource } from '../src/domain/types';
+import type { Profile, ChatSource, ChatStage } from '../src/domain/types';
 import type { SavedMessage, Conversation } from '../src/services/backend';
 const backend = load<typeof import('../src/services/backend')>('services/backend.ts');
 const memoryCache = load('state/memory-cache.ts');
@@ -294,7 +294,10 @@ test('new users have no completed onboarding even when defaults were previously 
 test('chat sends its conversation id and conversation listing supports pagination', async () => {
   const calls: [string, TestModule | undefined][] = [];
   const api = backend.createBackend(async (path, options) => {
-    if (path === '/chat') assert.equal(new Headers(options?.headers).get('X-Chat-Saved-Events'), '1');
+    if (path === '/chat') {
+      assert.equal(new Headers(options?.headers).get('X-Chat-Saved-Events'), '1');
+      assert.equal(new Headers(options?.headers).get('X-Chat-Status-Events'), '1');
+    }
     calls.push([path, options?.body ? jsonBody(options) : undefined]);
     return path === '/chat'
       ? new Response('{"type":"done","message_id":"saved"}\n')
@@ -311,6 +314,23 @@ test('saved stream events validate their shape even without a cache callback', a
     await assert.rejects(backend.readChatStream(new Response(JSON.stringify({ type: 'saved', message })).body!,
       () => {}, () => {}), /Invalid saved message/);
   }
+});
+
+test('progress streams separately from text and is never a completion receipt', async () => {
+  const stages: ChatStage[] = []; const chunks: string[] = [];
+  const events = [{ type: 'status', stage: 'fetching_user_context' }, { type: 'status', stage: 'researching' },
+    { type: 'status', stage: 'thinking' }, { type: 'text', delta: 'answer' }, { type: 'done', message_id: 'reply' }];
+  const api = backend.createBackend(async () => new Response(events.map(event => JSON.stringify(event)).join('\n')));
+  assert.equal(await api.streamChat('question', text => chunks.push(text), () => {}, undefined, 'thread', undefined,
+    stage => stages.push(stage)), 'reply');
+  assert.deepEqual(stages, ['fetching_user_context', 'researching', 'thinking']);
+  assert.deepEqual(chunks, ['answer']);
+  for (const stage of [null, {}, 'invented-stage']) {
+    await assert.rejects(backend.readChatStream(stream(JSON.stringify({ type: 'status', stage })),
+      () => {}, () => {}), /Invalid chat stream/);
+  }
+  await assert.rejects(backend.readChatStream(stream('{"type":"status","stage":"thinking"}'),
+    () => {}, () => {}), /before the reply was confirmed/);
 });
 
 test('history passes both cursor fields and a bounded page size', async () => {
@@ -840,6 +860,7 @@ function chatScreenFixture(provider: ReturnType<typeof providerFixture>) {
     'react-native': { Platform: { OS: 'ios' }, StyleSheet: { create: value => value } },
     'react-native-safe-area-context': {},
     '@/components/ui': {}, '@/components/markdown-text': {},
+    '@/components/chat-progress': {}, '@/components/chat-mode-selector': {},
     '@/components/message-text-selection': { messageTextProps: () => ({}) },
     '@/components/conversation-menu': { ConversationSidebar: 'sidebar', ConversationActions: 'options' },
     '@/data/mock': { quickQuestions: [] }, '@/design/tokens': { fonts: {}, radius: {} },
@@ -951,6 +972,56 @@ test('sidebar reads are reused, including after opening and closing it repeatedl
   await f.value.refreshConversations(); await f.flush();
   assert.equal(reads, 1);
   assert.equal(f.value.conversations.length, 1);
+});
+
+test('progress belongs to its running conversation, survives tab switches, and clears on completion', async () => {
+  let finish!: (id: string) => void; let status!: (stage: ChatStage) => void; let saved!: (row: SavedMessage) => void; let id!: string;
+  let delta!: (text: string) => void;
+  const f = providerFixture({ streamChat: (_text, onText, _sources, _signal, key, onSaved, onStatus) => {
+    id = key; saved = onSaved; status = onStatus; delta = onText;
+    onSaved(savedMessage('human', 'hello'));
+    return new Promise<string>(resolve => { finish = resolve; });
+  } });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  const screen = chatScreenFixture(f); screen.focus();
+  const pending = f.value.sendChat('hello'); await f.flush();
+  status('researching'); await f.flush();
+  assert.equal(f.value.chatMessages.at(-1)?.progress, 'researching');
+  screen.blur(); screen.focus(); await f.flush();
+  assert.equal(f.value.chatMessages.at(-1)?.progress, 'researching');
+  f.value.openConversation(); await f.flush();
+  status('thinking'); await f.flush(); assert.equal(f.value.chatMessages.length, 0);
+  f.value.openConversation(id); await f.flush();
+  assert.equal(f.value.chatMessages.at(-1)?.progress, 'thinking');
+  delta('answer'); await f.flush();
+  assert.equal(f.value.chatMessages.at(-1)?.progress, undefined);
+  assert.equal(f.value.chatMessages.at(-1)?.pending, true);
+  status('researching'); await f.flush(); // Tokens replace progress even if a late stage arrives.
+  assert.equal(f.value.chatMessages.at(-1)?.progress, undefined);
+  saved({ ...savedMessage('reply', 'answer'), role: 'assistant' }); finish('reply'); await pending; await f.flush();
+  assert.equal(f.value.chatMessages.at(-1)?.progress, undefined);
+  assert.equal(f.value.chatMessages.at(-1)?.pending, false);
+  status('researching'); await f.flush(); // A late callback cannot resurrect completed progress.
+  assert.equal(f.value.chatMessages.at(-1)?.progress, undefined);
+});
+
+test('failed and signed-out runs clear progress and ignore late status callbacks', async () => {
+  for (const signOut of [false, true]) {
+    let reject!: (error: Error) => void; let status!: (stage: ChatStage) => void;
+    const f = providerFixture({ streamChat: (_text, _delta, _sources, _signal, _id, _saved, onStatus) => {
+      status = onStatus;
+      return new Promise((_, fail) => { reject = fail; });
+    } });
+    await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+    const pending = f.value.sendChat('hello'); await f.flush();
+    status('researching'); await f.flush();
+    if (signOut) { await f.value.signOut(); await f.flush(); }
+    reject(new Error('offline')); await pending; await f.flush();
+    assert.equal(f.value.chatMessages.some(row => row.progress), false);
+    assert.equal(f.value.chatBusy, false);
+    status('thinking'); await f.flush();
+    assert.equal(f.value.chatMessages.some(row => row.progress), false);
+  }
 });
 
 test('switching conversations keeps the old stream alive without displaying its text in the new chat', async () => {

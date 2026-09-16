@@ -406,6 +406,11 @@ class ChatTextEvent(ResponseModel):
     delta: str
 
 
+class ChatStatusEvent(ResponseModel):
+    type: Literal["status"] = "status"
+    stage: Literal["fetching_user_context", "researching", "thinking"]
+
+
 class ChatSourcesEvent(ResponseModel):
     type: Literal["sources"] = "sources"
     sources: list[SourceResponse]
@@ -428,6 +433,6 @@ class ChatErrorEvent(ResponseModel):
 
 
 ChatStreamEvent = Annotated[
-    ChatSavedEvent | ChatTextEvent | ChatSourcesEvent | ChatDoneEvent | ChatErrorEvent,
+    ChatSavedEvent | ChatTextEvent | ChatStatusEvent | ChatSourcesEvent | ChatDoneEvent | ChatErrorEvent,
     Field(discriminator="type"),
 ]

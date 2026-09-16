@@ -10,7 +10,7 @@ from fastapi.responses import Response, StreamingResponse
 from app.ai.workflows.chat.state import WorkflowContext
 from app.api.errors import PRIVATE_HEADERS, database_errors, private_response
 from app.api.parameters import message_cursor
-from app.api.schemas import ConversationUpdate, ConversationResponse, ChatSavedEvent, ChatDoneEvent, ChatErrorEvent, ChatRequest, ChatSourcesEvent, ChatTextEvent, MessageResponse
+from app.api.schemas import ConversationUpdate, ConversationResponse, ChatSavedEvent, ChatDoneEvent, ChatErrorEvent, ChatRequest, ChatSourcesEvent, ChatStatusEvent, ChatTextEvent, MessageResponse
 from app.auth.supabase import AuthUser, require_user
 from app.db.supabase import messages
 
@@ -89,11 +89,12 @@ def get_messages(
 
 @router.post("", response_class=StreamingResponse, responses={200: {
     "content": {"application/x-ndjson": {"schema": {"type": "string"}}},
-    "description": "newline-separated ChatStreamEvent objects: saved human message, text, sources, then done or error",
+    "description": "newline-separated ChatStreamEvent objects: optional saved/status events, text, sources, then done or error",
 }})
 async def chat_reply(
     payload: ChatRequest, request: Request, user: AuthUser = Depends(require_user),
     x_chat_saved_events: str | None = Header(None),
+    x_chat_status_events: str | None = Header(None),
 ) -> StreamingResponse:
     """
     persist a user turn, stream the existing chat workflow, and save the completed reply
@@ -109,6 +110,8 @@ async def chat_reply(
     - **request**: application with initialized chat_graph
     - **x_chat_saved_events**: set to "1" to receive the saved-human event; omitted
       for older clients that accept only text, sources, done, and error
+    - **x_chat_status_events**: set to "1" to receive transient progress; omitted for
+      clients that do not recognize status events. progress is never saved as a message
     - **user**: verified owner; human writes use the jwt and assistant writes use backend credentials
     - **returns**: saved human record, text/sources events, then done with saved
       message_id and assistant record for client cache reconciliation;
@@ -133,6 +136,10 @@ async def chat_reply(
                 if event["type"] == "text":
                     outgoing = ChatTextEvent.model_validate(event)
                     chunks.append(outgoing.delta)
+                elif event["type"] == "status":
+                    if x_chat_status_events != "1":
+                        continue
+                    outgoing = ChatStatusEvent.model_validate(event)
                 else:
                     outgoing = ChatSourcesEvent.model_validate(event)
                 yield outgoing.model_dump_json() + "\n"

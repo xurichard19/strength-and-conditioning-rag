@@ -181,11 +181,12 @@ function detailFixture(write: () => Promise<unknown>, fields: TestModule = {}) {
       useEffect: fn => { const i = cursor++; if (!(i in slots)) { slots[i] = true; cleanups.push(fn()); } },
     },
     'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react-native': { Ellipsis: 'icon' },
+    'expo-linear-gradient': { LinearGradient: 'gradient' },
     'react-native': { View: 'view', Pressable: 'button', ScrollView: 'scroll', StyleSheet: { create: value => value } },
     './action-sheet': { ActionSheet: 'sheet' }, './ui': { AppText: 'text', OutlineButton: 'outline' },
     '@/lib/calendar': calendar, '@/lib/errors': { errorMessage: error => error.message },
     '@/services/api': { backendFor: owner => ({ deleteSportsWorkout: async (id: string) => { calls.push({ owner, id }); return write(); } }) },
-    '@/state/app-context': { useApp: () => ({ colors: {}, invalidateCalendar: (...args: string[]) => invalidations.push(args) }) },
+    '@/state/app-context': { useApp: () => ({ colors: { endurance: '#63E6E2' }, invalidateCalendar: (...args: string[]) => invalidations.push(args) }) },
   });
   const expand = (node: TestValue): TestValue => {
     if (!node || typeof node !== 'object') return node;

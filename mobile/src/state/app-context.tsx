@@ -576,13 +576,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const savedId = await client.streamChat(question, delta => {
         if (!current()) return;
-        run.rows[1] = { ...run.rows[1], text: run.rows[1].text + delta };
+        run.rows[1] = { ...run.rows[1], text: run.rows[1].text + delta, progress: undefined };
         publish();
       }, sources => {
         if (!current()) return;
         run.rows[1] = { ...run.rows[1], sources };
         publish();
-      }, run.controller.signal, id, savedMessage);
+      }, run.controller.signal, id, savedMessage, stage => {
+        if (!current() || run.rows[1].text) return;
+        run.rows[1] = { ...run.rows[1], progress: stage };
+        publish();
+      });
       if (!current()) return;
       savedReply = true;
       run.confirmed = true;
@@ -593,6 +597,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       cache.invalidateMessages(id);
       run.rows[1] = { ...run.rows[1], pending: false, basis: 'Reply not confirmed saved.' };
     } finally {
+      run.rows[1] = { ...run.rows[1], progress: undefined };
+      publish();
       await reconcileChat(id, run, client, current, savedReply);
     }
   };
