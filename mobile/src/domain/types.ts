@@ -91,6 +91,7 @@ export type ProgressMetric = {
 };
 
 export type ChatSource = {
+  content?: string;
   title?: string;
   doi?: string;
   document_id?: string;

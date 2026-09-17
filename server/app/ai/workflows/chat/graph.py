@@ -82,7 +82,8 @@ async def stream_chat(
                 "retries_left": policy.retries,
                 "research_deadline": monotonic() + policy.deadline_seconds - ANSWER_TIMEOUT_SECONDS,
                 "sources": [], "searches": [], "warnings": []},
-            context=context, config={"recursion_limit": 20},
+            context=context, config={"recursion_limit": 20,
+                "tags": ["Quick Chat" if mode == "quick" else "Deep Research Chat"]},
             stream_mode=["messages", "updates", "custom"], version="v2",
         ):
             if part["type"] == "messages":

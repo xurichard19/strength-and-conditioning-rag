@@ -298,6 +298,17 @@ class ChatWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events, [{'type': 'status', 'stage': 'thinking'}, {'type': 'text', 'delta': 'answer'},
             {'type': 'sources', 'sources': []}, {'type': 'done'}])
 
+    async def test_trace_tags_match_each_request_mode(self):
+        configs = []
+        async def parts(*args, **kwargs):
+            configs.append(kwargs['config'])
+            yield {'type': 'custom', 'data': {'type': 'status', 'stage': 'thinking'}}
+        for mode in ('quick', 'deep', 'quick'):
+            _ = [event async for event in graph.stream_chat(SimpleNamespace(astream=parts), 'question', CONTEXT, mode)]
+        self.assertEqual([config['tags'] for config in configs],
+            [['Quick Chat'], ['Deep Research Chat'], ['Quick Chat']])
+        self.assertTrue(all(config['recursion_limit'] == 20 for config in configs))
+
     async def test_deadline_cancels_work_and_does_not_emit_done(self):
         cancelled = asyncio.Event()
         async def parts(*args, **kwargs):

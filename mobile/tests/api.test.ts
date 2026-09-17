@@ -1069,7 +1069,7 @@ test('a late profile load from the previous user cannot overwrite a new account'
 });
 
 // Verify the actual ScrollView/RefreshControl props and loading lifecycle without native UI.
-function refreshScreenFixture(onRefresh?: () => Promise<void>) {
+function refreshScreenFixture(onRefresh?: () => Promise<void>, state = { refreshing: false }) {
   const slots: TestValue[] = []; let cursor = 0;
   const { Screen } = load('components/ui.tsx', {
     react: {
@@ -1088,7 +1088,7 @@ function refreshScreenFixture(onRefresh?: () => Promise<void>) {
     '@/lib/errors': { errorMessage: (error, fallback) => error.message || fallback },
     '@/state/app-context': { useApp: () => ({ colors: {}, previewMode: false }) },
   });
-  const render = () => { cursor = 0; return Screen({ title: 'Test', onRefresh, children: null }); };
+  const render = () => { cursor = 0; return Screen({ title: 'Test', onRefresh, refreshing: state.refreshing, children: 'Cached content' }); };
   return {
     scroll: () => render().props.children.find((node: TestNode) => node.type === 'scroll').props,
     output: () => JSON.stringify(render()),
@@ -1104,10 +1104,14 @@ test('pull-to-refresh stays spinning until completion and blocks duplicate pulls
   assert.equal(screen.scroll().refreshControl.props.refreshing, false);
   const pending = screen.scroll().refreshControl.props.onRefresh();
   assert.equal(screen.scroll().refreshControl.props.refreshing, true);
+  assert.equal(screen.scroll().style.opacity, 0.55);
+  assert.equal(screen.scroll().accessibilityState.busy, true);
+  assert.match(screen.output(), /Cached content/);
   await screen.scroll().refreshControl.props.onRefresh();
   assert.equal(calls, 1);
   finish(); await pending;
   assert.equal(screen.scroll().refreshControl.props.refreshing, false);
+  assert.equal(screen.scroll().style, undefined);
 });
 
 test('pull-to-refresh stops on failure, shows the error, and allows retry', async () => {
@@ -1115,11 +1119,24 @@ test('pull-to-refresh stops on failure, shows the error, and allows retry', asyn
   const screen = refreshScreenFixture(async () => { if (fail) throw new Error('offline'); });
   await screen.scroll().refreshControl.props.onRefresh();
   assert.equal(screen.scroll().refreshControl.props.refreshing, false);
+  assert.equal(screen.scroll().style, undefined);
   assert.match(screen.output(), /offline/);
   fail = false;
   await screen.scroll().refreshControl.props.onRefresh();
   assert.doesNotMatch(screen.output(), /offline/);
   assert.equal(refreshScreenFixture().scroll().refreshControl, undefined);
+});
+
+test('cache invalidation refresh dims existing content without needing a pull gesture', () => {
+  const state = { refreshing: true };
+  const screen = refreshScreenFixture(async () => {}, state);
+  assert.equal(screen.scroll().refreshControl.props.refreshing, true);
+  assert.equal(screen.scroll().style.opacity, 0.55);
+  assert.match(screen.output(), /Cached content/);
+  state.refreshing = false;
+  assert.equal(screen.scroll().refreshControl.props.refreshing, false);
+  assert.equal(screen.scroll().style, undefined);
+  assert.equal(screen.scroll().accessibilityState.busy, false);
 });
 
 test('You refreshes account data, Calendar refreshes ranges, other training tabs remain previews', () => {

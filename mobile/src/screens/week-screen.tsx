@@ -93,9 +93,9 @@ function CalendarFeedback({ loading, error, hasData, onRetry }: {
 }) {
   const { colors } = useApp();
   return <>
-    {loading ? <View accessibilityLiveRegion="polite" style={styles.loading}>
+    {loading && !hasData ? <View accessibilityLiveRegion="polite" style={styles.loading}>
       <ActivityIndicator color={colors.tint} size="small" />
-      <AppText tone="secondary">{hasData ? 'Updating calendar…' : 'Loading calendar…'}</AppText>
+      <AppText tone="secondary">Loading calendar…</AppText>
     </View> : null}
     {error ? <Card style={styles.selectedCard}>
       <AppText style={{ color: colors.danger }}>{error}</AppText>
@@ -187,7 +187,7 @@ export default function WeekScreen() {
   const step = (direction: number) => setSelectedDate(view === 'month' ? shiftMonth(selectedDate, direction) : shiftDays(selectedDate, direction * 7));
 
   return (
-    <Screen title="Calendar" subtitle="Your workouts and sports sessions" context={`training calendar for ${selectedDate}`} wash="week" onRefresh={refresh} preview={false}>
+    <Screen title="Calendar" subtitle="Your workouts and sports sessions" context={`training calendar for ${selectedDate}`} wash="week" onRefresh={refresh} refreshing={loading && Boolean(data)} preview={false}>
       <View style={styles.toolbar}>
         <View accessibilityRole="tablist" accessibilityLabel="Calendar view" style={[styles.viewSwitch, { backgroundColor: colors.fill }]}>
           {(['week', 'month'] as const).map((option) => <Pressable key={option} accessibilityRole="tab"

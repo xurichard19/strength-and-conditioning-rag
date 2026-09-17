@@ -5,6 +5,7 @@ from hashlib import sha256
 from itertools import chain
 import logging
 from pathlib import PurePosixPath
+import re
 from typing import Literal
 
 import chromadb
@@ -77,9 +78,13 @@ async def search_research_docs(query: str, top_k: int) -> list[Source]:
         if not text.strip():
             continue
         metadata = metadata or {}
-        title = metadata.get("title") or PurePosixPath(str(metadata.get("source", "research document")).replace("\\", "/")).name
+        filename = PurePosixPath(str(metadata.get("source", "research document")).replace("\\", "/")).name
+        # research filenames encode doi slashes as colons; remove only the file extension
+        candidate = re.sub(r"\.(pdf|txt|md|docx|html)$", "", filename, flags=re.IGNORECASE)
+        doi = metadata.get("doi") or (candidate.replace(":", "/") if re.fullmatch(r"10\.\d{4,9}:\S+", candidate) else None)
+        title = metadata.get("title") or doi or filename
         sources.append(Source(source_type="research", document_id=str(identifier),
-            doi=metadata.get("doi") or None, title=str(title), content=text.strip()))
+            doi=doi, title=str(title), content=text.strip()))
     return sources
 
 

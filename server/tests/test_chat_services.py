@@ -71,6 +71,25 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sources[0].content, passage.strip())
         query.assert_awaited_once_with(query_embeddings=[[.1, .2]], n_results=3, include=['documents', 'metadatas'])
 
+    async def test_research_recovers_doi_from_filename_and_preserves_explicit_metadata(self):
+        metadata = [
+            {'source': 'papers/10.1234:journal.2026.001.pdf'},
+            {'source': r'C:\papers\10.5678:section:paper.PDF'},
+            {'source': '10.1234:inferred.pdf', 'doi': '10.9999/explicit', 'title': 'Paper title'},
+            {'source': 'notes:recovery.pdf'},
+            None,
+        ]
+        query = AsyncMock(return_value={'ids': [[str(i) for i in range(5)]],
+            'documents': [['full excerpt'] * 5], 'metadatas': [metadata]})
+        with patch.object(search, 'research_collection', new=AsyncMock(return_value=SimpleNamespace(query=query))), \
+             patch.object(search, '_research_embeddings', return_value=[[.1, .2]]):
+            sources = await search.search_research_docs('recovery', 5)
+        self.assertEqual([source.doi for source in sources],
+            ['10.1234/journal.2026.001', '10.5678/section/paper', '10.9999/explicit', None, None])
+        self.assertEqual(sources[0].title, '10.1234/journal.2026.001')
+        self.assertEqual(sources[2].title, 'Paper title')
+        self.assertTrue(all(source.content == 'full excerpt' for source in sources))
+
     async def test_cached_collection_does_not_acquire_initialization_lock(self):
         collection, lock = object(), AsyncMock()
         with patch.object(search, '_collection', collection), patch.object(search, '_collection_lock', lock):
