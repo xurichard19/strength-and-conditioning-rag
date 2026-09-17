@@ -21,13 +21,15 @@ const modules: TestModule = {
   'react-native': { Text: 'text', TextInput: 'input', Modal: 'modal', View: 'view', Pressable: 'button', Platform: { OS: 'ios' },
     Keyboard: { dismiss: () => dismissals++ }, StyleSheet: { create: value => value } },
   'expo-router': { useLocalSearchParams: () => ({}), useFocusEffect: fn => { onFocus = fn; } },
-  'expo-linking': {}, 'expo-linear-gradient': {}, 'lucide-react-native': {}, 'react-native-safe-area-context': {},
+  'expo-linking': { openURL: async (url: string) => { openedUrls.push(url); } }, 'expo-linear-gradient': {}, 'lucide-react-native': { ArrowUpRight: 'external-arrow' }, 'react-native-safe-area-context': {},
   '@/state/app-context': { useApp: () => app }, '@/design/tokens': { fonts: {}, radius: {}, shadow: {} },
   '@/lib/errors': {}, '@/lib/links': {}, '@/data/mock': { quickQuestions: [] }, '@/components/conversation-menu': {},
   '@/components/chat-mode-selector': { ChatModeSelector: 'mode-selector' },
   '@/components/chat-progress': { ChatProgress: 'progress' },
 } satisfies Stubs;
 const load = (file: string) => loadModule(file, modules);
+const openedUrls: string[] = [];
+modules['@/lib/links'] = load('lib/links.ts');
 modules['@/components/ui'] = load('components/ui.tsx');
 modules['./ui'] = modules['@/components/ui'];
 const selection = load('components/message-text-selection.tsx');
@@ -151,4 +153,39 @@ test('selection uses rendered markdown text but preserves literal fenced/inline 
   reset(); app.chatMessages = [{ id: 'user', role: 'user', text: '# Keep **my** original text' }];
   messageText('Keep').props.onLongPress();
   assert.equal(selectedInput()!.props.defaultValue, '# Keep **my** original text');
+});
+
+test('sources open DOI/web links separately from full selectable excerpts', () => {
+  reset(); openedUrls.length = 0;
+  app.chatMessages = [{ id: 'reply', role: 'assistant', text: 'Answer', sources: [
+    { source_type: 'research', doi: '10.1234/paper#part?', content: 'Research excerpt\n' + 'Full passage. '.repeat(500) },
+    { source_type: 'web', title: 'Online article', url: 'https://example.org/article', content: 'Web excerpt' },
+    { source_type: 'research', title: 'paper.pdf', document_id: 'chunk-3' },
+  ] }];
+  const button = (label: string) => nodes(render()).find(node => node.props.accessibilityLabel === label)!;
+  button('Open 3 sources').props.onPress();
+  const sourceLink = button('Open source: 10.1234/paper#part?');
+  assert.equal(sourceLink.props.children.type, 'external-arrow');
+  assert.equal(sourceLink.props.style[1].borderWidth, 1.5);
+  assert.equal(sourceLink.props.style[0].width, 44);
+  button('Open source: 10.1234/paper#part?').props.onPress();
+  button('Open source: Online article').props.onPress();
+  assert.deepEqual(openedUrls, ['https://doi.org/10.1234/paper%23part%3F', 'https://example.org/article']);
+  button('Read excerpt from 10.1234/paper#part?').props.onPress();
+  assert.equal(nodes(render()).filter(node => node.type === 'modal').length, 1);
+  assert.ok(nodes(render()).find(node => node.props.selectable && node.props.children === app.chatMessages[0].sources![0].content!.trim()));
+  button('Back to sources').props.onPress();
+  button('Read excerpt from Online article').props.onPress();
+  assert.ok(nodes(render()).find(node => node.props.selectable && node.props.children === 'Web excerpt'));
+  nodes(render()).find(node => node.type === 'modal')!.props.onRequestClose();
+  button('Read excerpt from paper.pdf').props.onPress();
+  assert.equal(button('Open original source'), undefined);
+  assert.ok(nodes(render()).find(node => node.props.children === 'No excerpt is available for this source.'));
+  button('Close sources').props.onPress();
+  assert.equal(nodes(render()).some(node => node.type === 'modal'), false);
+  button('Open 3 sources').props.onPress();
+  assert.ok(button('Read excerpt from Online article'));
+  const blur = onFocus();
+  blur();
+  assert.equal(nodes(render()).some(node => node.type === 'modal'), false);
 });

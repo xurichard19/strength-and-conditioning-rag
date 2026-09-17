@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as Linking from 'expo-linking';
-import { ArrowUp, BookOpen, ChevronRight, ExternalLink, Globe2, Menu, MoreHorizontal, X } from 'lucide-react-native';
+import { ArrowLeft, ArrowUp, ArrowUpRight, BookOpen, ChevronRight, Globe2, Menu, MoreHorizontal, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,7 +18,7 @@ import { webUrl } from '@/lib/links';
 import { useApp } from '@/state/app-context';
 
 function sourceUrl(source: ChatSource) {
-  return webUrl(source.url ?? (source.doi ? `https://doi.org/${source.doi}` : null));
+  return webUrl(source.url ?? (source.doi ? `https://doi.org/${encodeURI(source.doi).replace(/#/g, '%23').replace(/\?/g, '%3F')}` : null));
 }
 
 function sourceMeta(source: ChatSource) {
@@ -28,36 +28,41 @@ function sourceMeta(source: ChatSource) {
 }
 
 function sourceTitle(source: ChatSource, index: number) {
-  if (source.source_type === 'research') return source.doi || `Research source ${index + 1}`;
+  if (source.source_type === 'research') return source.doi || source.title?.trim() || `Research source ${index + 1}`;
   return source.title?.trim() || `Web source ${index + 1}`;
 }
 
-function SourceRow({ source, index, last }: { source: ChatSource; index: number; last: boolean }) {
+function SourceRow({ source, index, last, onExcerpt }: { source: ChatSource; index: number; last: boolean; onExcerpt: () => void }) {
   const { colors } = useApp();
   const url = sourceUrl(source);
   const research = source.source_type === 'research';
   const Icon = research ? BookOpen : Globe2;
   const title = sourceTitle(source, index);
   return (
-    <Pressable
-      accessibilityRole={url ? 'link' : undefined}
-      accessibilityLabel={`${title}, ${sourceMeta(source)}`}
-      disabled={!url}
-      onPress={() => { if (url) void Linking.openURL(url).catch(() => undefined); }}
-      style={[styles.sourceRow, !last && { borderBottomColor: colors.separator, borderBottomWidth: StyleSheet.hairlineWidth }]}>
+    <View style={[styles.sourceRow, !last && { borderBottomColor: colors.separator, borderBottomWidth: StyleSheet.hairlineWidth }]}>
       <View style={[styles.sourceIcon, { backgroundColor: colors.tintSoft }]}><Icon color={colors.tintText} size={14} strokeWidth={1.9} /></View>
       <View style={styles.sourceCopy}>
         <AppText weight="medium" numberOfLines={2} style={styles.sourceTitle}>{title}</AppText>
         <AppText tone="secondary" numberOfLines={1} style={styles.sourceMeta}>{sourceMeta(source)}</AppText>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Read excerpt from ${title}`} onPress={onExcerpt} style={styles.sourceExcerptButton}>
+          <AppText tone="tint" weight="medium" style={styles.sourceTitle}>Read excerpt</AppText>
+        </Pressable>
       </View>
-      {url ? <ExternalLink color={colors.textTertiary} size={14} /> : null}
-    </Pressable>
+      {url ? <Pressable accessibilityRole="link" accessibilityLabel={`Open source: ${title}`} onPress={() => void Linking.openURL(url).catch(() => undefined)} style={[styles.sourceLink, styles.sourceOpenButton, { borderColor: colors.tintText }]}>
+        <ArrowUpRight color={colors.tintText} size={22} strokeWidth={2} />
+      </Pressable> : null}
+    </View>
   );
 }
 
 function MessageSources({ sources }: { sources: ChatSource[] }) {
   const { colors } = useApp();
   const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<number | null>(null);
+  const close = () => { setOpen(false); setSelected(null); };
+  const source = selected === null ? undefined : sources[selected];
+  const url = source ? sourceUrl(source) : null;
+  useFocusEffect(useCallback(() => () => { setOpen(false); setSelected(null); }, []));
   const label = `${sources.length} source${sources.length === 1 ? '' : 's'}`;
   return (
     <View style={styles.sources}>
@@ -71,22 +76,29 @@ function MessageSources({ sources }: { sources: ChatSource[] }) {
         <ChevronRight color={colors.textTertiary} size={14} />
       </Pressable>
       {open ? (
-        <Modal animationType="fade" onRequestClose={() => setOpen(false)} statusBarTranslucent transparent visible>
+        <Modal animationType="fade" onRequestClose={() => selected === null ? close() : setSelected(null)} statusBarTranslucent transparent visible>
           <View accessibilityViewIsModal style={styles.sourceModal}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Close sources" onPress={() => setOpen(false)} style={styles.sourceBackdrop} />
-            <View style={[styles.sourceSheet, { backgroundColor: colors.elevated }]}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close sources" onPress={close} style={styles.sourceBackdrop} />
+            <SafeAreaView edges={['bottom']} style={[styles.sourceSheet, { backgroundColor: colors.elevated }]}>
               <View style={[styles.sourceSheetHeader, { borderBottomColor: colors.separator }]}>
-                <View style={[styles.sourceSheetIcon, { backgroundColor: colors.tintSoft }]}><BookOpen color={colors.tintText} size={18} strokeWidth={1.9} /></View>
+                {source ? <Pressable accessibilityRole="button" accessibilityLabel="Back to sources" onPress={() => setSelected(null)} style={styles.sourceLink}><ArrowLeft color={colors.tintText} size={20} /></Pressable>
+                  : <View style={[styles.sourceSheetIcon, { backgroundColor: colors.tintSoft }]}><BookOpen color={colors.tintText} size={18} strokeWidth={1.9} /></View>}
                 <View style={styles.sourceSheetCopy}>
-                  <AppText weight="bold" style={styles.sourceSheetTitle}>Sources</AppText>
-                  <AppText tone="secondary" style={styles.sourceSheetSubtitle}>{label} used for this answer</AppText>
+                  <AppText weight="bold" style={styles.sourceSheetTitle}>{source ? 'Source excerpt' : 'Sources'}</AppText>
+                  <AppText tone="secondary" style={styles.sourceSheetSubtitle}>{source ? sourceMeta(source) : `${label} retrieved for this answer`}</AppText>
                 </View>
-                <Pressable accessibilityRole="button" accessibilityLabel="Close sources" onPress={() => setOpen(false)} style={[styles.sourceClose, { backgroundColor: colors.fill }]}><X color={colors.textSecondary} size={18} /></Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel="Close sources" onPress={close} style={[styles.sourceClose, { backgroundColor: colors.fill }]}><X color={colors.textSecondary} size={18} /></Pressable>
               </View>
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sourceList}>
-                {sources.map((source, index) => <SourceRow key={`${source.doi ?? source.url ?? source.title ?? 'source'}-${index}`} source={source} index={index} last={index === sources.length - 1} />)}
+              <ScrollView key={selected ?? 'list'} contentContainerStyle={styles.sourceList}>
+                {source ? <View style={styles.sourceExcerpt}>
+                  <AppText selectable weight="bold">{sourceTitle(source, selected ?? 0)}</AppText>
+                  {url ? <Pressable accessibilityRole="link" accessibilityLabel="Open original source" onPress={() => void Linking.openURL(url).catch(() => undefined)} style={styles.sourceExcerptButton}>
+                    <AppText tone="tint">{source.doi ? `DOI ${source.doi}` : url} ↗</AppText>
+                  </Pressable> : null}
+                  <AppText selectable style={styles.sourceExcerptText}>{source.content?.trim() || 'No excerpt is available for this source.'}</AppText>
+                </View> : sources.map((source, index) => <SourceRow key={`${source.document_id ?? source.doi ?? source.url ?? 'source'}-${index}`} source={source} index={index} last={index === sources.length - 1} onExcerpt={() => setSelected(index)} />)}
               </ScrollView>
-            </View>
+            </SafeAreaView>
           </View>
         </Modal>
       ) : null}
@@ -239,6 +251,11 @@ const styles = StyleSheet.create({
   sourceCopy: { flex: 1 },
   sourceTitle: { fontSize: 12, lineHeight: 16 },
   sourceMeta: { marginTop: 2, fontSize: 10, lineHeight: 14 },
+  sourceLink: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  sourceOpenButton: { borderWidth: 1.5, borderRadius: 13, flexShrink: 0 },
+  sourceExcerptButton: { minHeight: 44, justifyContent: 'center' },
+  sourceExcerpt: { paddingVertical: 18, gap: 8 },
+  sourceExcerptText: { fontSize: 15, lineHeight: 23 },
   quickArea: { marginTop: 8, gap: 9 },
   quickTitle: { fontSize: 12, marginLeft: 3 },
   quickList: { gap: 8 },

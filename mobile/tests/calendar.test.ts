@@ -198,6 +198,12 @@ test('screen requests only its week/month and distinguishes loading, errors, and
   const loading = fixture([], { data: undefined, loading: true });
   assert.match(loading.text(), /Loading calendar/);
   assert.doesNotMatch(loading.text(), /No workouts planned/);
+  assert.equal(loading.render().props.refreshing, false);
+  const refreshing = fixture([{ id: 's', kind: 'sport', date: '2026-01-31', title: 'Boxing', status: 'planned' }], { loading: true });
+  assert.equal(refreshing.render().props.refreshing, true);
+  assert.match(refreshing.text(), /Boxing/);
+  assert.doesNotMatch(refreshing.text(), /Updating calendar/);
+  assert.equal(fixture().render().props.refreshing, false);
   const failed = fixture([], { data: undefined, error: 'offline' });
   assert.match(failed.text(), /offline/);
   assert.match(failed.text(), /Retry calendar/);

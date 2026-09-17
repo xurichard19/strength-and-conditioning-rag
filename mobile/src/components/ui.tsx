@@ -91,6 +91,7 @@ export function Screen({
   contentContainerStyle,
   scrollProps,
   onRefresh,
+  refreshing: externalRefreshing = false,
   preview,
 }: {
   title: string;
@@ -101,12 +102,14 @@ export function Screen({
   contentContainerStyle?: StyleProp<ViewStyle>;
   scrollProps?: ScrollViewProps;
   onRefresh?: () => Promise<void>;
+  refreshing?: boolean;
   preview?: boolean;
 }) {
   const { colors, notice, previewMode } = useApp();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const refreshPending = useRef(false);
+  const refreshingContent = refreshing || externalRefreshing;
   const refresh = async () => {
     if (!onRefresh || refreshPending.current) return;
     refreshPending.current = true;
@@ -122,9 +125,11 @@ export function Screen({
       <ScrollView
         showsVerticalScrollIndicator={false}
         alwaysBounceVertical={Boolean(onRefresh)}
-        refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={refresh}
+        refreshControl={onRefresh ? <RefreshControl refreshing={refreshingContent} onRefresh={refresh}
           tintColor={colors.tint} colors={[colors.tint]} progressBackgroundColor={colors.card} /> : undefined}
         contentContainerStyle={[styles.screenContent, contentContainerStyle]}
+        style={refreshingContent ? styles.refreshingContent : undefined}
+        accessibilityState={{ busy: refreshingContent }}
         {...scrollProps}>
         <View style={styles.pageHeader}>
           <View style={styles.pageHeaderCopy}>
@@ -299,6 +304,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   wash: { position: 'absolute', top: 0, left: 0, right: 0, height: 290 },
   screenContent: { paddingHorizontal: 16, paddingBottom: 130, gap: 10 },
+  refreshingContent: { opacity: 0.55 },
   pageHeader: { minHeight: 92, paddingTop: 15, paddingBottom: 12, flexDirection: 'row', alignItems: 'flex-end', gap: 12 },
   pageHeaderCopy: { flex: 1 },
   largeTitle: { fontSize: 34, lineHeight: 36, letterSpacing: -1.2 },
