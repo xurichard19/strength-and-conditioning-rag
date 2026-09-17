@@ -1,6 +1,6 @@
 import { SquarePen, X } from 'lucide-react-native';
-import { useState } from 'react';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { errorMessage } from '@/lib/errors';
@@ -67,10 +67,20 @@ export function ConversationActions({ onClose }: { onClose: () => void }) {
 /** Render only nearby sidebar rows; opening/closing leaves the account's bounded cache intact. */
 export function ConversationSidebar({ onClose, onSelect }: { onClose: () => void; onSelect: (id?: string, title?: string) => void }) {
   const { colors, conversations, conversationsLoading, conversationsError, hasOlderConversations, refreshConversations } = useApp();
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshPending = useRef(false);
+  const refresh = async () => {
+    if (refreshPending.current) return;
+    refreshPending.current = true;
+    setRefreshing(true);
+    try { await refreshConversations(false, true); }
+    finally { refreshPending.current = false; setRefreshing(false); }
+  };
   return <Modal transparent visible animationType="fade" onRequestClose={onClose}>
     {/* Measure this modal's safe area independently; keep visual spacing outside inset padding. */}
     <SafeAreaProvider style={{ flex: 1, flexDirection: 'row', backgroundColor: '#0008' }} accessibilityViewIsModal>
       <SafeAreaView style={{ width: '85%', maxWidth: 340, backgroundColor: colors.background, paddingHorizontal: 20, paddingBottom: 20 }}>
+        <View style={{ flex: 1, opacity: refreshing ? 0.55 : 1 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
           <AppText weight="bold">Conversations</AppText>
           <Pressable accessibilityRole="button" accessibilityLabel="Close conversations" onPress={onClose} style={{ padding: 12 }}><X color={colors.text} size={22} /></Pressable>
@@ -79,15 +89,21 @@ export function ConversationSidebar({ onClose, onSelect }: { onClose: () => void
           <SquarePen color={colors.text} size={20} /><AppText weight="medium">New chat</AppText>
         </Pressable>
         <FlatList data={conversations} keyExtractor={item => item.id}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1 }} alwaysBounceVertical
+          accessibilityState={{ busy: conversationsLoading || refreshing }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh}
+            tintColor={colors.tint} colors={[colors.tint]} progressBackgroundColor={colors.card} />}
           renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => onSelect(item.id, item.title)} style={{ paddingVertical: 16 }}>
             <AppText weight="medium">{item.title}</AppText>
           </Pressable>}
-          ListHeaderComponent={conversationsError ? <Pressable onPress={() => void refreshConversations()}><AppText>{conversationsError} Tap to retry.</AppText></Pressable> : null}
+          ListHeaderComponent={conversationsError ? <Pressable onPress={() => void refresh()}><AppText>{conversationsError} Tap to retry.</AppText></Pressable> : null}
           ListEmptyComponent={!conversationsLoading && !conversationsError ? <AppText tone="secondary">Your conversations appear here after your first message.</AppText> : null}
           ListFooterComponent={<>
-            {conversationsLoading ? <ActivityIndicator color={colors.tint} /> : null}
+            {conversationsLoading && !refreshing ? <ActivityIndicator color={colors.tint} /> : null}
             {hasOlderConversations ? <Pressable disabled={conversationsLoading} onPress={() => void refreshConversations(true)} style={{ paddingVertical: 16 }}><AppText tone="tint">Load older conversations</AppText></Pressable> : null}
           </>} />
+        </View>
       </SafeAreaView>
       <Pressable accessibilityRole="button" accessibilityLabel="Close conversations" style={{ flex: 1 }} onPress={onClose} />
     </SafeAreaProvider>

@@ -85,9 +85,10 @@ export function createChatCache(options: { now?: () => number; ttl?: number; max
     peekList, peekMessages, peekConversation,
     /** Invalidate pending reads too: old sessions and pre-mutation results cannot refill the cache. */
     clear() { metadata.clear(); windows.clear(); lists.clear(); },
-    async loadList(api: Api, older = false) {
+    async loadList(api: Api, older = false, force = false) {
       const list = lists.get('list');
-      if (reusable(list, older)) return peekList();
+      if (force && !older) lists.markStale();
+      if (reusable(list, older, force)) return peekList();
       const cursor = older ? list?.cursor : undefined;
       return lists.shared(cursor ?? '', async valid => {
         const rows = await api.getConversations(cursor);

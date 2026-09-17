@@ -183,6 +183,9 @@ test('sources open DOI/web links separately from full selectable excerpts', () =
   assert.equal(sourceLink.props.children.type, 'external-arrow');
   assert.equal(sourceLink.props.style[1].borderWidth, 1.5);
   assert.equal(sourceLink.props.style[0].width, 44);
+  assert.equal(sourceLink.props.style[1].width, 36);
+  assert.equal(sourceLink.props.hitSlop, 4);
+  assert.equal(sourceLink.props.children.props.size, 18);
   button('Open source: 10.1234/paper#part?').props.onPress();
   button('Open source: Online article').props.onPress();
   assert.deepEqual(openedUrls, ['https://doi.org/10.1234/paper%23part%3F', 'https://example.org/article']);

@@ -40,7 +40,7 @@ function SourceRow({ source, index, last, onExcerpt }: { source: ChatSource; ind
   const title = sourceTitle(source, index);
   return (
     <View style={[styles.sourceRow, !last && { borderBottomColor: colors.separator, borderBottomWidth: StyleSheet.hairlineWidth }]}>
-      <View style={[styles.sourceIcon, { backgroundColor: colors.tintSoft }]}><Icon color={colors.tintText} size={14} strokeWidth={1.9} /></View>
+      <View style={[styles.sourceIcon, { backgroundColor: colors.tintSoft }]}><Icon color={colors.tintText} size={22} strokeWidth={1.9} /></View>
       <View style={styles.sourceCopy}>
         <AppText weight="medium" numberOfLines={2} style={styles.sourceTitle}>{title}</AppText>
         <AppText tone="secondary" numberOfLines={1} style={styles.sourceMeta}>{sourceMeta(source)}</AppText>
@@ -48,8 +48,8 @@ function SourceRow({ source, index, last, onExcerpt }: { source: ChatSource; ind
           <AppText tone="tint" weight="medium" style={styles.sourceTitle}>Read excerpt</AppText>
         </Pressable>
       </View>
-      {url ? <Pressable accessibilityRole="link" accessibilityLabel={`Open source: ${title}`} onPress={() => void Linking.openURL(url).catch(() => undefined)} style={[styles.sourceLink, styles.sourceOpenButton, { borderColor: colors.tintText }]}>
-        <ArrowUpRight color={colors.tintText} size={22} strokeWidth={2} />
+      {url ? <Pressable accessibilityRole="link" accessibilityLabel={`Open source: ${title}`} hitSlop={4} onPress={() => void Linking.openURL(url).catch(() => undefined)} style={[styles.sourceLink, styles.sourceOpenButton, { borderColor: colors.tintText }]}>
+        <ArrowUpRight color={colors.tintText} size={18} strokeWidth={2} />
       </Pressable> : null}
     </View>
   );
@@ -247,12 +247,12 @@ const styles = StyleSheet.create({
   sourceClose: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   sourceList: { paddingHorizontal: 16, paddingBottom: 4 },
   sourceRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9 },
-  sourceIcon: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  sourceIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   sourceCopy: { flex: 1 },
   sourceTitle: { fontSize: 12, lineHeight: 16 },
   sourceMeta: { marginTop: 2, fontSize: 10, lineHeight: 14 },
   sourceLink: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  sourceOpenButton: { borderWidth: 1.5, borderRadius: 13, flexShrink: 0 },
+  sourceOpenButton: { width: 36, height: 36, borderWidth: 1.5, borderRadius: 11, flexShrink: 0 },
   sourceExcerptButton: { minHeight: 44, justifyContent: 'center' },
   sourceExcerpt: { paddingVertical: 18, gap: 8 },
   sourceExcerptText: { fontSize: 15, lineHeight: 23 },

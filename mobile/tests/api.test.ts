@@ -16,7 +16,7 @@ const unusedReads: CacheApi = { getConversations: unexpectedRead, getConversatio
 function createChatCache(options?: Parameters<typeof chatCache>[0]) {
   const cache = chatCache(options);
   return { ...cache,
-    loadList: (api: Pick<CacheApi, 'getConversations'>, older = false) => cache.loadList({ ...unusedReads, ...api }, older),
+    loadList: (api: Pick<CacheApi, 'getConversations'>, older = false, force = false) => cache.loadList({ ...unusedReads, ...api }, older, force),
     loadConversation: (api: Pick<CacheApi, 'getConversation'>, id: string) => cache.loadConversation({ ...unusedReads, ...api }, id),
     loadMessages: (api: Pick<CacheApi, 'getMessages'>, id: string, older = false, force = false) => cache.loadMessages({ ...unusedReads, ...api }, id, older, force),
   };
@@ -64,12 +64,10 @@ test('late older pages cannot splice a gap into a newly refreshed history window
   assert.equal(cache.peekMessages('thread')!.rows[0].id, '0200');
   assert.equal(cache.peekMessages('thread')!.rows.length, 20);
 
-  let clock = 0;
-  const list = createChatCache({ now: () => clock });
+  const list = createChatCache({ now: () => 0 });
   await list.loadList({ getConversations: async () => page(100, 50, convo) });
   const olderList = list.loadList({ getConversations: () => new Promise(resolve => { finish = resolve; }) }, true);
-  clock = 60_001;
-  await list.loadList({ getConversations: async () => page(200, 50, convo) });
+  await list.loadList({ getConversations: async () => page(200, 50, convo) }, false, true);
   finish(page(50, 50, convo)); await olderList;
   assert.equal(list.peekList()!.rows.at(-1)!.id, '0200');
   assert.equal(list.peekList()!.rows.length, 50);
@@ -102,6 +100,29 @@ test('cache stores empty lists, coalesces reads, and refreshes only after expiry
   finish([convo('a')]); await refresh;
   assert.equal(calls, 2);
   assert.equal((await cache.loadConversation(unusedReads, 'a'))?.id, 'a');
+});
+
+test('forced sidebar refresh bypasses TTL, shares requests, and preserves messages and failed reads', async () => {
+  const cache = createChatCache({ now: () => 0 });
+  await cache.loadList({ getConversations: async () => [convo('a')] });
+  await cache.loadMessages({ getMessages: async () => [savedMessage('m')] }, 'a');
+  let calls = 0;
+  const pending = Promise.withResolvers<Conversation[]>();
+  const api = { getConversations: () => { calls++; return pending.promise; } };
+  const first = cache.loadList(api, false, true);
+  const second = cache.loadList(api, false, true);
+  assert.equal(calls, 1);
+  assert.equal(cache.peekList()!.rows[0].title, 'a');
+  pending.resolve([convo('a', 'Renamed')]);
+  await Promise.all([first, second]);
+  assert.equal(cache.peekList()!.rows[0].title, 'Renamed');
+  await cache.loadList({ getConversations: unexpectedRead });
+  await assert.rejects(cache.loadList({ getConversations: async () => { throw new Error('offline'); } }, false, true), /offline/);
+  assert.equal(cache.peekList()!.rows[0].title, 'Renamed');
+  assert.equal(cache.peekMessages('a')!.rows[0].id, 'm');
+  // A failed refresh leaves the list stale so reopening retries instead of hiding the failure behind TTL.
+  await cache.loadList({ getConversations: async () => [] });
+  assert.equal(cache.peekList()!.rows.length, 0);
 });
 
 test('cache rename and deletion defeat older reads without refreshing unrelated list freshness', async () => {
@@ -1170,7 +1191,8 @@ test('You refreshes account data, Calendar refreshes ranges, other training tabs
 
 test('sidebar owns its modal safe area and keeps header spacing separate from insets', () => {
   const { ConversationSidebar } = load('components/conversation-menu.tsx', {
-    react: {}, 'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react-native': {},
+    react: { useState: value => [value, () => {}], useRef: value => ({ current: value }) },
+    'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react-native': {},
     'react-native': { Modal: 'modal', View: 'view', StyleSheet: {} },
     'react-native-safe-area-context': { SafeAreaProvider: 'safe-provider', SafeAreaView: 'safe-view' },
     '@/lib/errors': {}, './ui': {}, '@/state/app-context': { useApp: () => ({ colors: {}, conversations: [] }) },
@@ -1182,8 +1204,40 @@ test('sidebar owns its modal safe area and keeps header spacing separate from in
     const panel = provider.props.children[0];
     assert.equal(panel.type, 'safe-view');
     assert.equal(panel.props.style.paddingTop, undefined);
-    assert.equal(panel.props.children[0].props.style.marginTop, 8);
+    assert.equal(panel.props.children.props.children[0].props.style.marginTop, 8);
   }
+});
+
+test('sidebar pull refresh dims all content even when empty, forces a read, and ignores duplicate gestures', async () => {
+  let refreshing = false;
+  const ref = { current: false };
+  let calls = 0;
+  const pending = Promise.withResolvers<void>();
+  const { ConversationSidebar } = load('components/conversation-menu.tsx', {
+    react: { useState: () => [refreshing, (value: boolean) => { refreshing = value; }], useRef: () => ref },
+    'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react-native': {},
+    'react-native': { FlatList: 'list', RefreshControl: 'refresh', StyleSheet: {} },
+    'react-native-safe-area-context': {}, '@/lib/errors': {}, './ui': {},
+    '@/state/app-context': { useApp: () => ({ colors: {}, conversations: [],
+      refreshConversations: async (older: boolean, force: boolean) => {
+        assert.equal(older, false); assert.equal(force, true); calls++; await pending.promise;
+      },
+    }) },
+  });
+  const content = () => ConversationSidebar({ onClose() {}, onSelect() {} }).props.children.props.children[0].props.children;
+  const list = () => content().props.children[2];
+  assert.equal(list().props.alwaysBounceVertical, true);
+  assert.equal(list().props.contentContainerStyle.flexGrow, 1);
+  const refresh = list().props.refreshControl.props.onRefresh;
+  const request = refresh();
+  await refresh();
+  assert.equal(calls, 1);
+  assert.equal(content().props.style.opacity, 0.55);
+  assert.equal(list().props.style.opacity, undefined); // Do not dim twice through nested opacity.
+  assert.equal(list().props.refreshControl.props.refreshing, true);
+  pending.resolve(); await request;
+  assert.equal(content().props.style.opacity, 1);
+  assert.equal(list().props.refreshControl.props.refreshing, false);
 });
 
 test('About Us appears before the policy links and public pages open without auth', async () => {

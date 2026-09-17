@@ -31,7 +31,7 @@ type AppContextValue = {
   conversationsLoading: boolean;
   conversationsError: string | null;
   hasOlderConversations: boolean;
-  refreshConversations: (older?: boolean) => Promise<void>;
+  refreshConversations: (older?: boolean, force?: boolean) => Promise<void>;
   openConversation: (id?: string, title?: string) => void;
   chatTitle: string;
   activeConversationId: string | null;
@@ -346,7 +346,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (conversation.current === id) openConversation();
   };
 
-  const refreshConversations = useCallback(async (older = false) => {
+  const refreshConversations = useCallback(async (older = false, force = false) => {
     const userId = owner.current;
     if (!userId) return;
     const generation = epoch.current;
@@ -356,7 +356,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setConversationsLoading(true);
     setConversationsError(null);
     try {
-      await cache.loadList(backendFor(userId), older);
+      await cache.loadList(backendFor(userId), older, force);
       if (!current()) return;
       publishList();
     } catch (error) {
