@@ -93,9 +93,13 @@ export type ProgressMetric = {
 export type ChatSource = {
   title?: string;
   doi?: string;
+  document_id?: string;
   url?: string;
   source_type?: string;
 };
+
+export type ChatStage = 'fetching_user_context' | 'researching' | 'thinking';
+export type ChatMode = 'quick' | 'deep';
 
 export type ChatMessage = {
   id: string;
@@ -104,4 +108,5 @@ export type ChatMessage = {
   basis?: string;
   sources?: ChatSource[];
   pending?: boolean;
+  progress?: ChatStage; // Transient run state, never persisted as message content.
 };

@@ -1,40 +1,29 @@
-const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
-const { resolve } = require('node:path');
-const { test } = require('node:test');
-const vm = require('node:vm');
-const ts = require('typescript');
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { load, deferred } from './helpers.ts';
 
 // Exercise the shared core without React, a server, or credentials.
-const code = ts.transpileModule(readFileSync(resolve(__dirname, '../src/state/memory-cache.ts'), 'utf8'), {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-}).outputText;
-const moduleExports = {};
-vm.runInNewContext(code, { exports: moduleExports });
-const { createMemoryCache } = moduleExports;
-const row = (value, fetchedAt = 0) => ({ value, fetchedAt });
-const deferred = () => {
-  let resolve, reject;
-  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
-  return { promise, resolve, reject };
-};
+const { createMemoryCache } = load<typeof import('../src/state/memory-cache')>('state/memory-cache.ts');
+const row = <T>(value: T, fetchedAt = 0) => ({ value, fetchedAt });
+type Value<T = string> = { value: T; fetchedAt: number };
+type RangeValue = Value & { start: number; end: number };
 
 test('shared core TTL expires at the boundary without purging stale or empty data', () => {
   let clock = 0;
-  const cache = createMemoryCache({ now: () => clock, ttl: 60 });
+  const cache = createMemoryCache<Value<string | unknown[]>>({ now: () => clock, ttl: 60 });
   cache.set('empty', row([]));
   clock = 59; assert.equal(cache.fresh(cache.get('empty')), true);
   clock = 60; assert.equal(cache.fresh(cache.get('empty')), false);
-  assert.equal(cache.get('empty').value.length, 0);
+  assert.equal(cache.get('empty')?.value.length, 0);
   assert.equal(cache.fresh(undefined), false);
   cache.set('next', row('fresh', clock));
   cache.markStale((_value, key) => key === 'empty');
-  assert.equal(cache.get('empty').fetchedAt, -Infinity);
+  assert.equal(cache.get('empty')?.fetchedAt, -Infinity);
   assert.equal(cache.fresh(cache.get('next')), true);
 });
 
 test('shared core enforces count LRU and byte budgets across overwrite, delete and clear', () => {
-  const cache = createMemoryCache({ maxEntries: 2, maxBytes: 8, sizeOf: item => item.value.length });
+  const cache = createMemoryCache<Value>({ maxEntries: 2, maxBytes: 8, sizeOf: item => item.value.length });
   cache.set('a', row('aaa')); cache.set('b', row('bbb'));
   cache.get('a'); cache.get('b', false); cache.set('c', row('cc'));
   assert.equal(cache.get('b'), undefined); // Inspection does not change eviction order.
@@ -48,19 +37,19 @@ test('shared core enforces count LRU and byte budgets across overwrite, delete a
 });
 
 test('shared core covering lookup chooses the newest match and permits stale fallback', () => {
-  const cache = createMemoryCache();
+  const cache = createMemoryCache<RangeValue>();
   cache.set('old', { ...row('old', 1), start: 1, end: 31 });
   cache.set('new', { ...row('new', 2), start: 7, end: 14 });
-  const covers = item => item.start <= 8 && item.end >= 10;
-  assert.equal(cache.find(covers).value, 'new');
+  const covers = (item: RangeValue) => item.start <= 8 && item.end >= 10;
+  assert.equal(cache.find(covers)?.value, 'new');
   cache.markStale((_value, key) => key === 'new');
-  assert.equal(cache.find(covers).value, 'old');
+  assert.equal(cache.find(covers)?.value, 'old');
   cache.markStale(); assert.ok(cache.find(covers));
   assert.equal(cache.find(item => item.end > 100), undefined);
 });
 
 test('shared core deduplicates exact and covering in-flight requests without duplicating work', async () => {
-  const cache = createMemoryCache(); const pending = deferred(); let calls = 0;
+  const cache = createMemoryCache<Value>(); const pending = deferred<string>(); let calls = 0;
   const work = () => { calls++; return pending.promise; };
   const first = cache.shared('month', work);
   const duplicate = cache.shared('month', work);
@@ -71,7 +60,7 @@ test('shared core deduplicates exact and covering in-flight requests without dup
 });
 
 test('shared core fencing blocks stale commits and old completion cannot remove a replacement request', async () => {
-  const cache = createMemoryCache(); const old = deferred(); const next = deferred();
+  const cache = createMemoryCache<Value>(); const old = deferred<string>(); const next = deferred<string>();
   const first = cache.shared('a', async valid => {
     const value = await old.promise;
     if (valid()) cache.set('a', row(value));
@@ -87,21 +76,21 @@ test('shared core fencing blocks stale commits and old completion cannot remove 
 });
 
 test('shared core clear fences pending account reads and instances never share values', async () => {
-  const a = createMemoryCache(); const b = createMemoryCache(); const pending = deferred();
+  const a = createMemoryCache<Value>(); const b = createMemoryCache<Value>(); const pending = deferred();
   a.set('same', row('account a')); b.set('same', row('account b'));
   const read = a.shared('same', async valid => {
     await pending.promise;
     if (valid()) a.set('same', row('late account a'));
   });
   a.clear(); pending.resolve(); await read;
-  assert.equal(a.get('same'), undefined); assert.equal(b.get('same').value, 'account b');
+  assert.equal(a.get('same'), undefined); assert.equal(b.get('same')?.value, 'account b');
 });
 
 test('shared core releases failed requests, handles synchronous throws and does not auto-retry', async () => {
-  const cache = createMemoryCache(); let calls = 0;
+  const cache = createMemoryCache<Value>(); let calls = 0;
   cache.set('a', row('last good'));
   await assert.rejects(cache.shared('a', () => { calls++; throw new Error('sync failure'); }), /sync failure/);
   await assert.rejects(cache.shared('a', async () => { calls++; throw new Error('async failure'); }), /async failure/);
-  assert.equal(calls, 2); assert.equal(cache.get('a').value, 'last good');
+  assert.equal(calls, 2); assert.equal(cache.get('a')?.value, 'last good');
   assert.equal(await cache.shared('a', async () => 'recovered'), 'recovered');
 });

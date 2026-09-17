@@ -6,6 +6,8 @@ import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pre
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui';
+import { ChatModeSelector } from '@/components/chat-mode-selector';
+import { ChatProgress } from '@/components/chat-progress';
 import { ConversationActions, ConversationSidebar } from '@/components/conversation-menu';
 import { MarkdownText, markdownPlainText } from '@/components/markdown-text';
 import { MessageTextSelection, messageTextProps } from '@/components/message-text-selection';
@@ -93,8 +95,7 @@ function MessageSources({ sources }: { sources: ChatSource[] }) {
 }
 
 function MessageContent({ message, onSelectText }: { message: ChatMessage; onSelectText?: () => void }) {
-  const { colors } = useApp();
-  if (message.pending && !message.text) return <ActivityIndicator color={colors.tint} size="small" />;
+  if (message.pending && !message.text) return null;
   if (message.role === 'assistant') return <MarkdownText onSelectText={onSelectText}>{message.text}</MarkdownText>;
   return <AppText {...messageTextProps(onSelectText)} tone="inverse" style={styles.messageText}>{message.text}</AppText>;
 }
@@ -104,7 +105,10 @@ function ChatBubble({ message, onSelectText }: { message: ChatMessage; onSelectT
   const fromUser = message.role === 'user';
   return (
     <View style={[styles.message, fromUser ? styles.userWrap : styles.assistantWrap]}>
-      <View style={[styles.bubble, { backgroundColor: fromUser ? colors.strong : colors.card }]}><MessageContent message={message} onSelectText={onSelectText} /></View>
+      <View style={[styles.bubble, { backgroundColor: fromUser ? colors.strong : colors.card }]}>
+        <MessageContent message={message} onSelectText={onSelectText} />
+        {!fromUser && message.pending && !message.text ? <ChatProgress stage={message.progress} /> : null}
+      </View>
       {message.basis ? <AppText selectable tone="secondary" style={styles.basis}>Based on: {message.basis}</AppText> : null}
       {!fromUser && message.sources?.length ? <MessageSources sources={message.sources} /> : null}
     </View>
@@ -128,6 +132,7 @@ function Composer({ draft, busy, onChange, onSubmit }: { draft: string; busy: bo
     <View style={[styles.composerWrap, { backgroundColor: colors.background, borderTopColor: colors.separator }]}>
       <View style={[styles.composer, { backgroundColor: colors.card, borderColor: colors.separator }]}>
         <TextInput value={draft} onChangeText={onChange} onSubmitEditing={onSubmit} placeholder="Ask a training question…" placeholderTextColor={colors.textTertiary} style={[styles.input, { color: colors.text }]} multiline maxLength={800} accessibilityLabel="Message Arcel" />
+        <ChatModeSelector />
         <Pressable accessibilityRole="button" accessibilityLabel="Send message" onPress={onSubmit} disabled={!canSend} style={[styles.send, { backgroundColor: canSend ? colors.strong : colors.fillStrong }]}><ArrowUp color={canSend ? colors.strongText : colors.textTertiary} size={20} strokeWidth={2.3} /></Pressable>
       </View>
       <AppText tone="secondary" style={styles.disclaimer}>Training guidance, not medical care.</AppText>
@@ -240,8 +245,8 @@ const styles = StyleSheet.create({
   quick: { minHeight: 46, borderRadius: 15, paddingHorizontal: 14, justifyContent: 'center' },
   quickText: { fontSize: 14 },
   composerWrap: { borderTopWidth: StyleSheet.hairlineWidth, padding: 10, paddingBottom: Platform.OS === 'ios' ? 4 : 10 },
-  composer: { minHeight: 50, maxHeight: 120, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'flex-end', paddingLeft: 13, paddingRight: 5, paddingVertical: 5 },
-  input: { flex: 1, minHeight: 39, maxHeight: 106, fontFamily: fonts.regular, fontSize: 15, paddingTop: 9, paddingBottom: 8 },
+  composer: { minHeight: 50, maxHeight: 120, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'flex-end', gap: 6, paddingLeft: 13, paddingRight: 5, paddingVertical: 5 },
+  input: { flex: 1, minWidth: 0, minHeight: 39, maxHeight: 106, fontFamily: fonts.regular, fontSize: 15, paddingTop: 9, paddingBottom: 8 },
   send: { width: 39, height: 39, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   disclaimer: { fontSize: 9, lineHeight: 12, textAlign: 'center', marginTop: 4 },
 });

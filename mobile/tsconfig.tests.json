@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true
+  },
+  "include": ["tests/**/*.ts", "types/**/*.d.ts", "eslint.config.ts"],
+  "exclude": ["node_modules"]
+}

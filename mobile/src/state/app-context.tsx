@@ -7,7 +7,7 @@ import { AppState, Platform, useColorScheme } from 'react-native';
 
 import { palettes, type ColorScheme, type Palette, type ThemeMode } from '@/design/tokens';
 import { currentBlock, defaultProfile, initialWeek, initialProposal, progressMetrics } from '@/data/mock';
-import type { ChatMessage, Effort, Profile, Proposal, ProgressMetric, Session } from '@/domain/types';
+import type { ChatMessage, ChatMode, Effort, Profile, Proposal, ProgressMetric, Session } from '@/domain/types';
 import { errorMessage } from '@/lib/errors';
 import {
   backendFor, deviceTimezone, getAuthSession, profileFromApi, sessionFromAuthUrl,
@@ -25,6 +25,8 @@ type ChatRun = { controller: AbortController; rows: ChatMessage[]; title: string
 type AuthActionResult = { ok: true; message?: string } | { ok: false; message: string };
 
 type AppContextValue = {
+  chatMode: ChatMode;
+  setChatMode: (mode: ChatMode) => void;
   conversations: Conversation[];
   conversationsLoading: boolean;
   conversationsError: string | null;
@@ -122,6 +124,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const conversation = useRef<string | null>(null);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [chatTitle, setChatTitle] = useState('Ask Arcel');
+  const [chatMode, setChatMode] = useState<ChatMode>('quick');
   const chatEpoch = useRef(0);
   const listRequest = useRef(0);
   const owner = useRef<string | null>(null);
@@ -143,6 +146,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       conversation.current = null;
       setActiveConversationId(null);
       setChatTitle('Ask Arcel');
+      setChatMode('quick');
       chatEpoch.current += 1;
       listRequest.current += 1;
       cache.clear();
@@ -576,13 +580,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const savedId = await client.streamChat(question, delta => {
         if (!current()) return;
-        run.rows[1] = { ...run.rows[1], text: run.rows[1].text + delta };
+        run.rows[1] = { ...run.rows[1], text: run.rows[1].text + delta, progress: undefined };
         publish();
       }, sources => {
         if (!current()) return;
         run.rows[1] = { ...run.rows[1], sources };
         publish();
-      }, run.controller.signal, id, savedMessage);
+      }, run.controller.signal, id, savedMessage, stage => {
+        if (!current() || run.rows[1].text) return;
+        run.rows[1] = { ...run.rows[1], progress: stage };
+        publish();
+      }, chatMode);
       if (!current()) return;
       savedReply = true;
       run.confirmed = true;
@@ -593,11 +601,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       cache.invalidateMessages(id);
       run.rows[1] = { ...run.rows[1], pending: false, basis: 'Reply not confirmed saved.' };
     } finally {
+      run.rows[1] = { ...run.rows[1], progress: undefined };
+      publish();
       await reconcileChat(id, run, client, current, savedReply);
     }
   };
 
   const value: AppContextValue = {
+    chatMode, setChatMode,
     hydrated, accountReady, accountError, passwordRecovery, profile, onboardingAnswers,
     sessions, proposal, block: currentBlock, metrics: progressMetrics, authSession,
     previewMode: true, colors, colorScheme, notice, chatMessages, chatBusy, chatError,

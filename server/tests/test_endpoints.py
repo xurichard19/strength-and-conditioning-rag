@@ -192,7 +192,10 @@ class EndpointTests(unittest.TestCase):
         async def stream(graph, **kwargs):
             self.assertNotIn('history', kwargs)
             self.assertEqual(kwargs['message'], 'hi')
-            self.assertFalse(hasattr(kwargs['context'], 'conversation_id'))
+            self.assertEqual(kwargs['context'].conversation_id, ID)
+            self.assertEqual(kwargs['context'].message_id, ID)
+            self.assertEqual(kwargs['context'].message_created_at, prior.created_at)
+            self.assertEqual(kwargs['mode'], 'quick')
             yield {'type': 'text', 'delta': 'hello'}
             yield {'type': 'sources', 'sources': []}
             yield {'type': 'done'}
@@ -216,6 +219,7 @@ class EndpointTests(unittest.TestCase):
     def test_older_clients_do_not_receive_an_unknown_saved_event(self):
         row = MessageRecord(conversation_id=ID, id=ID, user_id=USER.id, role='assistant', content='hi', created_at=NOW)
         async def stream(graph, **kwargs):
+            yield {'type': 'status', 'stage': 'researching'}
             yield {'type': 'text', 'delta': 'hello'}
         with patch.object(chat, 'stream_workflow', side_effect=stream), \
              patch.object(chat.messages, 'append_message', return_value=row):
@@ -223,6 +227,47 @@ class EndpointTests(unittest.TestCase):
         events = [json.loads(line) for line in response.text.splitlines()]
         self.assertEqual([event['type'] for event in events], ['text', 'done'])
         self.assertEqual(events[-1]['message_id'], str(ID))
+
+    def test_deep_mode_reaches_workflow_without_client_control_over_retry_budget(self):
+        row = MessageRecord(conversation_id=ID, id=ID, user_id=USER.id, role='user', content='question', created_at=NOW)
+        async def stream(graph, **kwargs):
+            self.assertEqual(kwargs['mode'], 'deep')
+            self.assertEqual(kwargs['context'].access_token, USER.access_token)
+            yield {'type': 'text', 'delta': 'answer'}
+        with patch.object(chat, 'stream_workflow', side_effect=stream), \
+             patch.object(chat.messages, 'append_message', return_value=row):
+            result = self.client.post('/chat', json={'text': 'question', 'conversation_id': str(ID), 'mode': 'deep'})
+        self.assertEqual(json.loads(result.text.splitlines()[-1])['type'], 'done')
+
+    def test_chat_progress_is_opt_in_and_never_persisted_as_content(self):
+        row = MessageRecord(conversation_id=ID, id=ID, user_id=USER.id, role='assistant', content='hello', created_at=NOW)
+        async def stream(graph, **kwargs):
+            yield {'type': 'status', 'stage': 'fetching_user_context'}
+            yield {'type': 'status', 'stage': 'researching'}
+            yield {'type': 'status', 'stage': 'thinking'}
+            yield {'type': 'text', 'delta': 'hello'}
+            yield {'type': 'done'}
+        with patch.object(chat, 'stream_workflow', side_effect=stream), \
+             patch.object(chat.messages, 'append_message', return_value=row) as save:
+            response = self.client.post('/chat', json={'text': 'hi', 'conversation_id': str(ID)},
+                headers={'X-Chat-Saved-Events': '1', 'X-Chat-Status-Events': '1'})
+        events = [json.loads(line) for line in response.text.splitlines()]
+        self.assertEqual([event['type'] for event in events], ['saved', 'status', 'status', 'status', 'text', 'done'])
+        self.assertEqual([event['stage'] for event in events if event['type'] == 'status'], ['fetching_user_context', 'researching', 'thinking'])
+        self.assertEqual([call.args[1:3] for call in save.call_args_list], [('user', 'hi'), ('assistant', 'hello')])
+
+    def test_failed_persistence_sends_error_without_done_or_a_saving_stage(self):
+        row = MessageRecord(conversation_id=ID, id=ID, user_id=USER.id, role='user', content='hi', created_at=NOW)
+        async def stream(graph, **kwargs):
+            yield {'type': 'text', 'delta': 'hello'}
+        with patch.object(chat, 'stream_workflow', side_effect=stream), \
+             patch.object(chat.sentry_sdk, 'capture_exception'), \
+             patch.object(chat.messages, 'append_message', side_effect=[row, RuntimeError('private write error')]):
+            response = self.client.post('/chat', json={'text': 'hi', 'conversation_id': str(ID)},
+                headers={'X-Chat-Status-Events': '1'})
+        events = [json.loads(line) for line in response.text.splitlines()]
+        self.assertEqual([event['type'] for event in events], ['text', 'error'])
+        self.assertNotIn('private write error', response.text)
 
     def test_chat_failure_does_not_save_partial_reply_or_send_done(self):
         async def stream(graph, **kwargs):
