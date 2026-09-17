@@ -155,6 +155,21 @@ test('selection uses rendered markdown text but preserves literal fenced/inline 
   assert.equal(selectedInput()!.props.defaultValue, '# Keep **my** original text');
 });
 
+test('research sources prefer titles, fall back to DOI, and keep DOI navigation', () => {
+  for (const title of ['  Recovery research  ', '', '   ', undefined]) {
+    reset(); openedUrls.length = 0;
+    const label = title?.trim() || '10.1234/recovery';
+    app.chatMessages = [{ id: 'reply', role: 'assistant', text: 'Answer', sources: [
+      { source_type: 'research', title, doi: '10.1234/recovery', content: 'Excerpt' },
+    ] }];
+    nodes(render()).find(node => node.props.accessibilityLabel === 'Open 1 source')!.props.onPress();
+    nodes(render()).find(node => node.props.accessibilityLabel === `Open source: ${label}`)!.props.onPress();
+    assert.deepEqual(openedUrls, ['https://doi.org/10.1234/recovery']);
+    nodes(render()).find(node => node.props.accessibilityLabel === `Read excerpt from ${label}`)!.props.onPress();
+    assert.ok(nodes(render()).find(node => node.props.selectable && node.props.children === label));
+  }
+});
+
 test('sources open DOI/web links separately from full selectable excerpts', () => {
   reset(); openedUrls.length = 0;
   app.chatMessages = [{ id: 'reply', role: 'assistant', text: 'Answer', sources: [

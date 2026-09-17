@@ -28,7 +28,7 @@ function sourceMeta(source: ChatSource) {
 }
 
 function sourceTitle(source: ChatSource, index: number) {
-  if (source.source_type === 'research') return source.doi || source.title?.trim() || `Research source ${index + 1}`;
+  if (source.source_type === 'research') return source.title?.trim() || source.doi || `Research source ${index + 1}`;
   return source.title?.trim() || `Web source ${index + 1}`;
 }
 
