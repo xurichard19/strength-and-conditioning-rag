@@ -24,6 +24,15 @@ class ApiSchemaTests(unittest.TestCase):
                     Source(source_type=kind, content='evidence')
                 with self.assertRaises(ValidationError):
                     Source(source_type=kind, content='evidence', **{required: 'identifier', excluded: 'other'})
+        source = Source(source_type='research', document_id='real-chroma-id', content='evidence')
+        self.assertIsNone(source.doi)
+
+    def test_chat_mode_is_allow_listed_and_clients_cannot_supply_internal_budgets(self):
+        self.assertEqual(schemas.ChatRequest(conversation_id=ID, text='question').mode, 'quick')
+        self.assertEqual(schemas.ChatRequest(conversation_id=ID, text='question', mode='deep').mode, 'deep')
+        for extra in [{'mode': 'unlimited'}, {'retries_left': 100}, {'history': []}, {'user_id': str(ID)}]:
+            with self.subTest(extra=extra), self.assertRaises(ValidationError):
+                schemas.ChatRequest(conversation_id=ID, text='question', **extra)
 
     def test_error_reporting_disables_body_pii_and_local_variable_capture(self):
         settings = SimpleNamespace(sentry_dsn='https://public@sentry.test/1', sentry_traces_sample_rate=0,

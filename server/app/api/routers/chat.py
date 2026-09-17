@@ -105,7 +105,7 @@ async def chat_reply(
     saved reply. do not automatically replay post: messages have no request key.
     this chat does not automatically enqueue planning changes.
 
-    - **payload**: nonblank text and conversation_id; use a fresh uuid for a new thread,
+    - **payload**: nonblank text, quick/deep mode and conversation_id; use a fresh uuid for a new thread,
       or the saved thread id to continue it. clients cannot submit assistant/system roles
     - **request**: application with initialized chat_graph
     - **x_chat_saved_events**: set to "1" to receive the saved-human event; omitted
@@ -123,14 +123,15 @@ async def chat_reply(
         raise HTTPException(503, "chat unavailable", headers=PRIVATE_HEADERS)
     with database_errors("chat.save_user"):
         human = await asyncio.to_thread(messages.append_message, user.id, "user", payload.text, user.access_token, conversation_id=payload.conversation_id)
-    context = WorkflowContext(user_id=user.id, access_token=user.access_token)
+    context = WorkflowContext(user_id=user.id, access_token=user.access_token,
+        conversation_id=human.conversation_id, message_id=human.id, message_created_at=human.created_at)
 
     async def events():
         chunks = []
         try:
             if x_chat_saved_events == "1":
                 yield ChatSavedEvent(message=MessageResponse.model_validate(human)).model_dump_json() + "\n"
-            async for event in stream_workflow(graph, message=payload.text, context=context):
+            async for event in stream_workflow(graph, message=payload.text, context=context, mode=payload.mode):
                 if event["type"] == "done":
                     continue
                 if event["type"] == "text":

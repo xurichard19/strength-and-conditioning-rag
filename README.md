@@ -4,7 +4,7 @@ note: web client depreciated, mobile client currently in development
 
 Arcel is a full-stack assistant for hybrid athletes building strength and conditioning programs around sport-specific demands. It answers conversational and research-backed training questions using more than 300 CC BY 4.0 research papers, live web search, and streamed LLM generation.
 
-The Expo/React Native mobile client connects to the containerized FastAPI backend running on Google Cloud Run behind Google Cloud Load Balancing and Cloud Armor. The backend uses LangGraph for request-level workflow orchestration, a LangChain search agent for evidence gathering, OpenAI for model inference, Chroma Cloud for research retrieval, Tavily for web search, Cohere for reranking, and Supabase for authentication and application data. GitHub Actions builds and pushes backend images to Google Artifact Registry, deploys them to Cloud Run, and verifies backend health.
+The Expo/React Native mobile client connects to the containerized FastAPI backend running on Google Cloud Run behind Google Cloud Load Balancing and Cloud Armor. The backend uses LangGraph for request-level workflow orchestration, deterministic evidence retrieval with bounded chat search retries, OpenAI for model inference, Chroma Cloud for research retrieval, Tavily for web search, and Supabase for authentication and application data. Cohere reranking and hybrid retrieval are available separately but are not part of the active chat workflow. GitHub Actions builds and pushes backend images to Google Artifact Registry, deploys them to Cloud Run, and verifies backend health.
 
 #### Table of Contents
 
@@ -38,14 +38,22 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    Request["Chat request"] --> Search["Search node"]
-    Search --> Agent["LangChain agent<br/>OpenAI search"]
-    Agent --> Chroma[("Chroma Cloud<br/>research index")]
-    Agent --> Tavily["Tavily<br/>web search"]
-    Agent --> Cohere["Cohere reranker<br/>research only"]
-    Agent --> Evidence["Selected<br/>evidence"]
-    Evidence --> Generate["Generation node<br/>OpenAI"]
-    Generate --> Stream["NDJSON<br/>response stream"]
+    Request["Chat request"] --> History["Load history node<br/>Supabase"]
+    History --> Route["GPT-5 nano router"]
+
+    subgraph Retrieval["Optional retrieval · parallel"]
+        Context["User context node<br/>Supabase"]
+        Search["Search node<br/>Chroma Cloud / Tavily"]
+    end
+
+    Route --> Retrieval
+    Route -->|skip retrieval| Generate
+    Retrieval --> Evaluate["GPT-5 nano evaluator<br/>Limited retries"]
+    Retrieval -->|skip evaluation| Generate
+    Evaluate -->|retry search only| Retrieval
+    Evaluate -->|finish| Generate
+
+    Generate["Streaming generation node"]
 ```
 
 #### Workout Programming LangGraph Workflow

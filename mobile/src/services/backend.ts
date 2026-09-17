@@ -1,4 +1,4 @@
-import type { ChatSource, ChatStage, Profile } from '../domain/types';
+import type { ChatMode, ChatSource, ChatStage, Profile } from '../domain/types';
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type Answers = Record<string, JsonValue>;
@@ -105,9 +105,9 @@ export function createBackend(request: ApiRequest) {
     },
     streamChat: async (text: string, onText: (delta: string) => void,
       onSources: (sources: ChatSource[]) => void, signal: AbortSignal | undefined, conversationId: string,
-      onSaved?: (message: SavedMessage) => void, onStatus?: (stage: ChatStage) => void) => {
+      onSaved?: (message: SavedMessage) => void, onStatus?: (stage: ChatStage) => void, mode: ChatMode = 'quick') => {
       const response = await checked(await request('/chat', {
-        method: 'POST', body: JSON.stringify({ text, conversation_id: conversationId }), signal,
+        method: 'POST', body: JSON.stringify({ text, conversation_id: conversationId, mode }), signal,
         headers: { Accept: 'application/x-ndjson', 'X-Chat-Saved-Events': '1', 'X-Chat-Status-Events': '1' },
       }));
       if (!response.body) throw new Error('Chat stream is unavailable.');

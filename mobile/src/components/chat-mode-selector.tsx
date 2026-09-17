@@ -8,20 +8,19 @@ import { useApp } from '@/state/app-context';
 import { AppText } from './ui';
 
 const modes = [
-  { name: 'Quick chat', description: 'Fast answers with focused research.', Icon: Zap },
-  { name: 'Deep research', description: 'A deeper dive across more sources.', Icon: BookOpen },
+  { value: 'quick', name: 'Quick chat', description: 'Fast answers with focused research.', Icon: Zap },
+  { value: 'deep', name: 'Deep research', description: 'A deeper dive across more sources.', Icon: BookOpen },
 ] as const;
 
-/** UI-only preview: selection stays in this component and never affects requests or caches. */
+/** Choose the next turn's retrieval budget; an already running reply keeps its mode. */
 export function ChatModeSelector() {
-  const { colors } = useApp();
-  const [selected, setSelected] = useState(0);
+  const { colors, chatMode, setChatMode } = useApp();
   const [open, setOpen] = useState(false);
   useFocusEffect(useCallback(() => () => setOpen(false), []));
-  const mode = modes[selected];
+  const mode = modes.find(item => item.value === chatMode) ?? modes[0];
   return <>
     <Pressable accessibilityRole="button" accessibilityLabel={`Chat mode: ${mode.name}`} hitSlop={4}
-      accessibilityHint="Choose Quick chat or Deep research. Preview only."
+      accessibilityHint="Choose Quick chat or Deep research for your next message."
       aria-expanded={open} onPress={() => { Keyboard.dismiss(); setOpen(true); }}
       style={[styles.toggle, { backgroundColor: colors.card, borderColor: colors.separator }]}>
       <mode.Icon color={colors.textSecondary} size={17} />
@@ -39,18 +38,17 @@ export function ChatModeSelector() {
                 onPress={() => setOpen(false)} style={styles.close}><X color={colors.textSecondary} size={18} /></Pressable>
             </View>
             <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
-              {modes.map(({ name, description, Icon }, index) => <Pressable key={name}
+              {modes.map(({ value, name, description, Icon }) => <Pressable key={name}
                 accessibilityRole="radio" accessibilityLabel={`${name}. ${description}`}
-                aria-checked={selected === index} onPress={() => { setSelected(index); setOpen(false); }}
-                style={[styles.option, selected === index && { backgroundColor: colors.tintSoft }]}>
-                <Icon color={selected === index ? colors.tintText : colors.textSecondary} size={19} />
+                aria-checked={chatMode === value} onPress={() => { setChatMode(value); setOpen(false); }}
+                style={[styles.option, chatMode === value && { backgroundColor: colors.tintSoft }]}>
+                <Icon color={chatMode === value ? colors.tintText : colors.textSecondary} size={19} />
                 <View style={styles.copy}>
                   <AppText weight="medium" style={styles.name}>{name}</AppText>
                   <AppText tone="secondary" style={styles.description}>{description}</AppText>
                 </View>
-                <View style={styles.check}>{selected === index ? <Check color={colors.tintText} size={18} /> : null}</View>
+                <View style={styles.check}>{chatMode === value ? <Check color={colors.tintText} size={18} /> : null}</View>
               </Pressable>)}
-              <AppText tone="secondary" style={styles.preview}>Preview only · replies are unchanged</AppText>
             </ScrollView>
           </View>
         </SafeAreaView>
@@ -72,5 +70,4 @@ const styles = StyleSheet.create({
   name: { fontSize: 15, lineHeight: 20 },
   description: { fontSize: 12, lineHeight: 17 },
   check: { width: 18 },
-  preview: { fontSize: 11, lineHeight: 16, marginHorizontal: 12, marginTop: 12, marginBottom: 8 },
 });

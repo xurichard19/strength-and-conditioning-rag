@@ -192,7 +192,10 @@ class EndpointTests(unittest.TestCase):
         async def stream(graph, **kwargs):
             self.assertNotIn('history', kwargs)
             self.assertEqual(kwargs['message'], 'hi')
-            self.assertFalse(hasattr(kwargs['context'], 'conversation_id'))
+            self.assertEqual(kwargs['context'].conversation_id, ID)
+            self.assertEqual(kwargs['context'].message_id, ID)
+            self.assertEqual(kwargs['context'].message_created_at, prior.created_at)
+            self.assertEqual(kwargs['mode'], 'quick')
             yield {'type': 'text', 'delta': 'hello'}
             yield {'type': 'sources', 'sources': []}
             yield {'type': 'done'}
@@ -224,6 +227,17 @@ class EndpointTests(unittest.TestCase):
         events = [json.loads(line) for line in response.text.splitlines()]
         self.assertEqual([event['type'] for event in events], ['text', 'done'])
         self.assertEqual(events[-1]['message_id'], str(ID))
+
+    def test_deep_mode_reaches_workflow_without_client_control_over_retry_budget(self):
+        row = MessageRecord(conversation_id=ID, id=ID, user_id=USER.id, role='user', content='question', created_at=NOW)
+        async def stream(graph, **kwargs):
+            self.assertEqual(kwargs['mode'], 'deep')
+            self.assertEqual(kwargs['context'].access_token, USER.access_token)
+            yield {'type': 'text', 'delta': 'answer'}
+        with patch.object(chat, 'stream_workflow', side_effect=stream), \
+             patch.object(chat.messages, 'append_message', return_value=row):
+            result = self.client.post('/chat', json={'text': 'question', 'conversation_id': str(ID), 'mode': 'deep'})
+        self.assertEqual(json.loads(result.text.splitlines()[-1])['type'], 'done')
 
     def test_chat_progress_is_opt_in_and_never_persisted_as_content(self):
         row = MessageRecord(conversation_id=ID, id=ID, user_id=USER.id, role='assistant', content='hello', created_at=NOW)

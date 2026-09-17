@@ -44,6 +44,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "65001fb6-a41d-44cb-951c-b0a7f3c7eeab"
+      }
+    },
+    "owner": "arcelresearch"
   }
 }

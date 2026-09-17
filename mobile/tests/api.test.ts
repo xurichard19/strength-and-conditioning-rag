@@ -306,7 +306,26 @@ test('chat sends its conversation id and conversation listing supports paginatio
   await api.getConversations('last-thread');
   await api.streamChat('hello', () => {}, () => {}, undefined, 'thread-a');
   assert.equal(calls[0][0], '/chat/conversations?before=last-thread');
-  assert.deepEqual(calls[1][1], { text: 'hello', conversation_id: 'thread-a' });
+  assert.deepEqual(calls[1][1], { text: 'hello', conversation_id: 'thread-a', mode: 'quick' });
+  await api.streamChat('research', () => {}, () => {}, undefined, 'thread-a', undefined, undefined, 'deep');
+  assert.deepEqual(calls[2][1], { text: 'research', conversation_id: 'thread-a', mode: 'deep' });
+});
+
+test('chat mode is captured for a pending turn and survives switching conversations', async () => {
+  const modes: string[] = []; let finish!: (value?: TestValue) => void;
+  const f = providerFixture({ streamChat: (_text, _delta, _sources, _abort, _thread, _saved, _status, mode) => {
+    modes.push(mode); return new Promise(resolve => { finish = resolve; });
+  } });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  f.value.setChatMode('deep'); await f.flush();
+  const pending = f.value.sendChat('research this'); await f.flush();
+  f.value.setChatMode('quick'); f.value.openConversation(); await f.flush();
+  assert.deepEqual(modes, ['deep']);
+  assert.equal(f.value.chatMode, 'quick');
+  finish('saved'); await pending; await f.flush();
+  f.value.setChatMode('deep'); await f.flush();
+  await f.value.signOut(); await f.flush();
+  assert.equal(f.value.chatMode, 'quick');
 });
 
 test('saved stream events validate their shape even without a cache callback', async () => {

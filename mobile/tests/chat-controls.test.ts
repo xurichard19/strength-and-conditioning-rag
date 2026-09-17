@@ -13,6 +13,7 @@ function fixture(reduceMotion = false) {
   let cursor = 0; let focus!: () => (() => void) | undefined; let reduced!: (enabled: boolean) => void;
   let starts = 0; let stops = 0; let dismissals = 0; let removals = 0; let resets = 0;
   let timing!: TestModule;
+  let chatMode = 'quick';
   const modules = {
     react: {
       useState: initial => {
@@ -42,7 +43,8 @@ function fixture(reduceMotion = false) {
       },
       Easing: { linear: 'linear' },
     },
-    './ui': { AppText: 'text' }, '@/state/app-context': { useApp: () => ({ colors: {} }) },
+    './ui': { AppText: 'text' }, '@/state/app-context': { useApp: () => ({ colors: {}, chatMode,
+      setChatMode: (value: string) => { chatMode = value; } }) },
   } satisfies Stubs;
   return {
     load: (path: string) => load(path, modules),
@@ -53,7 +55,7 @@ function fixture(reduceMotion = false) {
   };
 }
 
-test('mock mode selector defaults to quick, switches locally, and marks the selected choice', () => {
+test('mode selector defaults to quick, updates shared selection, and marks the selected choice', () => {
   const f = fixture(); const { ChatModeSelector } = f.load('components/chat-mode-selector.tsx');
   const render = () => f.render(ChatModeSelector);
   const toggle = render().find(node => node.props.accessibilityLabel === 'Chat mode: Quick chat')!;
@@ -77,7 +79,7 @@ test('mock mode selector defaults to quick, switches locally, and marks the sele
   assert.equal(options[1].props['aria-checked'], true);
   assert.equal(options[0].props['aria-checked'], false);
   assert.equal(f.counts().dismissals, 2);
-  // This fixture exposes only colors: no network, provider setters, or cache operations are available.
+  // Selection updates the provider, but the menu itself never starts a request.
 });
 
 test('mode menu dismisses on backdrop, back, and tab blur while retaining its local selection', () => {

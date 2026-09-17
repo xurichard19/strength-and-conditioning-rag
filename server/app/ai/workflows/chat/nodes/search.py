@@ -1,23 +1,21 @@
-from langchain_core.messages import HumanMessage
 from langgraph.config import get_stream_writer
 
-from app.ai.services.search import search_sources
-from app.ai.workflows.chat.state import ChatState
+from app.ai.services.search import merge_sources, search_sources
+from app.ai.workflows.chat.state import CHAT_POLICIES, ChatState
 
 
 async def search_node(state: ChatState) -> dict:
-    """search for evidence using the latest user message"""
+    """
+    run one search round and merge its results with earlier sources
+
+    - **state**: query, providers, chat mode and previous search results
+    - **returns**: deduplicated sources, attempted queries and warnings
+    """
 
     get_stream_writer()({"type": "status", "stage": "researching"})
-    latest_user_message = next(
-        (
-            message
-            for message in reversed(state["messages"])
-            if isinstance(message, HumanMessage)
-        ),
-        None,
-    )
-
-    response = await search_sources(latest_user_message.content)
-    
-    return {"sources": response.results}
+    query = state["search"]
+    response = await search_sources(query.query, providers=query.providers,
+        top_k=CHAT_POLICIES[state["mode"]].results_per_provider)
+    return {"sources": merge_sources(state.get("sources", []), response.results),
+        "searches": [*state.get("searches", []), query],
+        "warnings": list(dict.fromkeys([*state.get("warnings", []), *response.warnings]))}

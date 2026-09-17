@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 from app.contracts import (
-    MessageRole, PlanningChangeStatus, ReplanJobStatus, ReplanKind, SetResultStatus,
+    ChatMode, MessageRole, PlanningChangeStatus, ReplanJobStatus, ReplanKind, SetResultStatus,
     SportsWorkoutIntensity, SportsWorkoutStatus, WorkoutStatus,
 )
 
@@ -175,6 +175,7 @@ class ConversationUpdate(RequestModel):
 class ChatRequest(RequestModel):
     conversation_id: UUID
     text: str = Field(min_length=1, max_length=4000)
+    mode: ChatMode = "quick"
 
     @field_validator("text")
     @classmethod
@@ -396,6 +397,7 @@ class SourceResponse(ResponseModel):
     title: str | None = None
     doi: str | None = None
     url: str | None = None
+    document_id: str | None = None
     source_type: Literal["research", "web"]
     content: str = Field(min_length=1)
     score: float | None = None

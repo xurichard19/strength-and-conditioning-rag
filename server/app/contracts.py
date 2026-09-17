@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 WorkoutStatus = Literal["planned", "in_progress", "completed", "skipped"]
 SetResultStatus = Literal["pending", "completed", "skipped"]
 MessageRole = Literal["user", "assistant"]
+ChatMode = Literal["quick", "deep"]
 SportsWorkoutIntensity = Literal["easy", "moderate", "hard", "variable"]
 SportsWorkoutStatus = Literal["planned", "completed", "cancelled"]
 ReplanKind = Literal["adjustment", "refresh"]
@@ -26,17 +27,18 @@ class Source(BaseModel):
     title: str | None = None
     doi: str | None = None
     url: str | None = None
+    document_id: str | None = None
     source_type: Literal["research", "web"]
     content: str = Field(min_length=1)
     score: float | None = None
 
     @model_validator(mode="after")
     def check_source_identifier(self):
-        required, excluded = ("doi", "url") if self.source_type == "research" else ("url", "doi")
-        if not getattr(self, required):
-            raise ValueError(f"{required} is required for {self.source_type} sources")
-        if getattr(self, excluded):
-            raise ValueError(f"{excluded} should not be provided for {self.source_type} sources")
+        if self.source_type == "research":
+            if not (self.doi or self.document_id) or self.url:
+                raise ValueError("research sources require a doi or document id and no url")
+        elif not self.url or self.doi or self.document_id:
+            raise ValueError("web sources require a url and no research identifiers")
         return self
 
 
