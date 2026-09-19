@@ -52,7 +52,7 @@ function SportsWorkoutForm({ date, userId }: { date: string; userId: string }) {
 
   if (saved) return <Card style={styles.success}>
     <CheckCircle2 color={colors.success} size={32} />
-    <AppText weight="semibold" style={styles.successTitle}>Sports workout saved</AppText>
+    <AppText style={styles.successTitle}>Sports workout saved</AppText>
     <AppText tone="secondary">Saved to your calendar for {calendarLabel(saved.scheduled_date, { month: 'short', day: 'numeric' })}.</AppText>
     <PrimaryButton onPress={close}>Back to calendar</PrimaryButton>
   </Card>;
@@ -66,10 +66,10 @@ function SportsWorkoutForm({ date, userId }: { date: string; userId: string }) {
       <SelectionField label="Intensity" value={intensity} options={intensityOptions} onChange={setIntensity} disabled={busy} last />
     </Card>
     <AppText tone="secondary" style={styles.caption}>Start time uses your local timezone.</AppText>
-    <AppText weight="semibold" style={styles.notesTitle}>Notes <AppText tone="secondary">(optional)</AppText></AppText>
+    <AppText weight="medium" style={styles.notesTitle}>Notes <AppText tone="secondary">(optional)</AppText></AppText>
     <TextInput accessibilityLabel="Workout notes" placeholder="Anything useful to know about this session…" placeholderTextColor={colors.textTertiary}
       value={notes} onChangeText={setNotes} editable={!busy} multiline maxLength={4000} textAlignVertical="top"
-      style={[styles.notes, { backgroundColor: colors.card, color: colors.text }]} />
+      style={[styles.notes, { backgroundColor: colors.card, color: colors.text, borderColor: colors.separator }]} />
     {error ? <View accessibilityLiveRegion="polite" style={styles.error}>
       <AppText style={{ color: colors.danger }}>{error}</AppText>
       <AppText tone="secondary" style={styles.caption}>If the connection dropped while saving, the entry may already exist. Check before submitting again.</AppText>
@@ -89,7 +89,8 @@ export default function SportsWorkoutScreen() {
         <Pressable accessibilityRole="button" accessibilityLabel="Back to calendar" onPress={close} style={styles.back}>
           <ArrowLeft color={colors.text} size={22} /><AppText weight="medium">Calendar</AppText>
         </Pressable>
-        <AppText weight="bold" style={styles.title}>Add sports workout</AppText>
+        <AppText tone="secondary" weight="medium" style={styles.eyebrow}>Your training</AppText>
+        <AppText style={styles.title}>Add sports workout</AppText>
         {validDate ? <AppText tone="secondary" style={styles.date}>{calendarLabel(date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</AppText> : null}
         {!validDate || !userId ? <Card><AppText>{!validDate ? 'Select a day from the calendar to add a workout.' : 'Sign in to save a sports workout.'}</AppText></Card>
           : <SportsWorkoutForm key={`${userId}:${date}`} date={date} userId={userId} />}
@@ -100,17 +101,18 @@ export default function SportsWorkoutScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { paddingHorizontal: 20, paddingBottom: 36, gap: 12 },
-  back: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start' },
-  title: { fontSize: 30, lineHeight: 36, letterSpacing: -0.8 },
+  content: { paddingHorizontal: 22, paddingBottom: 40, gap: 14, width: '100%', maxWidth: 680, alignSelf: 'center' },
+  back: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', marginBottom: 8 },
+  eyebrow: { fontSize: 10, lineHeight: 16, letterSpacing: 1.4, textTransform: 'uppercase' },
+  title: { fontSize: 36, lineHeight: 42, letterSpacing: -1.1 },
   date: { fontSize: 14, lineHeight: 20 },
-  description: { fontSize: 15, lineHeight: 21, marginTop: 4, marginBottom: 6 },
+  description: { fontSize: 15, lineHeight: 23, marginTop: 4, marginBottom: 12 },
   fields: { paddingVertical: 0 },
   caption: { fontSize: 12, lineHeight: 18 },
-  notesTitle: { marginTop: 8 },
-  notes: { minHeight: 120, padding: 16, borderRadius: 16, fontFamily: fonts.regular, fontSize: 15, lineHeight: 22 },
+  notesTitle: { marginTop: 16 },
+  notes: { minHeight: 140, padding: 18, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, fontFamily: fonts.regular, fontSize: 15, lineHeight: 23 },
   save: { marginTop: 8 },
   error: { gap: 6 },
-  success: { gap: 16, marginTop: 16 },
-  successTitle: { fontSize: 20, lineHeight: 26 },
+  success: { gap: 20, marginTop: 20, padding: 22 },
+  successTitle: { fontSize: 28, lineHeight: 34, letterSpacing: -0.6 },
 });

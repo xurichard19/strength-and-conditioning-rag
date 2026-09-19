@@ -12,11 +12,12 @@ export function ActionSheet({ title, onClose, children, headerAction }: {
 }) {
   const { colors } = useApp();
   return <Modal transparent visible animationType="fade" onRequestClose={onClose}>
-    <SafeAreaProvider style={styles.backdrop}>
+    <SafeAreaProvider style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
       <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={onClose} style={StyleSheet.absoluteFill} />
-      <SafeAreaView edges={['bottom']} style={[styles.panel, { backgroundColor: colors.elevated }]} accessibilityViewIsModal>
-        <View style={styles.header}>
-          <AppText weight="semibold" style={styles.title}>{title}</AppText>
+      <SafeAreaView edges={['bottom']} style={[styles.panel, { backgroundColor: colors.card, borderColor: colors.separator }]} accessibilityViewIsModal>
+        <View style={[styles.handle, { backgroundColor: colors.fillStrong }]} />
+        <View style={[styles.header, { borderBottomColor: colors.separator }]}>
+          <AppText weight="medium" style={styles.title}>{title}</AppText>
           {headerAction}
           <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={onClose} style={styles.close}>
             <X color={colors.textSecondary} size={22} />
@@ -29,9 +30,10 @@ export function ActionSheet({ title, onClose, children, headerAction }: {
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#0008' },
-  panel: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, maxHeight: '85%' },
-  header: { flexDirection: 'row', alignItems: 'center', minHeight: 56, gap: 8 },
-  title: { flex: 1, fontSize: 18, lineHeight: 24 },
+  backdrop: { flex: 1, justifyContent: 'flex-end' },
+  panel: { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 22, paddingTop: 10, paddingBottom: 20, maxHeight: '85%' },
+  handle: { width: 32, height: 3, borderRadius: 2, alignSelf: 'center', marginBottom: 8 },
+  header: { flexDirection: 'row', alignItems: 'center', minHeight: 64, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, marginBottom: 8 },
+  title: { flex: 1, fontSize: 20, lineHeight: 27, letterSpacing: -0.6 },
   close: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
 });

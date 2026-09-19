@@ -1,4 +1,4 @@
-import { Activity, Check, ChevronLeft, ChevronRight, Dumbbell, Ellipsis } from 'lucide-react-native';
+import { Activity, ArrowUpRight, Check, ChevronLeft, ChevronRight, Dumbbell, Ellipsis } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -28,7 +28,7 @@ function entryDetails(entry: CalendarEntry) {
 function dayAppearance(colors: Palette, selected: boolean, today: boolean, compact: boolean) {
   const highlight = { backgroundColor: selected ? colors.strong : 'transparent', borderColor: today ? colors.tint : 'transparent' };
   if (compact) return { container: styles.monthDay, disc: [styles.dayDisc, highlight] };
-  return { container: [styles.day, { ...highlight, backgroundColor: selected ? colors.strong : colors.card }], disc: styles.dayDisc };
+  return { container: [styles.day, highlight], disc: styles.dayDisc };
 }
 
 function daySummary(sessions: CalendarEntry[], loaded: boolean) {
@@ -55,10 +55,10 @@ function CalendarDay({ date, sessions, selected, loaded, compact = false, inMont
       onPress={onSelect} style={[appearance.container, { opacity: inMonth ? 1 : 0.45 }]}>
       {!compact ? <AppText tone={tone} weight="medium" style={styles.dayLabel}>{formatDay(date)}</AppText> : null}
       <View style={appearance.disc}>
-        <AppText tone={selected ? 'inverse' : 'default'} weight={selected || today ? 'bold' : 'medium'} style={styles.dayNumber}>{Number(date.slice(-2))}</AppText>
+        <AppText tone={selected ? 'inverse' : 'default'} weight={selected || today ? 'medium' : 'regular'} style={styles.dayNumber}>{Number(date.slice(-2))}</AppText>
       </View>
       <View style={styles.dayDots}>
-        {dots.map((color) => <View key={color} style={[styles.dayDot, { backgroundColor: color }]} />)}
+        {dots.map((color) => <View key={color} style={[styles.dayDot, { backgroundColor: selected && !compact ? colors.strongText : color }]} />)}
       </View>
     </Pressable>
   );
@@ -80,7 +80,7 @@ function CalendarGrid({ view, selectedDate, byDate, loaded, onSelect, onHold }: 
         <AppText tone="secondary" weight="medium" style={styles.dayLabel}>{day}</AppText>
       </View>)}
     </View>
-    {Array.from({ length: 6 }, (_, row) => <View key={row} style={styles.calendarRow}>
+    {Array.from({ length: cells.length / 7 }, (_, row) => <View key={row} style={styles.calendarRow}>
       {cells.slice(row * 7, row * 7 + 7).map(({ date, inMonth }) => <CalendarDay key={date} date={date}
         sessions={byDate.get(date) ?? []} loaded={loaded && inMonth} selected={date === selectedDate}
         compact inMonth={inMonth} onSelect={() => onSelect(date)} onHold={() => onHold(date)} />)}
@@ -108,28 +108,37 @@ function CalendarFeedback({ loading, error, hasData, onRetry }: {
 function EntryBadge({ entry, size = 40 }: { entry: CalendarEntry; size?: number }) {
   const { colors } = useApp();
   const Icon = entry.status === 'completed' ? Check : entry.kind === 'sport' ? Activity : Dumbbell;
-  return <View style={{ width: size, height: size, borderRadius: size / 3, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.fill }}>
-    <Icon size={size / 2} color={entry.status === 'completed' ? colors.success : entryColor(entry, colors)} />
+  return <View style={{ width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.fill }}>
+    <Icon size={size / 2} strokeWidth={1.6} color={entry.status === 'completed' ? colors.success : entryColor(entry, colors)} />
   </View>;
 }
 
 function SelectedSession({ session, onOpen }: { session: CalendarEntry; onOpen: () => void }) {
+  const { colors } = useApp();
   const detail = entryDetails(session);
   const card = (
       <Card style={styles.selectedCard}>
+        <View style={styles.sessionEyebrowRow}>
+          <AppText tone="secondary" weight="medium" style={styles.sessionEyebrow}>{session.kind === 'sport' ? 'Sports session' : 'Workout'}</AppText>
+          <View style={[styles.statusDot, { backgroundColor: session.status === 'completed' ? colors.success : colors.textTertiary }]} />
+          <AppText tone="secondary" style={styles.meta}>{statusLabels[session.status]}</AppText>
+        </View>
         <View style={styles.selectedHeader}>
-          <EntryBadge entry={session} />
           <View style={styles.copy}>
-            <AppText weight="bold" style={styles.sessionTitle}>{session.title}</AppText>
-            <AppText tone="secondary" style={styles.meta}>{session.kind === 'sport' ? 'Sport' : 'Workout'} · {statusLabels[session.status]}</AppText>
+            <AppText style={styles.sessionTitle}>{session.title}</AppText>
           </View>
+          <EntryBadge entry={session} />
         </View>
         {detail ? <AppText tone="secondary" style={styles.detail}>{detail}</AppText> : null}
-        {session.notes ? <AppText tone="secondary" style={styles.detail}>{session.notes}</AppText> : null}
+        {session.notes ? <AppText tone="secondary" style={[styles.detail, styles.sessionNotes, { borderTopColor: colors.separator }]}>{session.notes}</AppText> : null}
+        {session.kind === 'sport' ? <View style={[styles.detailsLink, { borderTopColor: colors.separator }]}>
+          <AppText tone="tint" weight="medium" style={styles.meta}>Session details</AppText>
+          <ArrowUpRight color={colors.tintText} size={17} strokeWidth={1.6} />
+        </View> : null}
       </Card>
   );
   return session.kind === 'sport' ? <Pressable accessibilityRole="button" accessibilityLabel={`View ${session.title} workout`}
-    onPress={onOpen}>{card}</Pressable> : card;
+    onPress={onOpen} style={({ pressed }) => pressed && styles.pressed}>{card}</Pressable> : card;
 }
 
 function DayAgenda({ sessions, ready, onOpen }: {
@@ -144,7 +153,7 @@ function DayAgenda({ sessions, ready, onOpen }: {
 function SessionRow({ session, last, onSelect }: { session: CalendarEntry; last: boolean; onSelect: () => void }) {
   const { colors } = useApp();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`${formatDay(session.date)}: ${session.title}`} onPress={onSelect} style={[styles.listRow, !last && { borderBottomColor: colors.separator, borderBottomWidth: StyleSheet.hairlineWidth }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${formatDay(session.date)}: ${session.title}`} onPress={onSelect} style={({ pressed }) => [styles.listRow, !last && { borderBottomColor: colors.separator, borderBottomWidth: StyleSheet.hairlineWidth }, pressed && styles.pressed]}>
       <AppText tone="secondary" weight="medium" style={styles.listDay}>{isToday(session.date) ? 'Today' : formatDay(session.date)}</AppText>
       <EntryBadge entry={session} size={32} />
       <View style={styles.copy}>
@@ -187,12 +196,12 @@ export default function WeekScreen() {
   const step = (direction: number) => setSelectedDate(view === 'month' ? shiftMonth(selectedDate, direction) : shiftDays(selectedDate, direction * 7));
 
   return (
-    <Screen title="Calendar" subtitle="Your workouts and sports sessions" context={`training calendar for ${selectedDate}`} wash="week" onRefresh={refresh} refreshing={loading && Boolean(data)} preview={false}>
+    <Screen title="Calendar" subtitle="Your training, in view." context={`training calendar for ${selectedDate}`} onRefresh={refresh} refreshing={loading && Boolean(data)} preview={false}>
       <View style={styles.toolbar}>
-        <View accessibilityRole="tablist" accessibilityLabel="Calendar view" style={[styles.viewSwitch, { backgroundColor: colors.fill }]}>
+        <View accessibilityRole="tablist" accessibilityLabel="Calendar view" style={[styles.viewSwitch, { borderColor: colors.separator }]}>
           {(['week', 'month'] as const).map((option) => <Pressable key={option} accessibilityRole="tab"
             accessibilityLabel={option === 'week' ? 'Week view' : 'Month view'} aria-selected={view === option}
-            onPress={() => setView(option)} style={[styles.viewOption, view === option && { backgroundColor: colors.card }]}>
+            onPress={() => setView(option)} style={[styles.viewOption, view === option && { backgroundColor: colors.fill }]}>
             <AppText weight="medium" tone={view === option ? 'default' : 'secondary'} style={styles.controlText}>{option === 'week' ? 'Week' : 'Month'}</AppText>
           </Pressable>)}
         </View>
@@ -201,7 +210,7 @@ export default function WeekScreen() {
         </Pressable>
       </View>
       <View style={styles.periodHeader}>
-        <AppText weight="semibold" style={styles.periodTitle}>{periodTitle}</AppText>
+        <AppText weight="medium" style={styles.periodTitle}>{periodTitle}</AppText>
         <Pressable accessibilityRole="button" accessibilityLabel={`Previous ${view}`} onPress={() => step(-1)} style={styles.stepButton}>
           <ChevronLeft color={colors.textSecondary} size={21} />
         </Pressable>
@@ -222,10 +231,10 @@ export default function WeekScreen() {
 
       {view === 'week' && weekSessions.length > 0 ? <>
         <SectionTitle>At a glance</SectionTitle>
-        <Card style={styles.listCard}>
+        <View style={[styles.listCard, { borderTopColor: colors.separator }]}>
           {weekSessions.map((session, index) => <SessionRow key={`${session.kind}:${session.id}`} session={session} last={index === weekSessions.length - 1}
             onSelect={() => { setSelectedDate(session.date); openSport(session); }} />)}
-        </Card>
+        </View>
       </> : null}
       {heldDate ? <CalendarDayActions date={heldDate} onClose={() => setHeldDate(null)} /> : null}
       {selectedSport && openedSport ? <SportsWorkoutDetails key={`${openedSport.userId}:${openedSport.id}`}
@@ -235,34 +244,40 @@ export default function WeekScreen() {
 }
 
 const styles = StyleSheet.create({
-  toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
+  toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, marginBottom: 5 },
   agendaHeading: { flexDirection: 'row', alignItems: 'center' },
-  viewSwitch: { flexDirection: 'row', borderRadius: 14, padding: 4 },
-  viewOption: { minWidth: 82, minHeight: 44, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  controlText: { fontSize: 14, lineHeight: 18 },
+  viewSwitch: { flexDirection: 'row', borderRadius: 24, padding: 3, borderWidth: StyleSheet.hairlineWidth },
+  viewOption: { minWidth: 76, minHeight: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+  controlText: { fontSize: 13, lineHeight: 18 },
   todayButton: { minHeight: 44, paddingHorizontal: 12, justifyContent: 'center' },
   periodHeader: { flexDirection: 'row', alignItems: 'center' },
-  periodTitle: { flex: 1, fontSize: 20, lineHeight: 26, letterSpacing: -0.5 },
+  periodTitle: { flex: 1, fontSize: 18, lineHeight: 25, letterSpacing: -0.4 },
   stepButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   monthCard: { paddingHorizontal: 4, paddingVertical: 10 },
   calendarRow: { flexDirection: 'row' },
   weekday: { flex: 1, alignItems: 'center', paddingVertical: 8 },
   monthDay: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', gap: 3 },
-  dayStrip: { gap: 8, paddingRight: 10 },
-  day: { width: 54, height: 88, borderRadius: 18, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', gap: 2 },
-  dayLabel: { fontSize: 11, lineHeight: 15 },
-  dayDisc: { minWidth: 36, minHeight: 36, borderRadius: 18, borderWidth: 1.5, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
-  dayNumber: { fontSize: 17, lineHeight: 22 },
+  dayStrip: { flexGrow: 1, gap: 4, paddingBottom: 4 },
+  day: { flex: 1, minWidth: 44, minHeight: 82, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  dayLabel: { fontSize: 10, lineHeight: 15 },
+  dayDisc: { minWidth: 36, minHeight: 36, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
+  dayNumber: { fontSize: 19, lineHeight: 25 },
   dayDots: { flexDirection: 'row', gap: 3, height: 5 },
   dayDot: { width: 5, height: 5, borderRadius: 3 },
-  selectedCard: { gap: 12 },
+  selectedCard: { gap: 14, padding: 20 },
+  sessionEyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sessionEyebrow: { flex: 1, fontSize: 10, lineHeight: 16, letterSpacing: 1.1, textTransform: 'uppercase' },
+  statusDot: { width: 4, height: 4, borderRadius: 2 },
   selectedHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   copy: { flex: 1 },
-  sessionTitle: { fontSize: 20, lineHeight: 25, letterSpacing: -0.35 },
+  sessionTitle: { fontSize: 28, lineHeight: 34, letterSpacing: -0.8 },
+  sessionNotes: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 14 },
+  detailsLink: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 13 },
   loading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   meta: { fontSize: 12, lineHeight: 17 },
   detail: { fontSize: 14, lineHeight: 20 },
-  listCard: { paddingVertical: 4 },
-  listRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  listCard: { borderTopWidth: StyleSheet.hairlineWidth },
+  listRow: { minHeight: 74, flexDirection: 'row', alignItems: 'center', gap: 10 },
   listDay: { width: 42, fontSize: 12 },
+  pressed: { opacity: 0.7 },
 });

@@ -22,7 +22,7 @@ function Navigation() {
   const baseTheme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
   const theme = {
     ...baseTheme,
-    colors: { ...baseTheme.colors, background: colors.background, card: colors.card, text: colors.text },
+    colors: { ...baseTheme.colors, background: colors.background, card: colors.card, text: colors.text, primary: colors.tint, border: colors.separator, notification: colors.danger },
   };
 
   useEffect(() => {

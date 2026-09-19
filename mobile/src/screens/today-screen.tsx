@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { ArrowRight, Check, Clock3, ListChecks, MoveRight, ShieldCheck, Sparkles } from 'lucide-react-native';
+import { Check, Clock3, MoveRight, ShieldCheck, Sparkles } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 
 import {
@@ -20,20 +20,20 @@ export default function TodayScreen() {
   const { colors, proposal, sessions, block, acceptProposal, declineProposal, shortenToday, refreshPreview } = useApp();
   const session = sessions.find((item) => item.id === 's-today') ?? sessions.find((item) => item.status === 'planned' && item.modality !== 'rest');
 
-  if (!sessions.length) return <Screen title="Today" wash="today" onRefresh={refreshPreview}><Card><AppText weight="bold">No workouts yet</AppText><AppText tone="secondary">Planning is not connected in this build. Your account, onboarding answers, and chat are live.</AppText></Card><PrimaryButton onPress={() => router.push('/(tabs)/chat')}>Open chat</PrimaryButton></Screen>;
+  if (!sessions.length) return <Screen title="Today" onRefresh={refreshPreview}><Card><AppText weight="bold">No workouts yet</AppText><AppText tone="secondary">Planning is not connected in this build. Your account, onboarding answers, and chat are live.</AppText></Card><PrimaryButton onPress={() => router.push('/(tabs)/chat')}>Open chat</PrimaryButton></Screen>;
 
   return (
-    <Screen title="Today" subtitle={`${block.name} focus · Week ${block.week} of ${block.of}`} context="today's training" wash="today" onRefresh={refreshPreview}>
+    <Screen title="Today" subtitle={`${block.name} focus · Week ${block.week} of ${block.of}`} context="today's training" onRefresh={refreshPreview}>
       {proposal ? (
         <Card style={styles.proposal}>
           <View style={styles.eyebrow}>
             <Sparkles color={colors.tint} size={16} />
             <AppText tone="tint" weight="semibold" style={styles.eyebrowText}>A small adjustment</AppText>
           </View>
-          <AppText weight="bold" style={styles.proposalTitle}>Ease this week?</AppText>
+          <AppText style={styles.proposalTitle}>Ease this week?</AppText>
           <AppText tone="secondary" style={styles.proposalCopy}>{proposal.context}</AppText>
           <AppText weight="semibold" style={styles.proposalSuggestion}>{proposal.suggestion}</AppText>
-          <View style={[styles.changePanel, { backgroundColor: colors.fill }]}>
+          <View style={[styles.changePanel, { borderColor: colors.separator }]}>
             {proposal.rows.map((row) => (
               <View key={row.label} style={styles.changeRow}>
                 <View style={[styles.changeDot, { backgroundColor: row.accent === 'strength' ? colors.strength : colors.intervals }]} />
@@ -54,18 +54,18 @@ export default function TodayScreen() {
 
       <SectionTitle>Your session</SectionTitle>
       {session ? (
-        <Card>
+        <Card style={styles.sessionCard}>
           <View style={styles.sessionHeader}>
-            <ModalityBadge modality={session.modality} />
             <View style={styles.sessionCopy}>
-              <AppText weight="bold" style={styles.sessionTitle}>{session.title}</AppText>
-              <View style={styles.metadata}>
-                <Clock3 color={colors.textSecondary} size={14} />
-                <AppText tone="secondary" style={styles.metaText}>{session.minutes} min</AppText>
-                <ListChecks color={colors.textSecondary} size={14} />
-                <AppText tone="secondary" style={styles.metaText}>{session.exercises.length} exercises</AppText>
-              </View>
+              <AppText tone="secondary" weight="medium" style={styles.sessionEyebrow}>{session.modality} session</AppText>
+              <AppText style={styles.sessionTitle}>{session.title}</AppText>
             </View>
+            <ModalityBadge modality={session.modality} size={38} />
+          </View>
+          <View style={styles.metadata}>
+            <View style={styles.stat}><AppText style={styles.statValue}>{session.minutes}<AppText tone="secondary" style={styles.statUnit}> min</AppText></AppText><AppText tone="secondary" style={styles.metaText}>Duration</AppText></View>
+            <View style={[styles.statDivider, { backgroundColor: colors.separator }]} />
+            <View style={styles.stat}><AppText style={styles.statValue}>{session.exercises.length}</AppText><AppText tone="secondary" style={styles.metaText}>Exercises</AppText></View>
           </View>
           {session.repairedNote ? (
             <View style={[styles.repairPill, { backgroundColor: colors.tintSoft }]}>
@@ -96,45 +96,50 @@ export default function TodayScreen() {
         <Card><AppText tone="secondary">Nothing is planned today. Your next session is waiting in Week.</AppText></Card>
       )}
 
-      <SectionTitle>Quiet progress</SectionTitle>
+      <SectionTitle>Recent progress</SectionTitle>
       <Card style={styles.milestoneCard}>
         <View style={[styles.milestoneIcon, { backgroundColor: colors.tintSoft }]}><Sparkles color={colors.tintText} size={20} /></View>
         <View style={styles.sessionCopy}>
           <AppText weight="semibold">{milestones[0].text}</AppText>
           <AppText tone="secondary" style={styles.metaText}>A milestone from {milestones[0].when}</AppText>
         </View>
-        <ArrowRight color={colors.textTertiary} size={18} />
       </Card>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  proposal: { gap: 13 },
+  proposal: { gap: 16 },
   eyebrow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  eyebrowText: { fontSize: 13, lineHeight: 18 },
-  proposalTitle: { fontSize: 24, lineHeight: 28, letterSpacing: -0.6 },
+  eyebrowText: { fontSize: 11, lineHeight: 16, letterSpacing: 1, textTransform: 'uppercase' },
+  proposalTitle: { fontSize: 28, lineHeight: 34, letterSpacing: -0.8 },
   proposalCopy: { fontSize: 15, lineHeight: 22 },
   proposalSuggestion: { fontSize: 15, lineHeight: 22 },
-  changePanel: { borderRadius: 14, paddingVertical: 5, paddingHorizontal: 12 },
+  changePanel: { borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 6 },
   changeRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9 },
-  changeDot: { width: 9, height: 9, borderRadius: 5 },
+  changeDot: { width: 5, height: 5, borderRadius: 3 },
   changeLabel: { flex: 1, fontSize: 14 },
-  buttonRow: { flexDirection: 'row', gap: 10 },
+  buttonRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
   halfButton: { flex: 1 },
+  sessionCard: { padding: 20 },
   sessionHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   sessionCopy: { flex: 1 },
-  sessionTitle: { fontSize: 21, lineHeight: 26, letterSpacing: -0.4 },
-  metadata: { marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  metaText: { fontSize: 12, lineHeight: 17, marginRight: 5 },
-  intent: { marginTop: 14, fontSize: 14, lineHeight: 20 },
+  sessionEyebrow: { fontSize: 10, lineHeight: 16, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 7 },
+  sessionTitle: { fontSize: 28, lineHeight: 34, letterSpacing: -0.8 },
+  metadata: { marginTop: 22, flexDirection: 'row', alignItems: 'center', gap: 24 },
+  stat: { gap: 3 },
+  statValue: { fontSize: 27, lineHeight: 34, letterSpacing: -0.6, fontVariant: ['tabular-nums'] },
+  statUnit: { fontSize: 14, lineHeight: 20 },
+  statDivider: { width: StyleSheet.hairlineWidth, height: 36 },
+  metaText: { fontSize: 12, lineHeight: 18 },
+  intent: { marginTop: 20, fontSize: 14, lineHeight: 22 },
   repairPill: { alignSelf: 'flex-start', marginTop: 13, paddingHorizontal: 10, minHeight: 28, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 6 },
   repairText: { fontSize: 12, lineHeight: 16 },
-  exerciseList: { marginTop: 14, marginBottom: 14, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
-  exerciseRow: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 9 },
-  roleDot: { width: 7, height: 7, borderRadius: 4 },
+  exerciseList: { marginTop: 20, marginBottom: 20, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
+  exerciseRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  roleDot: { width: 4, height: 4, borderRadius: 2 },
   exerciseName: { flex: 1, fontSize: 14 },
   exerciseTarget: { fontSize: 13 },
   milestoneCard: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  milestoneIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  milestoneIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
 });

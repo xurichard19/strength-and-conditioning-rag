@@ -102,18 +102,18 @@ export function MarkdownText({ children, onSelectText }: { children: string; onS
 }
 
 const styles = StyleSheet.create({
-  container: { gap: 4 },
-  paragraph: { fontFamily: fonts.regular, fontSize: 14.5, lineHeight: 21, letterSpacing: -0.2 },
-  heading: { fontFamily: fonts.bold, fontSize: 19, lineHeight: 24, marginTop: 4, marginBottom: 2 },
-  smallHeading: { fontFamily: fonts.semibold, fontSize: 16, lineHeight: 21 },
-  spacer: { height: 5 },
+  container: { gap: 6 },
+  paragraph: { fontFamily: fonts.regular, fontSize: 15, lineHeight: 25, letterSpacing: -0.1 },
+  heading: { fontFamily: fonts.medium, fontSize: 22, lineHeight: 29, letterSpacing: -0.6, marginTop: 6, marginBottom: 4 },
+  smallHeading: { fontFamily: fonts.medium, fontSize: 17, lineHeight: 24, letterSpacing: -0.3 },
+  spacer: { height: 7 },
   listRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingLeft: 2 },
-  bullet: { width: 12, fontFamily: fonts.bold, fontSize: 17, lineHeight: 22 },
-  number: { width: 20, fontFamily: fonts.semibold, fontSize: 13, lineHeight: 22, textAlign: 'right' },
+  bullet: { width: 12, fontFamily: fonts.medium, fontSize: 17, lineHeight: 25 },
+  number: { width: 20, fontFamily: fonts.medium, fontSize: 13, lineHeight: 25, textAlign: 'right' },
   listCopy: { flex: 1 },
   inlineCode: { fontFamily: 'monospace', fontSize: 13 },
-  codeBlock: { borderRadius: radius.segment, padding: 10, marginVertical: 3 },
-  codeText: { fontFamily: 'monospace', fontSize: 12, lineHeight: 18 },
+  codeBlock: { borderRadius: radius.segment, padding: 14, marginVertical: 6 },
+  codeText: { fontFamily: 'monospace', fontSize: 12, lineHeight: 20 },
   link: { fontFamily: fonts.medium, textDecorationLine: 'underline' },
-  quote: { borderLeftWidth: 3, paddingLeft: 10, marginVertical: 3 },
+  quote: { borderLeftWidth: 2, paddingLeft: 16, marginVertical: 6 },
 });

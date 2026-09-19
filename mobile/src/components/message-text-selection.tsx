@@ -22,9 +22,9 @@ export function MessageTextSelection({ text, onClose }: { text: string; onClose:
   return <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
     <SafeAreaProvider>
       <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]} accessibilityViewIsModal>
-        <View style={styles.header}>
-          <AppText weight="bold" style={styles.title}>Select text</AppText>
-          <Pressable accessibilityRole="button" accessibilityLabel="Close text selection" onPress={onClose} style={styles.close}>
+        <View style={[styles.header, { borderBottomColor: colors.separator }]}>
+          <AppText weight="medium" style={styles.title}>Select text</AppText>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close text selection" onPress={onClose} style={[styles.close, { backgroundColor: colors.fill }]}>
             <X size={22} color={colors.textSecondary} />
           </Pressable>
         </View>
@@ -38,10 +38,10 @@ export function MessageTextSelection({ text, onClose }: { text: string; onClose:
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, paddingHorizontal: 20 },
-  header: { flexDirection: 'row', alignItems: 'center', minHeight: 64, gap: 12 },
-  title: { flex: 1, fontSize: 20, lineHeight: 26 },
-  close: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  hint: { fontSize: 12, lineHeight: 18, marginBottom: 16 },
-  text: { flex: 1, fontFamily: fonts.regular, fontSize: 16, lineHeight: 24, textAlignVertical: 'top', padding: 0, paddingBottom: 20 },
+  screen: { flex: 1, paddingHorizontal: 24 },
+  header: { flexDirection: 'row', alignItems: 'center', minHeight: 84, gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, marginBottom: 20 },
+  title: { flex: 1, fontSize: 26, lineHeight: 32, letterSpacing: -0.8 },
+  close: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  hint: { fontSize: 13, lineHeight: 21, marginBottom: 24 },
+  text: { flex: 1, fontFamily: fonts.regular, fontSize: 16, lineHeight: 27, textAlignVertical: 'top', padding: 0, paddingBottom: 24 },
 });

@@ -7,9 +7,9 @@
   --color-muted: oklch(76% 0.017 250);
   --color-faint: oklch(67% 0.02 250);
   --color-line: oklch(33% 0.02 250);
-  --color-accent: oklch(84% 0.08 250);
-  --color-accent-ink: oklch(20% 0.028 250);
-  --color-success: oklch(82% 0.055 155);
+  --color-accent: #c4b2eb;
+  --color-accent-ink: oklch(20% 0.028 300);
+  --color-success: #c4b2eb;
   --color-warning: oklch(82% 0.075 75);
   --color-clear: transparent;
   --color-photo-shade: oklch(13% 0.01 250);

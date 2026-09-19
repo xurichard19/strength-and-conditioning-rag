@@ -31,7 +31,7 @@ export function weekDates(date: string) {
   return Array.from({ length: 7 }, (_, index) => shiftDays(start, index));
 }
 
-/** Request seven local dates or the actual calendar month, never its 42-cell padding. */
+/** Request seven local dates or the actual calendar month, never its adjacent-month padding. */
 export function calendarRange(date: string, view: 'week' | 'month'): [string, string] {
   if (view === 'week') {
     const days = weekDates(date);
@@ -56,11 +56,14 @@ export function calendarSnapshot(response: CalendarResponse): CalendarSnapshot {
   revision: response.revision };
 }
 
-/** Six Sunday-first rows keep the calendar height stable between months. */
+/** Include only Sunday-first weeks that contain at least one day of this month. */
 export function monthDates(date: string) {
   const month = date.slice(0, 7);
-  const start = weekDates(`${month}-01`)[0];
-  return Array.from({ length: 42 }, (_, index) => {
+  const first = atNoon(`${month}-01`);
+  const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0, 12).getDate();
+  const length = Math.ceil((first.getDay() + daysInMonth) / 7) * 7;
+  const start = shiftDays(`${month}-01`, -first.getDay());
+  return Array.from({ length }, (_, index) => {
     const day = shiftDays(start, index);
     return { date: day, inMonth: day.startsWith(month) };
   });

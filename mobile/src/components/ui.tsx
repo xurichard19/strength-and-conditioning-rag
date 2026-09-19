@@ -1,5 +1,4 @@
-import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import {
   ChevronRight,
   Dumbbell,
@@ -9,7 +8,7 @@ import {
   Timer,
   type LucideIcon,
 } from 'lucide-react-native';
-import { useRef, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -25,14 +24,14 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, { cancelAnimation, Easing, ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
-import { fonts, radius, shadow, type Palette } from '@/design/tokens';
+import { fonts, radius, type Palette } from '@/design/tokens';
 import type { Modality } from '@/domain/types';
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/app-context';
 
 type Tone = 'default' | 'secondary' | 'tint' | 'inverse';
-type Wash = 'today' | 'week' | 'progress' | 'you';
 
 const modalityIcons: Record<Modality | 'intervals', LucideIcon> = {
   strength: Dumbbell,
@@ -49,18 +48,11 @@ const toneColorKeys: Record<Tone, keyof Pick<Palette, 'text' | 'textSecondary' |
   inverse: 'strongText',
 };
 
-const washColorKeys: Record<Wash, keyof Pick<Palette, 'washToday' | 'washWeek' | 'washProgress' | 'washYou'>> = {
-  today: 'washToday',
-  week: 'washWeek',
-  progress: 'washProgress',
-  you: 'washYou',
-};
-
-const modalityBackgroundKeys: Record<Modality | 'intervals', keyof Pick<Palette, 'strength' | 'endurance' | 'fillStrong' | 'intervals'>> = {
+const modalityColorKeys: Record<Modality | 'intervals', keyof Pick<Palette, 'strength' | 'endurance' | 'textSecondary' | 'intervals' | 'mixed'>> = {
   strength: 'strength',
   endurance: 'endurance',
-  mixed: 'strength',
-  rest: 'fillStrong',
+  mixed: 'mixed',
+  rest: 'textSecondary',
   intervals: 'intervals',
 };
 
@@ -86,7 +78,6 @@ export function Screen({
   title,
   subtitle,
   context,
-  wash = 'today',
   children,
   contentContainerStyle,
   scrollProps,
@@ -97,7 +88,6 @@ export function Screen({
   title: string;
   subtitle?: string;
   context?: string;
-  wash?: Wash;
   children: ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
   scrollProps?: ScrollViewProps;
@@ -109,6 +99,16 @@ export function Screen({
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const refreshPending = useRef(false);
+  const entrance = useSharedValue(1);
+  useFocusEffect(useCallback(() => {
+    entrance.set(0);
+    entrance.set(withTiming(1, { duration: 380, easing: Easing.out(Easing.cubic), reduceMotion: ReduceMotion.System }));
+    return () => cancelAnimation(entrance);
+  }, [entrance]));
+  const entranceStyle = useAnimatedStyle(() => ({
+    opacity: 0.65 + entrance.get() * 0.35,
+    transform: [{ translateY: (1 - entrance.get()) * 12 }],
+  }));
   const refreshingContent = refreshing || externalRefreshing;
   const refresh = async () => {
     if (!onRefresh || refreshPending.current) return;
@@ -121,7 +121,6 @@ export function Screen({
 
   return (
     <SafeAreaView edges={['top']} style={[styles.screen, { backgroundColor: colors.background }]}>
-      <LinearGradient pointerEvents="none" colors={colors[washColorKeys[wash]]} style={styles.wash} />
       <ScrollView
         showsVerticalScrollIndicator={false}
         alwaysBounceVertical={Boolean(onRefresh)}
@@ -131,9 +130,10 @@ export function Screen({
         style={refreshingContent ? styles.refreshingContent : undefined}
         accessibilityState={{ busy: refreshingContent }}
         {...scrollProps}>
-        <View style={styles.pageHeader}>
+        <Animated.View style={[styles.pageHeader, entranceStyle]}>
           <View style={styles.pageHeaderCopy}>
-            <AppText weight="bold" style={styles.largeTitle}>{title}</AppText>
+            <AppText tone="tint" weight="medium" style={styles.brandLabel}>ARCEL</AppText>
+            <AppText style={styles.largeTitle}>{title}</AppText>
             {subtitle ? <AppText tone="secondary" style={styles.subtitle}>{subtitle}</AppText> : null}
           </View>
           {context ? (
@@ -141,15 +141,15 @@ export function Screen({
               accessibilityRole="button"
               accessibilityLabel="Ask Arcel"
               onPress={() => router.push({ pathname: '/(tabs)/chat', params: { context } })}
-              style={({ pressed }) => [styles.askButton, { backgroundColor: colors.card }, pressed && styles.pressed]}>
-              <Sparkles color={colors.strength} size={21} strokeWidth={1.8} />
+              style={({ pressed }) => [styles.askButton, { backgroundColor: colors.card, borderColor: colors.separator }, pressed && styles.pressed]}>
+              <Sparkles color={colors.tintText} size={20} strokeWidth={1.6} />
             </Pressable>
           ) : null}
-        </View>
+        </Animated.View>
         {(preview ?? previewMode) ? (
-          <View style={[styles.previewPill, { backgroundColor: colors.tintSoft }]}>
-            <View style={[styles.previewDot, { backgroundColor: colors.tint }]} />
-              <AppText tone="tint" weight="medium" style={styles.previewText}>Training preview · not synced</AppText>
+          <View style={styles.previewPill}>
+            <View style={[styles.previewDot, { backgroundColor: colors.textTertiary }]} />
+              <AppText tone="secondary" style={styles.previewText}>Training preview · not synced</AppText>
           </View>
         ) : null}
         {refreshError || notice ? (
@@ -157,7 +157,7 @@ export function Screen({
             <AppText tone="secondary" style={styles.noticeText}>{refreshError || notice}</AppText>
           </Card>
         ) : null}
-        {children}
+        <Animated.View style={[styles.sections, entranceStyle]}>{children}</Animated.View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -165,11 +165,11 @@ export function Screen({
 
 export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const { colors } = useApp();
-  return <View style={[styles.card, shadow, { backgroundColor: colors.card }, style]}>{children}</View>;
+  return <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.separator }, style]}>{children}</View>;
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {
-  return <AppText weight="semibold" style={styles.sectionTitle}>{children}</AppText>;
+  return <AppText weight="medium" style={styles.sectionTitle}>{children}</AppText>;
 }
 
 export function PrimaryButton({
@@ -183,6 +183,7 @@ export function PrimaryButton({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading) }}
       disabled={disabled || loading}
       {...props}
       style={({ pressed }) => [
@@ -192,7 +193,7 @@ export function PrimaryButton({
         (disabled || loading) && styles.disabled,
         style,
       ]}>
-      {loading ? <ActivityIndicator color={colors.strongText} /> : <AppText tone="inverse" weight="semibold" style={styles.buttonText}>{children}</AppText>}
+      {loading ? <ActivityIndicator color={colors.strongText} /> : <AppText tone="inverse" weight="medium" style={styles.buttonText}>{children}</AppText>}
     </Pressable>
   );
 }
@@ -209,10 +210,11 @@ export function SecondaryButton({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading) }}
       disabled={disabled || loading}
       {...props}
-      style={({ pressed }) => [styles.secondaryButton, { backgroundColor: colors.fill }, pressed && styles.pressed, (disabled || loading) && styles.disabled, style]}>
-      {loading ? <ActivityIndicator color={colors.text} /> : <>{Icon ? <Icon size={18} color={colors.text} strokeWidth={1.8} /> : null}<AppText weight="semibold" style={styles.buttonText}>{children}</AppText></>}
+      style={({ pressed }) => [styles.secondaryButton, { backgroundColor: colors.fill, borderColor: colors.separator }, pressed && styles.pressed, (disabled || loading) && styles.disabled, style]}>
+      {loading ? <ActivityIndicator color={colors.text} /> : <>{Icon ? <Icon size={18} color={colors.text} strokeWidth={1.8} /> : null}<AppText weight="medium" style={styles.buttonText}>{children}</AppText></>}
     </Pressable>
   );
 }
@@ -226,7 +228,7 @@ export function OutlineButton({ children, style, disabled, ...props }: Pressable
       disabled={disabled}
       {...props}
       style={({ pressed }) => [styles.outlineButton, { backgroundColor: colors.card, borderColor: colors.separator }, pressed && styles.pressed, style, disabled && styles.disabled]}>
-      <AppText weight="semibold" style={styles.buttonText}>{children}</AppText>
+      <AppText weight="medium" style={styles.buttonText}>{children}</AppText>
     </Pressable>
   );
 }
@@ -240,7 +242,7 @@ export function ChoiceChip({ label, selected, onPress, style }: { label: string;
       onPress={onPress}
       style={({ pressed }) => [
         styles.choiceChip,
-        { backgroundColor: selected ? colors.tint : colors.fill },
+        { backgroundColor: selected ? colors.strong : colors.card, borderColor: selected ? colors.strong : colors.separator },
         pressed && styles.pressed,
         style,
       ]}>
@@ -252,10 +254,10 @@ export function ChoiceChip({ label, selected, onPress, style }: { label: string;
 export function ModalityBadge({ modality, size = 46 }: { modality: Modality | 'intervals'; size?: 32 | 38 | 46 }) {
   const { colors } = useApp();
   const Icon = modalityIcons[modality];
-  const iconColor = modality === 'rest' ? colors.textSecondary : '#FFFFFF';
+  const iconColor = colors[modalityColorKeys[modality]];
   return (
-    <View style={[styles.modality, { width: size, height: size, borderRadius: size / 2, backgroundColor: colors[modalityBackgroundKeys[modality]] }]}>
-      <Icon color={iconColor} size={Math.round(size * 0.48)} strokeWidth={2} />
+    <View style={[styles.modality, { width: size, height: size, borderRadius: 12, backgroundColor: colors.fill }]}>
+      <Icon color={iconColor} size={Math.round(size * 0.48)} strokeWidth={1.65} />
     </View>
   );
 }
@@ -287,7 +289,7 @@ export function DisclosureRow({
   const content = (
     <View style={[styles.disclosure, !last && { borderBottomColor: colors.separator, borderBottomWidth: StyleSheet.hairlineWidth }]}>
       {Icon ? (
-        <View style={[styles.rowIcon, { backgroundColor: colors.tintSoft }]}>
+        <View style={styles.rowIcon}>
           <Icon color={colors.tintText} size={17} strokeWidth={1.8} />
         </View>
       ) : null}
@@ -296,40 +298,41 @@ export function DisclosureRow({
       {onPress ? <ChevronRight color={colors.textTertiary} size={17} /> : null}
     </View>
   );
-  return onPress ? <Pressable onPress={onPress}>{content}</Pressable> : content;
+  return onPress ? <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => pressed && styles.pressed}>{content}</Pressable> : content;
 }
 
 const styles = StyleSheet.create({
-  text: { fontSize: 16, lineHeight: 22, letterSpacing: -0.2 },
+  text: { fontSize: 15, lineHeight: 22, letterSpacing: -0.15 },
   screen: { flex: 1 },
-  wash: { position: 'absolute', top: 0, left: 0, right: 0, height: 290 },
-  screenContent: { paddingHorizontal: 16, paddingBottom: 130, gap: 10 },
+  screenContent: { paddingHorizontal: 22, paddingBottom: 40, gap: 16 },
+  sections: { gap: 14 },
   refreshingContent: { opacity: 0.55 },
-  pageHeader: { minHeight: 92, paddingTop: 15, paddingBottom: 12, flexDirection: 'row', alignItems: 'flex-end', gap: 12 },
+  pageHeader: { minHeight: 122, paddingTop: 24, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 16 },
   pageHeaderCopy: { flex: 1 },
-  largeTitle: { fontSize: 34, lineHeight: 36, letterSpacing: -1.2 },
-  subtitle: { marginTop: 6, fontSize: 13, lineHeight: 18 },
-  askButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', ...shadow },
-  pressed: { opacity: 0.78, transform: [{ scale: 0.98 }] },
+  brandLabel: { fontSize: 10, lineHeight: 15, letterSpacing: 2.3, marginBottom: 10 },
+  largeTitle: { fontSize: 38, lineHeight: 43, letterSpacing: -1.6 },
+  subtitle: { marginTop: 8, fontSize: 13, lineHeight: 19 },
+  askButton: { width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
+  pressed: { opacity: 0.72 },
   disabled: { opacity: 0.4 },
-  previewPill: { alignSelf: 'flex-start', minHeight: 28, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10 },
-  previewDot: { width: 7, height: 7, borderRadius: 4 },
-  previewText: { fontSize: 12, lineHeight: 16 },
-  card: { borderRadius: radius.card, padding: 16 },
+  previewPill: { alignSelf: 'flex-start', minHeight: 22, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  previewDot: { width: 4, height: 4, borderRadius: 2 },
+  previewText: { fontSize: 11, lineHeight: 16 },
+  card: { borderRadius: radius.card, padding: 18, borderWidth: StyleSheet.hairlineWidth },
   noticeCard: { paddingVertical: 11, shadowOpacity: 0 },
   noticeText: { fontSize: 13, lineHeight: 18 },
-  sectionTitle: { fontSize: 17, lineHeight: 23, marginTop: 14, marginBottom: -2 },
-  primaryButton: { minHeight: 54, borderRadius: radius.button, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
-  secondaryButton: { minHeight: 48, borderRadius: radius.button, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 16 },
+  sectionTitle: { fontSize: 19, lineHeight: 25, letterSpacing: -0.5, marginTop: 16, marginBottom: 0 },
+  primaryButton: { minHeight: 54, borderRadius: radius.capsule, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 },
+  secondaryButton: { minHeight: 50, borderRadius: radius.capsule, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18 },
   outlineButton: { minHeight: 48, borderRadius: radius.button, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
-  buttonText: { fontSize: 16, lineHeight: 20, textAlign: 'center' },
-  choiceChip: { minHeight: 44, borderRadius: 12, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
+  buttonText: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  choiceChip: { minHeight: 44, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
   choiceLabel: { fontSize: 14, lineHeight: 18, textAlign: 'center' },
   modality: { alignItems: 'center', justifyContent: 'center' },
   shieldLine: { minHeight: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  shieldText: { fontSize: 12, lineHeight: 16 },
-  disclosure: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  rowIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  shieldText: { flexShrink: 1, fontSize: 12, lineHeight: 16 },
+  disclosure: { minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  rowIcon: { width: 26, height: 32, alignItems: 'center', justifyContent: 'center' },
   disclosureTitle: { flex: 1, fontSize: 15, lineHeight: 20 },
   disclosureValue: { fontSize: 14, lineHeight: 19 },
 });

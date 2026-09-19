@@ -59,11 +59,13 @@ test('mode selector defaults to quick, updates shared selection, and marks the s
   const f = fixture(); const { ChatModeSelector } = f.load('components/chat-mode-selector.tsx');
   const render = () => f.render(ChatModeSelector);
   const toggle = render().find(node => node.props.accessibilityLabel === 'Chat mode: Quick chat')!;
-  assert.deepEqual(nodes(toggle).map(node => node.type), ['button', 'zap', 'chevron']);
-  assert.equal(toggle.props.style[0].alignSelf, undefined);
-  assert.equal(toggle.props.style[0].height, 39);
-  assert.equal(toggle.props.style[0].minHeight, undefined);
-  assert.equal(toggle.props.style[0].marginBottom, undefined);
+  assert.deepEqual(nodes(toggle).map(node => node.type), ['button', 'zap', 'text', 'chevron']);
+  assert.equal(nodes(toggle).find(node => node.type === 'text')?.props.children, 'Quick chat');
+  const toggleStyle = Object.assign({}, ...toggle.props.style({ pressed: false }));
+  assert.equal(toggleStyle.alignSelf, undefined);
+  assert.equal(toggleStyle.minHeight, 44);
+  assert.equal(toggleStyle.height, undefined);
+  assert.equal(toggleStyle.marginBottom, undefined);
   toggle.props.onPress();
   let options = render().filter(node => node.props.accessibilityRole === 'radio');
   assert.equal(options.length, 2);
@@ -73,7 +75,8 @@ test('mode selector defaults to quick, updates shared selection, and marks the s
   options[1].props.onPress();
   assert.equal(render().some(node => node.type === 'modal'), false);
   const deepToggle = render().find(node => node.props.accessibilityLabel === 'Chat mode: Deep research')!;
-  assert.deepEqual(nodes(deepToggle).map(node => node.type), ['button', 'book', 'chevron']);
+  assert.deepEqual(nodes(deepToggle).map(node => node.type), ['button', 'book', 'text', 'chevron']);
+  assert.equal(nodes(deepToggle).find(node => node.type === 'text')?.props.children, 'Deep research');
   deepToggle.props.onPress();
   options = render().filter(node => node.props.accessibilityRole === 'radio');
   assert.equal(options[1].props['aria-checked'], true);
@@ -97,8 +100,8 @@ test('mode menu dismisses on backdrop, back, and tab blur while retaining its lo
 
 test('each pre-answer stage has a stable accessible label and exactly three staggered dots', () => {
   const f = fixture(); const { ChatProgress } = f.load('components/chat-progress.tsx');
-  for (const [stage, label] of [[undefined, 'Thinking…'], ['fetching_user_context', 'Fetching user context…'],
-    ['researching', 'Researching…'], ['thinking', 'Thinking…']]) {
+  for (const [stage, label] of [[undefined, 'Thinking…'], ['fetching_user_context', 'Reading your training context…'],
+    ['researching', 'Reviewing the research…'], ['thinking', 'Thinking…']]) {
     const tree = f.render(ChatProgress, { stage });
     assert.equal(tree[0].props.accessibilityLabel, label);
     assert.equal(tree[0].props.accessibilityLiveRegion, 'polite');

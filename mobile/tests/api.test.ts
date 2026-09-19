@@ -489,6 +489,8 @@ test('native auth callback restores tokens and rejects invalid links', async () 
 // Deterministic hook harness: exercise the provider without mounting native views.
 function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => TestValue> = {}) {
   const slots: TestValue[] = []; let cursor = 0; let dirty = true; let value!: ReturnType<typeof import('../src/state/app-context').useApp>; let effects: (() => void)[] = [];
+  let now = 0; let timerId = 0;
+  const timers = new Map<number, { at: number; callback: () => void }>();
   const changed = (a: unknown[] | undefined, b: unknown[] | undefined) => !a || !b || a.length !== b.length || a.some((item, i) => item !== b[i]);
   const hooks = {
     createContext: () => ({ Provider: 'provider' }),
@@ -545,6 +547,9 @@ function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => 
       signOut: async () => {},
       supabase: { auth: { onAuthStateChange: fn => (authListener = fn, { data: { subscription: { unsubscribe() {} } } }) } },
     },
+  }, {
+    setTimeout: (callback: () => void, delay: number) => { const id = ++timerId; timers.set(id, { at: now + delay, callback }); return id; },
+    clearTimeout: (id: number) => timers.delete(id),
   });
   async function flush() {
     for (let i = 0; i < 20; i++) {
@@ -553,7 +558,14 @@ function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => 
       await new Promise(resolve => setImmediate(resolve));
     }
   }
-  return { flush, calls, get value() { return value; }, auth: (...args: TestValue[]) => authListener(...args) };
+  return { flush, calls, get value() { return value; }, auth: (...args: TestValue[]) => authListener(...args),
+    get pendingTimers() { return timers.size; },
+    advance(milliseconds: number) {
+      now += milliseconds;
+      for (const [id, timer] of timers) if (timer.at <= now) { timers.delete(id); timer.callback(); }
+    },
+    unmount() { slots.forEach(slot => slot?.cleanup?.()); },
+  };
 }
 
 test('provider finishes onboarding only after API save and never calls planning', async () => {
@@ -696,6 +708,94 @@ test('account loading errors do not unlock default onboarding as a valid account
   await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
   assert.equal(f.value.accountReady, false);
   assert.equal(f.value.accountError, 'profile not found');
+});
+
+test('streamed text appears immediately, then publishes bursts at most once per 50ms', async () => {
+  let delta!: (text: string) => void; let finish!: (id: string) => void;
+  const f = providerFixture({ streamChat: (_text, onText) => {
+    delta = onText; return new Promise<string>(resolve => { finish = resolve; });
+  } });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  const pending = f.value.sendChat('hello'); await f.flush();
+  delta('First'); await f.flush();
+  assert.equal(f.value.chatMessages.at(-1)!.text, 'First');
+  const first = f.value.chatMessages;
+  for (let i = 0; i < 100; i++) delta(' token');
+  await f.flush();
+  assert.equal(f.pendingTimers, 1);
+  assert.equal(f.value.chatMessages, first);
+  f.advance(49); await f.flush();
+  assert.equal(f.value.chatMessages, first);
+  f.advance(1); await f.flush();
+  assert.equal(f.value.chatMessages.at(-1)!.text, 'First' + ' token'.repeat(100));
+  assert.equal(f.pendingTimers, 0);
+
+  delta(' final');
+  assert.equal(f.pendingTimers, 1);
+  finish('saved'); await pending; await f.flush();
+  assert.equal(f.value.chatMessages.at(-1)!.text, 'First' + ' token'.repeat(100) + ' final');
+  assert.equal(f.value.chatMessages.at(-1)!.pending, false);
+  assert.equal(f.value.chatBusy, false);
+  assert.equal(f.pendingTimers, 0);
+  const completed = f.value.chatMessages;
+  f.advance(100); await f.flush();
+  assert.equal(f.value.chatMessages, completed);
+});
+
+test('a failed stream immediately flushes queued text and leaves no delayed publication', async () => {
+  let delta!: (text: string) => void; let reject!: (error: Error) => void;
+  const f = providerFixture({ streamChat: (_text, onText) => {
+    delta = onText; return new Promise((_, fail) => { reject = fail; });
+  } });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  const pending = f.value.sendChat('hello'); await f.flush();
+  delta('Partial'); delta(' answer');
+  reject(new Error('interrupted')); await pending; await f.flush();
+  assert.equal(f.value.chatMessages.at(-1)!.text, 'Partial answer');
+  assert.equal(f.value.chatMessages.at(-1)!.pending, false);
+  assert.equal(f.value.chatBusy, false);
+  assert.equal(f.value.chatError, 'interrupted');
+  assert.equal(f.pendingTimers, 0);
+});
+
+test('switching conversations cancels display work but retains all buffered reply text', async () => {
+  let delta!: (text: string) => void; let finish!: (id: string) => void; let id!: string;
+  const f = providerFixture({ streamChat: (_text, onText, _sources, _signal, key) => {
+    delta = onText; id = key; return new Promise<string>(resolve => { finish = resolve; });
+  } });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  const pending = f.value.sendChat('hello'); await f.flush();
+  delta('A'); delta('B');
+  assert.equal(f.pendingTimers, 1);
+  f.value.openConversation(); await f.flush();
+  assert.equal(f.pendingTimers, 0);
+  delta('C'); f.advance(50); await f.flush();
+  assert.equal(f.pendingTimers, 0);
+  assert.equal(f.value.chatMessages.length, 0);
+  f.value.openConversation(id); await f.flush();
+  assert.equal(f.value.chatMessages.at(-1)!.text, 'ABC');
+  finish('saved'); await pending; await f.flush();
+});
+
+test('account changes and unmount cancel queued chat display work and abort the stream', async () => {
+  for (const action of ['sign-out', 'switch-account', 'unmount']) {
+    let delta!: (text: string) => void; let finish!: (id: string) => void; let signal!: AbortSignal;
+    const f = providerFixture({ streamChat: (_text, onText, _sources, abort) => {
+      delta = onText; signal = abort; return new Promise<string>(resolve => { finish = resolve; });
+    } });
+    await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+    const pending = f.value.sendChat('hello'); await f.flush();
+    delta('A'); delta('B'); await f.flush();
+    assert.equal(f.pendingTimers, 1, action);
+    if (action === 'sign-out') await f.value.signOut();
+    else if (action === 'switch-account') f.auth('SIGNED_IN', { user: { id: 'user-b' }, access_token: 'other' });
+    else f.unmount();
+    assert.equal(f.pendingTimers, 0, action);
+    assert.equal(signal.aborted, true, action);
+    delta('late'); finish('saved'); await pending; f.advance(50);
+    if (action !== 'unmount') { await f.flush(); assert.equal(f.value.chatMessages.length, 0, action); }
+    assert.equal(f.pendingTimers, 0, action);
+  }
 });
 
 test('logout aborts chat and discards late reply updates', async () => {
@@ -1100,9 +1200,16 @@ function refreshScreenFixture(onRefresh?: () => Promise<void>, state = { refresh
         return [slots[index], (value: TestValue) => { slots[index] = value; }];
       },
       useRef: initial => { const index = cursor++; return slots[index] ??= { current: initial }; },
+      useCallback: callback => callback,
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
-    'expo-linear-gradient': {}, 'expo-router': {}, 'lucide-react-native': {},
+    'expo-router': { useFocusEffect: callback => { callback(); } }, 'lucide-react-native': {},
+    'react-native-reanimated': {
+      default: { View: 'animated-view' }, cancelAnimation() {}, ReduceMotion: { System: 'system' },
+      Easing: { out: value => value, cubic: value => value },
+      useAnimatedStyle: style => style(), withTiming: value => value,
+      useSharedValue: initial => { let value = initial; return { get: () => value, set: (next: TestValue) => { value = next; } }; },
+    },
     'react-native': { ScrollView: 'scroll', RefreshControl: 'refresh', StyleSheet: { create: value => value } },
     'react-native-safe-area-context': {},
     '@/design/tokens': { fonts: {}, radius: {}, shadow: {} },
@@ -1111,7 +1218,7 @@ function refreshScreenFixture(onRefresh?: () => Promise<void>, state = { refresh
   });
   const render = () => { cursor = 0; return Screen({ title: 'Test', onRefresh, refreshing: state.refreshing, children: 'Cached content' }); };
   return {
-    scroll: () => render().props.children.find((node: TestNode) => node.type === 'scroll').props,
+    scroll: () => [render().props.children].flat().find((node: TestNode) => node.type === 'scroll').props,
     output: () => JSON.stringify(render()),
   };
 }
@@ -1193,8 +1300,9 @@ test('sidebar owns its modal safe area and keeps header spacing separate from in
   const { ConversationSidebar } = load('components/conversation-menu.tsx', {
     react: { useState: value => [value, () => {}], useRef: value => ({ current: value }) },
     'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react-native': {},
-    'react-native': { Modal: 'modal', View: 'view', StyleSheet: {} },
+    'react-native': { Modal: 'modal', View: 'view', StyleSheet: { create: value => value } },
     'react-native-safe-area-context': { SafeAreaProvider: 'safe-provider', SafeAreaView: 'safe-view' },
+    '@/design/tokens': { fonts: {} },
     '@/lib/errors': {}, './ui': {}, '@/state/app-context': { useApp: () => ({ colors: {}, conversations: [] }) },
   });
   for (let opening = 0; opening < 3; opening++) {
@@ -1203,8 +1311,8 @@ test('sidebar owns its modal safe area and keeps header spacing separate from in
     assert.equal(provider.type, 'safe-provider');
     const panel = provider.props.children[0];
     assert.equal(panel.type, 'safe-view');
-    assert.equal(panel.props.style.paddingTop, undefined);
-    assert.equal(panel.props.children.props.children[0].props.style.marginTop, 8);
+    assert.equal(Object.assign({}, ...panel.props.style).paddingTop, undefined);
+    assert.equal(panel.props.children.props.children[0].props.style.paddingVertical, 28);
   }
 });
 
@@ -1216,8 +1324,9 @@ test('sidebar pull refresh dims all content even when empty, forces a read, and 
   const { ConversationSidebar } = load('components/conversation-menu.tsx', {
     react: { useState: () => [refreshing, (value: boolean) => { refreshing = value; }], useRef: () => ref },
     'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react-native': {},
-    'react-native': { FlatList: 'list', RefreshControl: 'refresh', StyleSheet: {} },
+    'react-native': { FlatList: 'list', RefreshControl: 'refresh', StyleSheet: { create: value => value } },
     'react-native-safe-area-context': {}, '@/lib/errors': {}, './ui': {},
+    '@/design/tokens': { fonts: {} },
     '@/state/app-context': { useApp: () => ({ colors: {}, conversations: [],
       refreshConversations: async (older: boolean, force: boolean) => {
         assert.equal(older, false); assert.equal(force, true); calls++; await pending.promise;
@@ -1225,18 +1334,18 @@ test('sidebar pull refresh dims all content even when empty, forces a read, and 
     }) },
   });
   const content = () => ConversationSidebar({ onClose() {}, onSelect() {} }).props.children.props.children[0].props.children;
-  const list = () => content().props.children[2];
+  const list = () => content().props.children.find((node: TestNode) => node.type === 'list');
   assert.equal(list().props.alwaysBounceVertical, true);
   assert.equal(list().props.contentContainerStyle.flexGrow, 1);
   const refresh = list().props.refreshControl.props.onRefresh;
   const request = refresh();
   await refresh();
   assert.equal(calls, 1);
-  assert.equal(content().props.style.opacity, 0.55);
+  assert.equal(Object.assign({}, ...content().props.style).opacity, 0.55);
   assert.equal(list().props.style.opacity, undefined); // Do not dim twice through nested opacity.
   assert.equal(list().props.refreshControl.props.refreshing, true);
   pending.resolve(); await request;
-  assert.equal(content().props.style.opacity, 1);
+  assert.equal(Object.assign({}, ...content().props.style).opacity ?? 1, 1);
   assert.equal(list().props.refreshControl.props.refreshing, false);
 });
 

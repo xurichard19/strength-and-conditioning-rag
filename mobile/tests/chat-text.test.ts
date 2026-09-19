@@ -6,8 +6,9 @@ const messages: ChatMessage[] = [
   { id: 'human', role: 'user', text: 'My question' },
   { id: 'ai', role: 'assistant', text: '# Heading\nPlain **bold** and *italic* with `code`\n- Bullet\n1. Numbered\n> Quote\n```\nCode block\n```', basis: 'Research' },
 ];
-const app = { colors: {}, chatMessages: messages, chatTitle: 'My question', authSession: { user: { id: 'owner' } } as { user: { id: string } } | null, activeConversationId: 'thread' };
+const app = { colors: {}, chatMessages: messages, chatTitle: 'My question', authSession: { user: { id: 'owner' } } as { user: { id: string } } | null, activeConversationId: 'thread' as string | null };
 const slots: TestValue[] = []; let cursor = 0; let onFocus!: () => () => void; let dismissals = 0;
+const effects: (() => void)[] = [];
 const modules: TestModule = {
   react: {
     useState: initial => {
@@ -15,12 +16,17 @@ const modules: TestModule = {
       return [slots[index], (value: TestValue) => { slots[index] = value; }];
     },
     useRef: initial => { const index = cursor++; return slots[index] ??= { current: initial }; },
-    useEffect() {}, useCallback: fn => fn,
+    useEffect: effect => { effects.push(effect); }, useCallback: fn => fn,
   },
   'react/jsx-runtime': { jsx, jsxs: jsx },
-  'react-native': { Text: 'text', TextInput: 'input', Modal: 'modal', View: 'view', Pressable: 'button', Platform: { OS: 'ios' },
+  'react-native': { Text: 'text', TextInput: 'input', Modal: 'modal', View: 'view', Pressable: 'button', ScrollView: 'scroll', Platform: { OS: 'ios' },
     Keyboard: { dismiss: () => dismissals++ }, StyleSheet: { create: value => value } },
   'expo-router': { useLocalSearchParams: () => ({}), useFocusEffect: fn => { onFocus = fn; } },
+  'react-native-reanimated': {
+    default: { View: 'view' }, cancelAnimation() {}, ReduceMotion: { System: 'system' },
+    Easing: { out: value => value, cubic: value => value },
+    useAnimatedStyle: style => style(), useSharedValue: value => ({ value }), withTiming: value => value,
+  },
   'expo-linking': { openURL: async (url: string) => { openedUrls.push(url); } }, 'expo-linear-gradient': {}, 'lucide-react-native': { ArrowUpRight: 'external-arrow' }, 'react-native-safe-area-context': {},
   '@/state/app-context': { useApp: () => app }, '@/design/tokens': { fonts: {}, radius: {}, shadow: {} },
   '@/lib/errors': {}, '@/lib/links': {}, '@/data/mock': { quickQuestions: [] }, '@/components/conversation-menu': {},
@@ -37,7 +43,7 @@ modules['./message-text-selection'] = selection;
 modules['@/components/message-text-selection'] = selection;
 modules['@/components/markdown-text'] = load('components/markdown-text.tsx');
 const ChatScreen = load('screens/chat-screen.tsx').default;
-const render = () => { cursor = 0; return ChatScreen(); };
+const render = () => { cursor = 0; effects.length = 0; return ChatScreen(); };
 function reset(platform = 'ios') {
   slots.length = 0; dismissals = 0;
   modules['react-native'].Platform.OS = platform;
@@ -51,6 +57,97 @@ function nodes(node: TestValue): TestNode[] {
 }
 const selectedInput = () => nodes(render()).find(node => node.type === 'input' && node.props.accessibilityLabel === 'Message text');
 const messageText = (value: string) => textRoots(render()).find(node => JSON.stringify(node.props.children).includes(value) && node.props.onLongPress)!;
+
+function scrollHarness() {
+  const calls: TestValue[] = [];
+  const renderScroll = () => {
+    const scroll = nodes(render()).find(node => node.type === 'scroll')!;
+    scroll.props.ref.current = {
+      scrollTo: (options: TestValue) => { calls.push(['position', options]); },
+      scrollToEnd: (options: TestValue) => { calls.push(['end', options]); },
+    };
+    effects.forEach(effect => effect());
+    return scroll;
+  };
+  renderScroll();
+  const blur = onFocus();
+  return { calls, renderScroll, blur };
+}
+
+function scrollToOffset(scroll: TestNode, y: number) {
+  scroll.props.onScroll({ nativeEvent: {
+    contentOffset: { y }, contentSize: { height: 2000 }, layoutMeasurement: { height: 600 },
+  } });
+}
+
+test('chat follows content layout without animating every token and resets an empty welcome to the top', () => {
+  reset();
+  app.chatMessages = [];
+  const { calls, renderScroll } = scrollHarness();
+  app.chatMessages = messages;
+  renderScroll();
+  assert.equal(calls.length, 2);
+  app.chatMessages = [...messages.slice(0, 1), { ...messages[1], text: 'More streamed text' }];
+  const scroll = renderScroll();
+  assert.equal(calls.length, 2, 'publishing tokens alone should not trigger scrolling');
+  scroll.props.onContentSizeChange(390, 2000);
+  app.chatMessages = [];
+  renderScroll();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
+    ['position', { y: 0, animated: false }],
+    ['end', { animated: false }],
+    ['end', { animated: false }],
+    ['position', { y: 0, animated: false }],
+  ]);
+});
+
+test('chat leaves readers in older messages and resumes following only near the bottom while focused', () => {
+  reset();
+  const { calls, renderScroll, blur } = scrollHarness();
+  let scroll = renderScroll();
+  calls.length = 0;
+  scrollToOffset(scroll, 400);
+  app.chatMessages = [{ id: 'older', role: 'user', text: 'An earlier question' }, ...messages];
+  scroll = renderScroll();
+  scroll.props.onContentSizeChange(390, 2400);
+  scroll.props.onLayout();
+  assert.equal(calls.length, 0, 'history and incoming text must not pull readers to the bottom');
+  blur();
+  onFocus();
+  assert.equal(calls.length, 0, 'returning to the tab preserves a reader’s position');
+  scrollToOffset(scroll, 1320);
+  scroll.props.onContentSizeChange(390, 2500);
+  assert.equal(calls.length, 1);
+  blur();
+  scroll.props.onContentSizeChange(390, 2600);
+  scroll.props.onLayout();
+  assert.equal(calls.length, 1, 'offscreen conversations must not issue scroll work');
+  onFocus();
+  assert.equal(calls.length, 2, 'a follower catches up when returning to the tab');
+  assert.ok(calls.every(call => call[1].animated === false));
+});
+
+test('opening a different conversation follows its latest message but a first server ID does not reset reading', () => {
+  reset();
+  const { calls, renderScroll } = scrollHarness();
+  scrollToOffset(renderScroll(), 400);
+  calls.length = 0;
+  app.activeConversationId = 'another-thread';
+  renderScroll();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 'end');
+  app.activeConversationId = null;
+  app.chatMessages = [];
+  renderScroll();
+  assert.equal(calls.at(-1)[0], 'position');
+  app.chatMessages = messages;
+  scrollToOffset(renderScroll(), 400);
+  calls.length = 0;
+  app.activeConversationId = 'first-server-id';
+  const scroll = renderScroll();
+  scroll.props.onContentSizeChange(390, 2300);
+  assert.equal(calls.length, 0);
+});
 
 test('mode selector sits inside the message box immediately before Send without stretching', () => {
   reset();
@@ -179,11 +276,16 @@ test('sources open DOI/web links separately from full selectable excerpts', () =
   ] }];
   const button = (label: string) => nodes(render()).find(node => node.props.accessibilityLabel === label)!;
   button('Open 3 sources').props.onPress();
+  const excerpt = app.chatMessages[0].sources![0].content!;
+  const preview = nodes(render()).find(node => node.type === 'text' && typeof node.props.children === 'string' && node.props.children.startsWith('Research excerpt'))!;
+  assert.equal(preview.props.numberOfLines, 2);
+  assert.ok(preview.props.children.length <= 180);
+  assert.equal(nodes(render()).some(node => node.props.children === excerpt), false);
   const sourceLink = button('Open source: 10.1234/paper#part?');
   assert.equal(sourceLink.props.children.type, 'external-arrow');
-  assert.equal(sourceLink.props.style[1].borderWidth, 1.5);
-  assert.equal(sourceLink.props.style[0].width, 44);
-  assert.equal(sourceLink.props.style[1].width, 36);
+  const sourceLinkStyle = Object.assign({}, ...sourceLink.props.style);
+  assert.equal(sourceLinkStyle.width, 44);
+  assert.equal(sourceLinkStyle.height, 44);
   assert.equal(sourceLink.props.hitSlop, 4);
   assert.equal(sourceLink.props.children.props.size, 18);
   button('Open source: 10.1234/paper#part?').props.onPress();

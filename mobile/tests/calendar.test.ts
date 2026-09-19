@@ -12,16 +12,26 @@ const workout = (id: string, date: string, fields: Partial<CalendarWorkout> = {}
 const sports = (id: string, date: string, fields: Partial<SportsWorkout> = {}): SportsWorkout => ({ id, user_id: 'owner', scheduled_date: date, sport: 'boxing', status: 'planned', notes: null,
   start_time: null, planned_duration_minutes: null, intensity: null, ...fields });
 
-test('month grid includes leap days, all six rows, and adjacent months in order', () => {
-  const cells = calendar.monthDates('2028-02-29');
-  assert.equal(cells.length, 42);
-  assert.deepEqual(plain(cells[0]), { date: '2028-01-30', inMonth: false });
-  assert.equal(cells.filter(cell => cell.inMonth).length, 29);
-  assert.equal(cells.at(-1)!.date, '2028-03-11');
-  assert.equal(new Set(cells.map(cell => cell.date)).size, 42);
-  for (let i = 1; i < cells.length; i++) assert.equal(cells[i].date, calendar.shiftDays(cells[i - 1].date, 1));
-  assert.equal(calendar.monthDates('2026-05-15').filter(cell => cell.inMonth).length, 31);
-  assert.equal(calendar.monthDates('2100-02-15').filter(cell => cell.inMonth).length, 28);
+test('month grid uses only the four, five, or six weeks containing that month', () => {
+  for (const [date, length, first, last, days] of [
+    ['2026-02-15', 28, '2026-02-01', '2026-02-28', 28],
+    ['2026-09-19', 35, '2026-08-30', '2026-10-03', 30],
+    ['2026-05-15', 42, '2026-04-26', '2026-06-06', 31],
+    ['2028-02-29', 35, '2028-01-30', '2028-03-04', 29],
+    ['2100-02-15', 35, '2100-01-31', '2100-03-06', 28],
+    ['2026-01-01', 35, '2025-12-28', '2026-01-31', 31],
+    ['2026-12-31', 35, '2026-11-29', '2027-01-02', 31],
+  ] as const) {
+    const cells = calendar.monthDates(date);
+    assert.equal(cells.length, length, date);
+    assert.equal(cells[0].date, first, date);
+    assert.equal(cells.at(-1)!.date, last, date);
+    assert.equal(cells.filter(cell => cell.inMonth).length, days, date);
+    assert.equal(new Set(cells.map(cell => cell.date)).size, length, date);
+    assert.ok(cells.slice(0, 7).some(cell => cell.inMonth), `no empty leading week: ${date}`);
+    assert.ok(cells.slice(-7).some(cell => cell.inMonth), `no empty trailing week: ${date}`);
+    for (let i = 1; i < cells.length; i++) assert.equal(cells[i].date, calendar.shiftDays(cells[i - 1].date, 1));
+  }
 });
 
 test('week and month navigation handle year boundaries and clamp short months', () => {
@@ -50,8 +60,7 @@ test('local date arithmetic stays on the intended days across DST and extreme ti
   }
 });
 
-function fixture(sessions: TestModule[] = [], state: TestModule = {}) {
-  const today = '2026-01-31';
+function fixture(sessions: TestModule[] = [], state: TestModule = {}, today = '2026-01-31') {
   const slots: TestValue[] = []; let cursor = 0; const routes: TestValue[] = []; const ranges: [string, string][] = [];
   const refresh = async () => {};
   const colors = load('design/tokens.ts').palettes.dark;
@@ -97,9 +106,17 @@ function fixture(sessions: TestModule[] = [], state: TestModule = {}) {
     details: () => nodes(render()).find(node => node.type === 'sport-details'),
     click: (label: string) => { const node = find(label); assert.ok(node, `missing control: ${label}`); node.props.onPress(); },
     text: () => JSON.stringify(render()),
-    days: () => nodes(render()).filter(node => node.props.accessibilityLabel?.includes(', 2026.')),
+    days: () => nodes(render()).filter(node => /^\w+, \w+ \d+, \d{4}(?:, today)?\./.test(node.props.accessibilityLabel ?? '')),
   };
 }
+
+test('month screen renders the computed number of date cells without empty rows', () => {
+  for (const [date, count] of [['2026-02-15', 28], ['2026-09-19', 35], ['2026-05-15', 42]] as const) {
+    const screen = fixture([], {}, date);
+    screen.click('Month view');
+    assert.equal(screen.days().length, count, date);
+  }
+});
 
 test('week/month switching preserves selection, month navigation and Today work with no workouts', () => {
   const screen = fixture();
@@ -157,11 +174,11 @@ test('holding a date opens that day’s actions in week and month views, with an
   screen.menu()!.props.onClose();
   assert.equal(screen.menu(), undefined);
   screen.click('Month view');
-  screen.find('Sunday, February 1, 2026. Workouts not loaded')!.props.onAccessibilityAction({ nativeEvent: { actionName: 'longpress' } });
-  assert.equal(screen.menu()!.props.date, '2026-02-01');
+  screen.find('Wednesday, December 31, 2025. Workouts not loaded')!.props.onAccessibilityAction({ nativeEvent: { actionName: 'longpress' } });
+  assert.equal(screen.menu()!.props.date, '2025-12-31');
   screen.menu()!.props.onClose();
   screen.click('Options for selected day');
-  assert.equal(screen.menu()!.props.date, '2026-02-01');
+  assert.equal(screen.menu()!.props.date, '2025-12-31');
   assert.equal(screen.routes.length, 0);
 });
 
@@ -178,9 +195,9 @@ test('multiple same-day sessions appear in the agenda and adjacent-month selecti
   assert.match(screen.text(), /Strength session/);
   assert.match(screen.text(), /Evening run/);
   assert.match(screen.text(), /6:30 PM · 30 min · Easy/);
-  screen.click('Sunday, February 1, 2026. Workouts not loaded');
-  assert.match(screen.text(), /February 2026/);
-  assert.equal(screen.find('Sunday, February 1, 2026. No workouts planned')!.props.accessibilityState.selected, true);
+  screen.click('Wednesday, December 31, 2025. Workouts not loaded');
+  assert.match(screen.text(), /December 2025/);
+  assert.equal(screen.find('Wednesday, December 31, 2025. No workouts planned')!.props.accessibilityState.selected, true);
   assert.match(screen.text(), /No workouts planned for this day/);
   assert.equal(screen.routes.length, 0); // Selecting a date never starts a workout or a plan.
   screen.click('Go to today');

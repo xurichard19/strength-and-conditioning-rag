@@ -20,7 +20,19 @@ import { createChatCache } from './chat-cache';
 import { createCalendarCache, type CalendarCache } from './calendar-cache';
 import type { Conversation } from '@/services/backend';
 
-type ChatRun = { controller: AbortController; rows: ChatMessage[]; title: string; error: string | null; confirmed: boolean };
+type ChatRun = { controller: AbortController; rows: ChatMessage[]; title: string; error: string | null; confirmed: boolean;
+  publishTimer?: ReturnType<typeof setTimeout> };
+
+function cancelChatPublish(run: ChatRun | undefined) {
+  if (run?.publishTimer === undefined) return;
+  clearTimeout(run.publishTimer);
+  run.publishTimer = undefined;
+}
+
+function stopChatRun(run: ChatRun) {
+  cancelChatPublish(run);
+  run.controller.abort();
+}
 
 type AuthActionResult = { ok: true; message?: string } | { ok: false; message: string };
 
@@ -157,7 +169,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setHasOlderConversations(false);
       epoch.current += 1;
       accountRequest.current += 1;
-      runs.current.forEach(run => run.controller.abort());
+      runs.current.forEach(stopChatRun);
       runs.current.clear();
       historyBusy.current = false;
       setProfile(emptyProfile);
@@ -203,7 +215,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     void Linking.getInitialURL().then(handleLink).catch(() => undefined);
     const links = Linking.addEventListener('url', ({ url }) => { void handleLink(url); });
-    return () => { active = false; subscription?.data.subscription.unsubscribe(); links.remove(); activeRuns.forEach(run => run.controller.abort()); activeRuns.clear(); cache.clear(); calendarCache.clear(); };
+    return () => { active = false; subscription?.data.subscription.unsubscribe(); links.remove(); activeRuns.forEach(stopChatRun); activeRuns.clear(); cache.clear(); calendarCache.clear(); };
   }, [acceptSession, cache, calendarCache]);
 
   // Delayed writes from a previous account must not invalidate the current account's cache.
@@ -307,6 +319,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [authSession?.user.id, refreshChat]);
 
   const openConversation = useCallback((id?: string, title?: string) => {
+    cancelChatPublish(conversation.current ? runs.current.get(conversation.current) : undefined);
     chatEpoch.current += 1;
     conversation.current = id ?? null;
     historyBusy.current = false;
@@ -566,7 +579,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     runs.current.set(id, run);
     cache.beginTurn(id, isNew);
     const current = () => epoch.current === generation && runs.current.get(id) === run;
-    const publish = () => { if (current() && conversation.current === id) publishChat(); };
+    // Accumulate every token immediately, but bound global context updates during a burst.
+    // First text, source/status changes, saved receipts, and terminal state remain immediate.
+    const publish = (immediate = true) => {
+      if (immediate) cancelChatPublish(run);
+      if (!current() || conversation.current !== id) return;
+      if (immediate) { publishChat(); return; }
+      if (run.publishTimer !== undefined) return;
+      run.publishTimer = setTimeout(() => {
+        run.publishTimer = undefined;
+        if (current() && conversation.current === id) publishChat();
+      }, 50);
+    };
     const savedMessage = (row: SavedMessage) => {
       if (!current()) return;
       run.confirmed = true;
@@ -579,9 +603,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let savedReply = false;
     try {
       const savedId = await client.streamChat(question, delta => {
-        if (!current()) return;
+        if (!current() || !delta) return;
+        const firstText = !run.rows[1].text;
         run.rows[1] = { ...run.rows[1], text: run.rows[1].text + delta, progress: undefined };
-        publish();
+        publish(firstText);
       }, sources => {
         if (!current()) return;
         run.rows[1] = { ...run.rows[1], sources };

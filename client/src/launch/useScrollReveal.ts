@@ -60,14 +60,16 @@ export function useScrollReveal() {
 
     const updateProgress = () => {
       frame = 0
-      if (hero) {
-        const { top, height } = hero.getBoundingClientRect()
+      // Read all geometry before CSS writes, so each scroll frame needs one layout pass.
+      const heroBounds = hero?.getBoundingClientRect()
+      const emphasisBounds = Array.from(emphasis, (element) => ({ element, top: element.getBoundingClientRect().top }))
+      if (heroBounds) {
+        const { top, height } = heroBounds
         const progress = clamp(-top / height)
         root.style.setProperty('--hero-offset', `${progress * 64}px`)
         root.style.setProperty('--hero-opacity', `${1 - progress * 0.45}`)
       }
-      for (const element of emphasis) {
-        const { top } = element.getBoundingClientRect()
+      for (const { element, top } of emphasisBounds) {
         const progress = clamp((window.innerHeight * 0.9 - top) / (window.innerHeight * 0.45))
         element.style.setProperty('--text-emphasis', `${progress * 100}%`)
       }

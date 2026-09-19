@@ -22,18 +22,19 @@ export function ChatModeSelector() {
     <Pressable accessibilityRole="button" accessibilityLabel={`Chat mode: ${mode.name}`} hitSlop={4}
       accessibilityHint="Choose Quick chat or Deep research for your next message."
       aria-expanded={open} onPress={() => { Keyboard.dismiss(); setOpen(true); }}
-      style={[styles.toggle, { backgroundColor: colors.card, borderColor: colors.separator }]}>
-      <mode.Icon color={colors.textSecondary} size={17} />
+      style={({ pressed }) => [styles.toggle, { backgroundColor: colors.fill, borderColor: colors.separator }, pressed && { opacity: 0.7 }]}>
+      <mode.Icon color={colors.tintText} size={15} strokeWidth={1.7} />
+      <AppText tone="secondary" weight="medium" style={styles.toggleLabel}>{mode.name}</AppText>
       <ChevronDown color={colors.textSecondary} size={11} />
     </Pressable>
     {open ? <Modal transparent visible animationType="fade" statusBarTranslucent onRequestClose={() => setOpen(false)}>
       <SafeAreaProvider style={{ flex: 1 }}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close chat mode selector"
-          onPress={() => setOpen(false)} style={styles.backdrop} />
+          onPress={() => setOpen(false)} style={[styles.backdrop, { backgroundColor: colors.overlay }]} />
         <SafeAreaView pointerEvents="box-none" edges={['top', 'bottom']} style={styles.overlay}>
           <View accessibilityViewIsModal style={[styles.menu, { backgroundColor: colors.elevated, borderColor: colors.separator }]}>
             <View style={styles.header}>
-              <AppText weight="bold" style={styles.heading}>Chat mode</AppText>
+              <AppText weight="medium" style={styles.heading}>Chat mode</AppText>
               <Pressable accessibilityRole="button" accessibilityLabel="Close chat mode selector"
                 onPress={() => setOpen(false)} style={styles.close}><X color={colors.textSecondary} size={18} /></Pressable>
             </View>
@@ -58,15 +59,16 @@ export function ChatModeSelector() {
 }
 
 const styles = StyleSheet.create({
-  toggle: { width: 52, height: 39, borderRadius: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
-  backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(5,3,10,0.42)' },
-  overlay: { flex: 1, justifyContent: 'flex-end', paddingHorizontal: 12 },
-  menu: { marginBottom: 12, padding: 8, borderRadius: 20, borderWidth: 1, maxWidth: 440, maxHeight: '80%', width: '100%', alignSelf: 'center' },
-  header: { paddingLeft: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  heading: { fontSize: 15, lineHeight: 21 },
+  toggle: { minHeight: 44, maxWidth: '78%', paddingHorizontal: 12, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  toggleLabel: { fontSize: 11, lineHeight: 16, flexShrink: 1 },
+  backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+  overlay: { flex: 1, justifyContent: 'flex-end', paddingHorizontal: 16 },
+  menu: { marginBottom: 16, padding: 12, borderRadius: 28, borderWidth: StyleSheet.hairlineWidth, maxWidth: 440, maxHeight: '80%', width: '100%', alignSelf: 'center' },
+  header: { paddingLeft: 12, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  heading: { fontSize: 22, lineHeight: 28, letterSpacing: -0.7 },
   close: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  option: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 13, paddingHorizontal: 12, paddingVertical: 15 },
-  copy: { flex: 1, gap: 4 },
+  option: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 20 },
+  copy: { flex: 1, gap: 5 },
   name: { fontSize: 15, lineHeight: 20 },
   description: { fontSize: 12, lineHeight: 17 },
   check: { width: 18 },
