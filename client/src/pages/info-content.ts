@@ -13,20 +13,20 @@ export const pageContent: Record<InfoPageName, {
         title: "About Arcel",
         sections: [
             {
-                heading: "Research-backed programming",
-                body: "Arcel is being built to turn relevant research into structured strength and conditioning for hybrid athletes: scheduled workouts, exercises, and set targets shaped around your profile, goals, and sport commitments. Our AI draws on more than 300 openly licensed papers and live web search—not just its general knowledge.",
+                heading: "Research behind the recommendations",
+                body: "We’re building Arcel for people who combine strength training with conditioning or another sport. Its planning tools shape workouts and set targets around your goals, experience, and other commitments. The AI draws on more than 300 openly licensed papers and live web search alongside its general knowledge.",
             },
             {
-                heading: "A rolling plan, not a static template",
-                body: "Your calendar should keep moving forward without restarting your program from scratch. Rolling programming is designed to regularly extend your upcoming training, with concrete sessions to follow and targets to record. The aim is continuity toward your goal, with room for the plan to evolve.",
+                heading: "A program that carries forward",
+                body: "Each session should have a place in the weeks ahead. We’re designing the calendar to add upcoming workouts regularly, with exercises and targets you can follow and record. You’ll be able to continue toward your goal as the plan develops, without rebuilding your program from scratch.",
             },
             {
-                heading: "Adapt what’s ahead",
-                body: "Poor sleep, a missed workout, changing performance, or an added sport session can change what training makes sense next. Arcel is being designed to use those signals to adjust affected upcoming workouts without resetting the regular planning rhythm. Chat will help you understand recommendations and communicate changes.",
+                heading: "Room for the week to change",
+                body: "When you miss a session or sleep poorly, the next workout may need to change. We’re developing adjustments that consider those changes alongside your performance and sport schedule, while keeping the longer plan in view. In chat, you’ll be able to explain what’s changed and ask about the recommendations.",
             },
             {
-                heading: "Keep the work you’ve done",
-                body: "What you were prescribed and what you actually did both matter. The rolling design keeps completed workouts and recorded results intact as future sessions change. Planning history is intended to show what changed and why, so an evolving program doesn’t mean losing your training record.",
+                heading: "A clear record of your training",
+                body: "Completed workouts are part of your training history. The plan is designed to preserve their original targets and the results you recorded, even as future sessions change. You should also be able to see which upcoming workouts were adjusted and why.",
             },
         ],
     },
@@ -102,7 +102,7 @@ export const pageContent: Record<InfoPageName, {
 
 export const teamIntroductions = [
     {
-        name: "richard xu",
+        name: "rick xu",
         body: "AI/Cloud/Backend/DevOps",
         linkedinUrl: "https://www.linkedin.com/in/richardrxu/",
     },
@@ -118,14 +118,6 @@ export const teamIntroductions = [
     }
 ]
 
-export const architectureSteps = [
-    { label: "Mobile", detail: "Expo + React Native" },
-    { label: "Edge", detail: "Cloud Load Balancing + Cloud Armor" },
-    { label: "API", detail: "FastAPI on Cloud Run" },
-    { label: "Workflow", detail: "LangGraph orchestration" },
-    { label: "Search", detail: "LangChain + source tools (Chroma/Tavily/Cohere)" },
-]
-
 export const technologyGroups = [
     {
         heading: "Mobile experience",
@@ -133,11 +125,11 @@ export const technologyGroups = [
     },
     {
         heading: "API and workflows",
-        body: "Python and FastAPI, with LangGraph coordinating chat and workout planning. LangChain agents gather evidence; OpenAI models generate responses.",
+        body: "Python and FastAPI, with LangGraph coordinating chat and workout planning. OpenAI models generate responses using retrieved evidence.",
     },
     {
         heading: "Research and retrieval",
-        body: "Chroma Cloud indexes research, Tavily searches the web, and Cohere reranks research results. Source documents are stored in Google Cloud Storage.",
+        body: "Chroma Cloud indexes research, and Tavily supplies web search results. Source documents are stored in Google Cloud Storage.",
     },
     {
         heading: "Accounts and data",

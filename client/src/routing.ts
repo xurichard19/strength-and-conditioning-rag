@@ -3,16 +3,7 @@ export const infoPages = ["about", "terms", "privacy", "disclaimer", "accessibil
 export type InfoPageName = (typeof infoPages)[number]
 
 const pagePaths = {
-    home: "/home",
-    onboarding: "/onboarding",
-    today: "/today",
-    chat: "/chat",
-    plan: "/plan",
-    calendar: "/calendar",
-    settings: "/settings",
-    saved: "/saved",
-    activity: "/activity",
-    help: "/help",
+    home: "/",
     about: "/about",
     terms: "/terms",
     privacy: "/privacy",
@@ -31,8 +22,6 @@ export function getPathForPage(page: Page) {
 }
 
 export function getPageFromPath(pathname: string): Page {
-    if (pathname === "/") return "home"
-
     return pathPages.get(pathname.replace(/\/$/, "")) ?? "home"
 }
 
