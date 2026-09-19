@@ -148,6 +148,7 @@
   position: relative;
   min-height: min(880px, 100svh);
   isolation: isolate;
+  overflow: clip;
 }
 
 .landing-hero-content {
@@ -166,9 +167,22 @@
 }
 
 .landing-hero-product {
+  position: relative;
   width: min(calc(100% - 24px), 310px);
   justify-self: center;
   min-width: 0;
+}
+
+.landing-hero-product::before {
+  content: '';
+  position: absolute;
+  inset: -18% -95%;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse closest-side at 54% 46%,
+    color-mix(in oklch, var(--color-accent) 20%, transparent) 0%,
+    color-mix(in oklch, var(--color-accent) 9%, transparent) 38%,
+    transparent 100%);
 }
 
 .landing-hero-copy {
