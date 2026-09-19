@@ -142,12 +142,6 @@
   overflow-wrap: anywhere;
 }
 
-.arcel-policy .launch-footer-links [aria-current='page'] {
-  color: var(--color-ink);
-  text-decoration: underline;
-  text-underline-offset: var(--space-1);
-}
-
 @media (hover: hover) {
   .arcel-policy .policy-sidebar a:hover {
     color: var(--color-ink);

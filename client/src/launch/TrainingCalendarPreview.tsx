@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { ArrowRight, Check, CheckCheck, Plus } from 'lucide-react'
 import './TrainingCalendarPreview.css'
 
@@ -18,21 +18,21 @@ const scenarios: Array<{ id: Scenario; label: string; shortLabel: string; title:
     id: 'original',
     label: 'The original week',
     shortLabel: 'Original',
-    title: 'A plan with a little breathing room.',
-    description: 'Strength, easy running, and recovery share the week. Two sessions are already in the books.',
+    title: 'A balanced week of training.',
+    description: 'Strength and running share the week, with time set aside for recovery. Monday and Tuesday are already complete.',
   },
   {
     id: 'changed',
     label: 'Life changes',
     shortLabel: 'Life changes',
-    title: 'Wednesday just became a football night.',
-    description: 'An extra sport session adds training load. Thursday’s strength session is now worth reviewing.',
+    title: 'A swim joins Wednesday’s schedule.',
+    description: 'The extra session adds training load, so Thursday’s strength workout needs another look.',
   },
   {
     id: 'adapted',
     label: 'The plan adapts',
     shortLabel: 'Plan adapts',
-    title: 'Move what’s next. Keep what’s done.',
+    title: 'Move Thursday’s workout to Friday.',
     description: 'In this example, strength moves to Friday. Thursday becomes recovery; completed sessions stay intact.',
   },
 ]
@@ -54,50 +54,71 @@ const completedDays: TrainingDay[] = [
   },
 ]
 
-function getTrainingDays(scenario: Scenario): TrainingDay[] {
-  const hasChanged = scenario !== 'original'
-  const hasAdapted = scenario === 'adapted'
+const recovery: TrainingDay = {
+  day: 'Wed',
+  title: 'Recovery',
+  detail: '15 min · easy mobility',
+  status: 'Planned',
+  tone: 'planned',
+}
 
-  return [
-    ...completedDays,
-    {
-      day: 'Wed',
-      title: hasChanged ? 'Football training' : 'Recovery',
-      detail: hasChanged ? '90 min · added sport session' : '15 min · easy mobility',
-      status: hasChanged ? 'Added' : 'Planned',
-      tone: hasChanged ? 'added' : 'planned',
-    },
-    {
-      day: 'Thu',
-      title: hasAdapted ? 'Recovery' : 'Full-body strength',
-      detail: hasAdapted ? '15 min · easy mobility' : '45 min · squat, press, and row',
-      status: hasAdapted ? 'Adjusted' : hasChanged ? 'Review timing' : 'Planned',
-      tone: hasAdapted ? 'adjusted' : hasChanged ? 'review' : 'planned',
-    },
-    {
-      day: 'Fri',
-      title: hasAdapted ? 'Full-body strength' : 'Rest day',
-      detail: hasAdapted ? '45 min · moved from Thursday' : 'No session scheduled',
-      status: hasAdapted ? 'Moved' : 'Planned',
-      tone: hasAdapted ? 'adjusted' : 'planned',
-    },
-    {
-      day: 'Sat',
-      title: 'Long run',
-      detail: '70 min · comfortable effort',
-      status: 'Planned',
-      tone: 'planned',
-    },
-  ]
+const strength: TrainingDay = {
+  day: 'Thu',
+  title: 'Full-body strength',
+  detail: '45 min · squat, press, and row',
+  status: 'Planned',
+  tone: 'planned',
+}
+
+const rest: TrainingDay = {
+  day: 'Fri',
+  title: 'Rest day',
+  detail: 'No session scheduled',
+  status: 'Planned',
+  tone: 'planned',
+}
+
+const swimming: TrainingDay = {
+  day: 'Wed',
+  title: 'Swimming',
+  detail: '45 min · added pool session',
+  status: 'Added',
+  tone: 'added',
+}
+
+const longRun: TrainingDay = {
+  day: 'Sat',
+  title: 'Long run',
+  detail: '70 min · comfortable effort',
+  status: 'Planned',
+  tone: 'planned',
+}
+
+const scheduledDays: Record<Scenario, TrainingDay[]> = {
+  original: [recovery, strength, rest],
+  changed: [swimming, { ...strength, status: 'Review timing', tone: 'review' }, rest],
+  adapted: [
+    swimming,
+    { ...recovery, day: 'Thu', status: 'Adjusted', tone: 'adjusted' },
+    { ...strength, day: 'Fri', detail: '45 min · moved from Thursday', status: 'Moved', tone: 'adjusted' },
+  ],
+}
+
+const statusIcons: Record<SessionTone, ReactNode> = {
+  complete: <Check size={13} strokeWidth={2} aria-hidden="true" />,
+  added: <Plus size={13} strokeWidth={2} aria-hidden="true" />,
+  adjusted: <ArrowRight size={13} strokeWidth={2} aria-hidden="true" />,
+  review: <span aria-hidden="true">!</span>,
+  planned: null,
 }
 
 export default function TrainingCalendarPreview() {
   const [scenario, setScenario] = useState<Scenario>('original')
   const previewId = useId()
-  const trainingDays = getTrainingDays(scenario)
+  const trainingDays = [...completedDays, ...scheduledDays[scenario], longRun]
 
   return (
-    <section className="training-preview" aria-label="Illustrative training calendar">
+    <section className="training-preview" aria-label="Illustrative training calendar" data-scroll-reveal>
       <div className="training-preview-controls" role="group" aria-label="Explore an example training week">
         {scenarios.map((item, index) => (
           <button
@@ -122,7 +143,7 @@ export default function TrainingCalendarPreview() {
             <p className="training-preview-label">Illustrative preview</p>
             <h3>Your training week</h3>
           </div>
-          <span className="training-preview-week">Mon — Sat</span>
+          <span className="training-preview-week">Mon to Sat</span>
         </header>
 
         <div className="training-preview-story" aria-live="polite" aria-atomic="true">
@@ -147,10 +168,7 @@ export default function TrainingCalendarPreview() {
                 <p className="training-preview-session-detail">{session.detail}</p>
               </div>
               <span className="training-preview-session-status">
-                {session.tone === 'complete' && <Check size={13} strokeWidth={2} aria-hidden="true" />}
-                {session.tone === 'added' && <Plus size={13} strokeWidth={2} aria-hidden="true" />}
-                {session.tone === 'adjusted' && <ArrowRight size={13} strokeWidth={2} aria-hidden="true" />}
-                {session.tone === 'review' && <span aria-hidden="true">!</span>}
+                {statusIcons[session.tone]}
                 {session.status}
               </span>
             </li>
@@ -159,7 +177,7 @@ export default function TrainingCalendarPreview() {
 
         <div className="training-preview-record">
           <CheckCheck size={16} strokeWidth={1.8} aria-hidden="true" />
-          <span>Two completed sessions. Always part of your history.</span>
+          <span>Monday and Tuesday stay in your workout history.</span>
         </div>
       </div>
 

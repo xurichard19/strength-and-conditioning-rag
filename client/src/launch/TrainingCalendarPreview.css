@@ -73,12 +73,6 @@
   transform: translateY(1px);
 }
 
-.training-preview-control:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
 .training-preview-canvas {
   min-width: 0;
   border: 1px solid var(--color-line);
@@ -281,12 +275,7 @@
   .training-preview-control-short {
     display: none;
   }
-  .training-preview-controls {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .training-preview-control {
-    justify-content: center;
     padding-inline: var(--space-2);
   }
 

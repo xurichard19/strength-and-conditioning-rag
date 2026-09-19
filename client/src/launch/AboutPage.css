@@ -1,4 +1,4 @@
-/* Hallmark · macrostructure: Long Document (open rows, team gallery) · tone: quietly confident · anchor hue: 250
+/* Hallmark · macrostructure: Long Document (open rows, team cards) · tone: quietly confident · anchor hue: 250
  * theme: studied-DNA (source: https://superpower.com/the-grove) · studied: yes
  * user override: retain dark identity and match the accepted landing page
  * canvas: oklch(17% 0.012 250) · accent: oklch(84% 0.08 250)
@@ -92,25 +92,6 @@
   color: var(--color-muted);
 }
 
-.about-development {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-6);
-  margin-block-start: var(--space-4);
-  background: var(--color-surface);
-  border-inline-start: 2px solid var(--color-accent);
-  font-size: var(--text-small);
-}
-
-.about-development-title {
-  color: var(--color-ink);
-}
-
-.about-development > p:last-child {
-  max-width: 75ch;
-  color: var(--color-muted);
-}
-
 .about-team-band {
   padding-block: var(--space-section);
   background: var(--color-surface);
@@ -130,92 +111,45 @@
 .about-team-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-12) var(--space-6);
+  gap: var(--space-5);
 }
 
 .about-person {
   min-width: 0;
+  padding: var(--space-6);
+  background: var(--color-canvas);
+  border: var(--rule-width) solid var(--color-line);
+  border-radius: calc(var(--radius-panel) * 2);
 }
 
 .about-portrait {
   display: block;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 1;
+  flex-shrink: 0;
+  width: var(--space-20);
+  height: var(--space-20);
+  margin-block-end: var(--space-6);
   object-fit: cover;
-  border-radius: var(--radius-panel);
-}
-
-.about-person-info {
-  padding-block-start: var(--space-6);
+  border: var(--rule-width) solid var(--color-line);
+  border-radius: var(--radius-pill);
 }
 
 .about-person h3 {
-  font-size: clamp(1.375rem, 2.2vw, 2rem);
+  font-size: 1.25rem;
   text-wrap: initial;
 }
 
 .about-person p {
-  margin-block: var(--space-2) var(--space-3);
+  margin-block-start: var(--space-2);
   color: var(--color-muted);
   font-size: var(--text-small);
+}
+
+.about-person .landing-text-link {
+  margin-block-start: var(--space-3);
 }
 
 .about-technology {
   padding-block: var(--space-section);
-}
-
-.about-architecture {
-  padding: var(--space-6);
-  background: var(--color-surface);
-  border: var(--rule-width) solid var(--color-line);
-  border-radius: var(--radius-panel);
-}
-
-.about-architecture > h3 {
-  font-size: 1.25rem;
-  letter-spacing: -0.02em;
-}
-
-.about-flow {
-  list-style: none;
-  margin-block: var(--space-8);
-  padding: 0;
-}
-
-.about-flow li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
-  gap: var(--space-6);
-  padding-block: var(--space-4);
-  border-top: var(--rule-width) solid var(--color-line);
-  font-size: var(--text-small);
-}
-
-.about-flow-label {
-  display: flex;
-  flex-direction: column;
-  align-items: start;
-  gap: var(--space-3);
-  color: var(--color-accent);
-}
-
-.about-flow-label svg {
-  transform: rotate(90deg);
-  color: var(--color-faint);
-}
-
-.about-flow li > p {
-  color: var(--color-ink);
-  overflow-wrap: anywhere;
-}
-
-.about-architecture-note {
-  max-width: 75ch;
-  border-top: var(--rule-width) solid var(--color-line);
-  padding-block-start: var(--space-6);
-  color: var(--color-muted);
-  font-size: var(--text-small);
 }
 
 .about-stack {
@@ -262,28 +196,6 @@
   padding-block-start: var(--space-10);
 }
 
-.arcel-about .launch-footer {
-  min-height: 0;
-}
-
-.arcel-about .launch-footer-links a {
-  font-size: inherit;
-}
-
-.arcel-about .footer-note {
-  gap: 0;
-}
-
-.arcel-about .footer-note > span {
-  display: none;
-}
-
-.arcel-about .launch-footer-links [aria-current='page'] {
-  color: var(--color-ink);
-  text-decoration: underline;
-  text-underline-offset: var(--space-1);
-}
-
 @media (hover: hover) {
   .about-contents a:hover {
     color: var(--color-accent);
@@ -291,17 +203,16 @@
 }
 
 @media (min-width: 40rem) {
-  .about-team-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .about-stack {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: var(--space-12);
   }
 
-  .about-architecture {
-    padding: var(--space-10);
+}
+
+@media (min-width: 50rem) {
+  .about-team-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -343,34 +254,6 @@
 
   .about-team-grid {
     gap: var(--space-8);
-  }
-
-  .about-person-info {
-    padding-block-start: var(--space-8);
-  }
-
-  .about-flow {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    column-gap: var(--space-6);
-    margin-block: var(--space-10);
-  }
-
-  .about-flow li {
-    display: block;
-    padding-block: var(--space-5) 0;
-  }
-
-  .about-flow-label {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    gap: var(--space-2);
-    margin-block-end: var(--space-4);
-  }
-
-  .about-flow-label svg {
-    transform: none;
   }
 
   .about-stack {

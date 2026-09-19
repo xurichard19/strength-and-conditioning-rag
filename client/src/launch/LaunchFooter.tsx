@@ -19,7 +19,7 @@ export function LaunchFooter({ currentPage }: { currentPage?: InfoPageName }) {
           </a>
         ))}
       </nav>
-      <span className="footer-note"><span aria-hidden="true" /> Built for real schedules.</span>
+      <span className="footer-note">Mobile app in development.</span>
     </footer>
   )
 }

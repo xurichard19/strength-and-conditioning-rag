@@ -2,12 +2,10 @@
  * theme: studied-DNA (source: https://superpower.com/the-grove) · studied: yes
  * user override: dark identity · canvas: oklch(17% 0.012 250) · accent: oklch(84% 0.08 250)
  * genre: modern-minimal · display/body: Rubik 400 (deliberate single-family brand continuity)
- * nav: N9 Edge-aligned · footer: Ft5 Statement · enrichment: E8 original hero photography
+ * nav: N9 Edge-aligned · footer: Ft5 Statement
  * audience: hybrid athletes · use: prelaunch product explanation
  * pre-emit critique: P5 H5 E4 S5 R5 V4
  */
-
-@import '../../tokens.css';
 
 @font-face {
   font-family: 'Arcel Landing Rubik';
@@ -148,26 +146,8 @@
 
 .landing-hero {
   position: relative;
-  min-height: 780px;
-  min-height: min(940px, 100svh);
+  min-height: min(880px, 100svh);
   isolation: isolate;
-}
-
-.landing-hero-image, .landing-hero-shade {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  z-index: -1;
-}
-
-.landing-hero-image {
-  object-fit: cover;
-  object-position: 66% center;
-}
-
-.landing-hero-shade {
-  background: linear-gradient(90deg, color-mix(in oklch, var(--color-photo-shade) 90%, var(--color-clear)), color-mix(in oklch, var(--color-photo-shade) 35%, var(--color-clear)));
 }
 
 .landing-hero-content {
@@ -177,6 +157,18 @@
   justify-content: space-between;
   gap: var(--space-16);
   padding-block: var(--space-32) var(--space-6);
+}
+
+.landing-hero-main {
+  display: grid;
+  align-items: center;
+  gap: var(--space-12);
+}
+
+.landing-hero-product {
+  width: min(calc(100% - 24px), 310px);
+  justify-self: center;
+  min-width: 0;
 }
 
 .landing-hero-copy {
@@ -644,6 +636,12 @@
   white-space: nowrap;
 }
 
+.arcel-landing .launch-footer-links [aria-current='page'] {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: var(--space-1);
+}
+
 .arcel-landing .launch-footer > span {
   min-height: 44px;
   display: inline-flex;
@@ -686,13 +684,7 @@
     padding-block: var(--space-6);
   }
   .landing-hero-content {
-    padding-block-start: clamp(10rem, 21svh, 14rem);
-  }
-  .landing-hero-image {
-    object-position: 66% center;
-  }
-  .landing-hero-shade {
-    background: linear-gradient(90deg, color-mix(in oklch, var(--color-photo-shade) 50%, var(--color-clear)), color-mix(in oklch, var(--color-photo-shade) 10%, var(--color-clear)));
+    padding-block-start: var(--space-32);
   }
   .landing-hero-bottom > span {
     display: inline-flex;
@@ -728,9 +720,26 @@
 }
 
 @media (min-width: 60rem) {
-  .landing-hero-image {
-    object-position: center;
+  .landing-hero-content {
+    padding-block-start: 104px;
+    gap: var(--space-8);
   }
+  .landing-hero-main {
+    grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+    gap: clamp(3rem, 6vw, 6rem);
+  }
+  .landing-hero-product {
+    width: clamp(260px, 21vw, 310px);
+  }
+  .landing-hero h1 {
+    font-size: clamp(3rem, 4.7vw, 4.75rem);
+  }
+  .landing-hero-description {
+    color: var(--color-muted);
+    font-size: 1.0625rem;
+    max-width: 44ch;
+  }
+
   .landing-plan {
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
     gap: clamp(3rem, 6vw, 6rem);
@@ -758,6 +767,45 @@
   }
   .landing-faq-heading h2 {
     font-size: var(--text-subheading);
+  }
+}
+
+/* Motion uses native scroll position, including browsers without CSS scroll timelines. */
+@media (prefers-reduced-motion: no-preference) {
+  .arcel-landing[data-scroll-motion='active'] [data-scroll-reveal] {
+    transition: opacity 700ms var(--ease-out), transform 700ms var(--ease-out);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+
+  .arcel-landing [data-scroll-state='pending'] {
+    opacity: 0;
+    transform: translateY(36px);
+  }
+
+  .arcel-landing [data-scroll-state='visible'] {
+    opacity: 1;
+    transform: none;
+  }
+
+  .arcel-landing [data-scroll-reveal]:has(:focus-visible) {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .arcel-landing[data-scroll-motion='active'] .landing-hero-copy {
+    transform: translateY(var(--hero-offset, 0px));
+    opacity: var(--hero-opacity, 1);
+    will-change: transform, opacity;
+  }
+
+  .arcel-landing[data-scroll-motion='active'] .landing-hero-copy:has(:focus-visible) {
+    transform: none;
+    opacity: 1;
+  }
+
+  .arcel-landing [data-scroll-emphasis] {
+    color: color-mix(in oklch, var(--color-ink) var(--text-emphasis, 0%), var(--color-muted));
   }
 }
 

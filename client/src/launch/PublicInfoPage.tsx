@@ -9,10 +9,10 @@ import './LandingPage.css'
 import './PublicInfoPage.css'
 
 const descriptions: Record<Exclude<InfoPageName, 'about'>, string> = {
-  terms: 'The terms that shape your use of Arcel.',
-  privacy: 'How information is handled, and the choices available to you.',
-  disclaimer: 'A clear understanding of training information and its limits.',
-  accessibility: 'A more usable experience, for more people.',
+  terms: 'Terms for using Arcel.',
+  privacy: 'How Arcel handles your information and what you can request.',
+  disclaimer: 'The limits of the training information Arcel provides.',
+  accessibility: 'Accessibility at Arcel and how to report a problem.',
 }
 
 const policyLinks = [
@@ -26,7 +26,7 @@ export default function PublicInfoPage({ page }: { page: InfoPageName }) {
   const content = pageContent[page]
 
   useEffect(() => {
-    document.title = page === 'about' ? content.title : `${content.title} — Arcel`
+    document.title = page === 'about' ? content.title : `${content.title} | Arcel`
   }, [content.title, page])
 
   if (page === 'about') return <AboutPage />
