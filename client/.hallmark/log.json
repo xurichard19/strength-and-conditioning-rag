@@ -1,5 +1,18 @@
 [
   {
+    "date": "2026-09-19",
+    "scope": "About page at /about",
+    "macrostructure": "Long Document (open rows, team gallery)",
+    "theme": "studied-DNA",
+    "source": "https://superpower.com/the-grove",
+    "theme_axes": "dark / regular sans / cool blue",
+    "user_override": "Match the accepted landing page; preserve existing About ideas and sections",
+    "nav": "N9 Edge-aligned minimal",
+    "footer": "Ft5 Statement",
+    "enrichment": "Existing team portraits; typography-led opening",
+    "brief": "Arcel purpose, four programming principles, real team, request flow and complete technical stack"
+  },
+  {
     "date": "2026-09-18",
     "macrostructure": "Narrative Workflow",
     "theme": "studied-DNA",
