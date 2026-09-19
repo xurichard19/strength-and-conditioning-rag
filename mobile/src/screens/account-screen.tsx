@@ -14,7 +14,7 @@ function ConnectionStatus() {
   const connected = Boolean(authSession);
   return (
     <Card style={styles.statusCard}>
-      <View style={[styles.cloud, { backgroundColor: connected ? `${colors.success}18` : colors.fill }]}>{connected ? <Cloud color={colors.success} size={24} /> : <CloudOff color={colors.textSecondary} size={24} />}</View>
+      <View style={[styles.cloud, { borderColor: colors.separator }]}>{connected ? <Cloud color={colors.tint} size={23} strokeWidth={1.5} /> : <CloudOff color={colors.textSecondary} size={23} strokeWidth={1.5} />}</View>
       <View style={styles.copy}><AppText weight="semibold">{connected ? 'Signed in' : 'Not signed in'}</AppText><AppText tone="secondary" style={styles.statusCopy}>{connected ? authSession?.user.email : 'Sign in to access your account.'}</AppText></View>
     </Card>
   );
@@ -50,9 +50,11 @@ function AccountForm() {
   const disabled = !liveApiConfigured || !email || password.length < 6;
   return (
     <View style={styles.form}>
-      <AppText weight="bold" style={styles.sectionTitle}>Connect when the backend is ready</AppText>
-      <TextInput autoCapitalize="none" autoComplete="email" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="Email" placeholderTextColor={colors.textTertiary} style={[styles.input, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} />
-      <TextInput autoCapitalize="none" autoComplete="password" secureTextEntry value={password} onChangeText={setPassword} placeholder="Password" placeholderTextColor={colors.textTertiary} style={[styles.input, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} />
+      <AppText weight="medium" style={styles.sectionTitle}>Connect when the backend is ready</AppText>
+      <AppText weight="medium" style={styles.label}>Email</AppText>
+      <TextInput accessibilityLabel="Email" autoCapitalize="none" autoComplete="email" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="Email" placeholderTextColor={colors.textTertiary} style={[styles.input, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} />
+      <AppText weight="medium" style={styles.label}>Password</AppText>
+      <TextInput accessibilityLabel="Password" autoCapitalize="none" autoComplete="password" secureTextEntry value={password} onChangeText={setPassword} placeholder="Password" placeholderTextColor={colors.textTertiary} style={[styles.input, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} />
       {message ? <AppText tone="secondary" style={styles.message}>{message}</AppText> : null}
       <PrimaryButton disabled={disabled} loading={busy === 'in'} onPress={() => void authenticate('in')}>Sign in</PrimaryButton>
       <SecondaryButton disabled={disabled} loading={busy === 'up'} onPress={() => void authenticate('up')}>Create account</SecondaryButton>
@@ -66,8 +68,9 @@ export default function AccountScreen() {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={[styles.header, { borderBottomColor: colors.separator }]}><Pressable onPress={() => router.back()} style={styles.back}><ArrowLeft color={colors.text} size={21} /></Pressable><AppText weight="bold" style={styles.title}>Account & sync</AppText><View style={styles.back} /></View>
+        <View style={[styles.header, { borderBottomColor: colors.separator }]}><Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={styles.back}><ArrowLeft color={colors.text} size={21} strokeWidth={1.5} /></Pressable><AppText weight="medium" style={styles.headerLabel}>Your account</AppText><View style={styles.back} /></View>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <View style={styles.intro}><AppText style={styles.title}>Account & sync</AppText><AppText tone="secondary" style={styles.subtitle}>Manage your connection to Arcel.</AppText></View>
           <ConnectionStatus />
           <BackendNotice />
           {authSession ? <SignedInActions /> : <AccountForm />}
@@ -79,8 +82,24 @@ export default function AccountScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 }, header: { height: 60, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth }, back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, title: { flex: 1, textAlign: 'center', fontSize: 18 },
-  content: { padding: 16, gap: 12 }, statusCard: { flexDirection: 'row', alignItems: 'center', gap: 12 }, cloud: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }, copy: { flex: 1 }, statusCopy: { fontSize: 12, marginTop: 3 },
-  info: { shadowOpacity: 0 }, infoCopy: { fontSize: 13, lineHeight: 19, marginTop: 8 }, form: { gap: 10, marginTop: 8 }, sectionTitle: { fontSize: 22, marginBottom: 7 },
-  input: { height: 52, borderRadius: radius.panel, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, fontFamily: fonts.regular, fontSize: 15 }, message: { fontSize: 12, lineHeight: 17 }, footnote: { fontSize: 11, lineHeight: 17, textAlign: 'center', paddingHorizontal: 10, marginTop: 14 },
+  safe: { flex: 1 },
+  header: { minHeight: 60, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth },
+  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  headerLabel: { flex: 1, textAlign: 'center', fontSize: 11, letterSpacing: 1.8, textTransform: 'uppercase' },
+  intro: { marginTop: 12, marginBottom: 18 },
+  title: { fontSize: 36, lineHeight: 42, letterSpacing: -1.2 },
+  subtitle: { marginTop: 12, fontSize: 14, lineHeight: 22 },
+  content: { padding: 24, gap: 16 },
+  statusCard: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  cloud: { width: 48, height: 48, borderRadius: 24, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
+  copy: { flex: 1 },
+  statusCopy: { fontSize: 12, lineHeight: 18, marginTop: 5 },
+  info: { marginTop: 4 },
+  infoCopy: { fontSize: 13, lineHeight: 21, marginTop: 10 },
+  form: { gap: 12, marginTop: 16 },
+  sectionTitle: { fontSize: 22, lineHeight: 29, letterSpacing: -0.4, marginBottom: 10 },
+  label: { fontSize: 12, lineHeight: 17, marginTop: 8, marginLeft: 2 },
+  input: { height: 56, borderRadius: radius.panel, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, fontFamily: fonts.regular, fontSize: 15 },
+  message: { fontSize: 12, lineHeight: 18 },
+  footnote: { fontSize: 11, lineHeight: 18, textAlign: 'center', paddingHorizontal: 6, marginTop: 16 },
 });

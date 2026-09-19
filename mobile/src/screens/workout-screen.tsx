@@ -1,7 +1,7 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Check, ChevronDown, ChevronUp, Circle, Clock3, MessageCircle, Minus, Plus, SkipForward, X } from 'lucide-react-native';
-import { useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type AppStateStatus } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText, Card, ChoiceChip, PrimaryButton, SecondaryButton } from '@/components/ui';
@@ -37,7 +37,7 @@ export default function WorkoutScreen() {
       <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={[styles.header, { borderBottomColor: colors.separator }]}>
           <Pressable accessibilityRole="button" accessibilityLabel="Close workout" onPress={() => router.back()} style={styles.close}><X color={colors.text} size={23} /></Pressable>
-          <View style={styles.headerCopy}><AppText weight="semibold" numberOfLines={1}>{session.title}</AppText><AppText tone="secondary" style={styles.headerSub}>{completion.done} of {completion.total} sets</AppText></View>
+          <View style={styles.headerCopy}><AppText weight="medium" numberOfLines={1} style={styles.headerTitle}>{session.title}</AppText><AppText tone="secondary" style={styles.headerSub}>{completion.done} of {completion.total} sets</AppText></View>
           <WorkoutTimer />
         </View>
         <View style={[styles.progress, { backgroundColor: colors.fillStrong }]}><View style={[styles.progressFill, { backgroundColor: colors.tint, width: `${completion.total ? (completion.done / completion.total) * 100 : 0}%` }]} /></View>
@@ -56,12 +56,12 @@ export default function WorkoutScreen() {
               onEffort={(effort) => setEffort(session.id, exercise.id, effort)}
             />
           ))}
-          <Card>
-            <AppText weight="semibold">Session note</AppText>
-            <TextInput value={note} onChangeText={setNote} multiline placeholder="Anything worth remembering?" placeholderTextColor={colors.textTertiary} style={[styles.note, { color: colors.text, backgroundColor: colors.fill }]} />
-          </Card>
+          <View style={styles.noteSection}>
+            <AppText weight="medium">Session note</AppText>
+            <TextInput accessibilityLabel="Session note" value={note} onChangeText={setNote} multiline placeholder="Anything worth remembering?" placeholderTextColor={colors.textTertiary} style={[styles.note, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} />
+          </View>
           <PrimaryButton loading={finishing} onPress={finish}>Finish session</PrimaryButton>
-          <AppText tone="secondary" style={styles.finishHint}>You can finish with incomplete sets. Arcel treats the log as what happened, not a test you passed.</AppText>
+          <AppText tone="secondary" style={styles.finishHint}>You can finish with incomplete sets. Your log records the work you did.</AppText>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -70,13 +70,23 @@ export default function WorkoutScreen() {
 
 function WorkoutTimer() {
   const { colors } = useApp();
+  const startedAt = useRef<number | null>(null);
   const [seconds, setSeconds] = useState(0);
-  useEffect(() => {
-    const timer = setInterval(() => setSeconds((value) => value + 1), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  useFocusEffect(useCallback(() => {
+    const start = startedAt.current ??= Date.now();
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const stop = () => { if (timer !== undefined) { clearInterval(timer); timer = undefined; } };
+    const update = () => setSeconds(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+    const sync = (state: AppStateStatus) => {
+      stop();
+      if (state === 'active') { update(); timer = setInterval(update, 1000); }
+    };
+    sync(AppState.currentState);
+    const listener = AppState.addEventListener('change', sync);
+    return () => { stop(); listener.remove(); };
+  }, []));
   const time = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-  return <View style={[styles.timer, { backgroundColor: colors.fill }]}><Clock3 color={colors.textSecondary} size={14} /><AppText weight="medium" style={styles.timerText}>{time}</AppText></View>;
+  return <View style={[styles.timer, { borderColor: colors.separator }]}><Clock3 color={colors.textSecondary} size={14} /><AppText weight="medium" style={styles.timerText}>{time}</AppText></View>;
 }
 
 type ExerciseCardProps = {
@@ -94,9 +104,9 @@ function exerciseTarget(exercise: Exercise) {
 function ExerciseHeader({ exercise, index, expanded, allDone, onToggle }: Pick<ExerciseCardProps, 'exercise' | 'index' | 'expanded' | 'onToggle'> & { allDone: boolean }) {
   const { colors } = useApp();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`${expanded ? 'Collapse' : 'Expand'} ${exercise.name}`} onPress={onToggle} style={styles.exerciseHeader}>
-      <View style={[styles.exerciseNumber, { backgroundColor: allDone ? colors.success : colors.fill }]}>{allDone ? <Check color="#FFFFFF" size={16} /> : <AppText weight="bold" style={styles.exerciseNumberText}>{index + 1}</AppText>}</View>
-      <View style={styles.headerCopy}><AppText weight="semibold" style={styles.exerciseTitle}>{exercise.name}</AppText><AppText tone="secondary" style={styles.exerciseTarget}>{exerciseTarget(exercise)}</AppText></View>
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded }} accessibilityLabel={`${expanded ? 'Collapse' : 'Expand'} ${exercise.name}`} onPress={onToggle} style={styles.exerciseHeader}>
+      <View style={[styles.exerciseNumber, { backgroundColor: colors.fill }]}>{allDone ? <Check color={colors.success} size={16} /> : <AppText tone="secondary" style={styles.exerciseNumberText}>{String(index + 1).padStart(2, '0')}</AppText>}</View>
+      <View style={styles.headerCopy}><AppText weight="medium" style={styles.exerciseTitle}>{exercise.name}</AppText><AppText tone="secondary" style={styles.exerciseTarget}>{exerciseTarget(exercise)}</AppText></View>
       {expanded ? <ChevronUp color={colors.textTertiary} size={20} /> : <ChevronDown color={colors.textTertiary} size={20} />}
     </Pressable>
   );
@@ -120,11 +130,11 @@ function ExerciseSetRow({ exercise, setIndex, onUpdateSet }: Pick<ExerciseCardPr
   return (
     <View style={styles.setRow}>
       <AppText weight="medium" style={styles.setNumber}>{setIndex + 1}</AppText>
-      {exercise.kind === 'load' ? <NumberInput value={set.weight} onChange={(weight) => onUpdateSet(set.id, { weight })} /> : null}
+      {exercise.kind === 'load' ? <NumberInput label={`${exercise.name}, set ${setIndex + 1}, weight in kilograms`} value={set.weight} onChange={(weight) => onUpdateSet(set.id, { weight })} /> : null}
       {exercise.kind === 'time'
         ? <View style={[styles.timeTarget, { backgroundColor: colors.fill }]}><AppText weight="medium" style={styles.timeTargetText}>{minutes} min</AppText></View>
-        : <NumberInput value={set.reps} onChange={(reps) => onUpdateSet(set.id, { reps })} />}
-      <Pressable accessibilityRole="button" accessibilityLabel={set.done ? `Mark set ${setIndex + 1} incomplete` : `Complete set ${setIndex + 1}`} onPress={() => onUpdateSet(set.id, { done: !set.done })} style={[styles.done, { backgroundColor: set.done ? colors.success : colors.fill }]}>{set.done ? <Check color="#FFFFFF" size={19} /> : <Circle color={colors.textTertiary} size={18} />}</Pressable>
+        : <NumberInput label={`${exercise.name}, set ${setIndex + 1}, repetitions`} value={set.reps} onChange={(reps) => onUpdateSet(set.id, { reps })} />}
+      <Pressable accessibilityRole="button" accessibilityLabel={set.done ? `Mark set ${setIndex + 1} incomplete` : `Complete set ${setIndex + 1}`} onPress={() => onUpdateSet(set.id, { done: !set.done })} style={[styles.done, { backgroundColor: colors.fill }]}>{set.done ? <Check color={colors.success} size={21} /> : <Circle color={colors.textTertiary} size={18} />}</Pressable>
     </View>
   );
 }
@@ -147,7 +157,7 @@ function ExerciseBody({ exercise, onUpdateSet, onAdd, onRemove, onSkip, onEffort
   const { colors } = useApp();
   return (
     <View style={styles.exerciseBody}>
-      {exercise.form ? <View style={[styles.formTip, { backgroundColor: colors.tintSoft }]}><AppText tone="tint" style={styles.formText}>{exercise.form}</AppText></View> : null}
+      {exercise.form ? <View style={[styles.formTip, { borderLeftColor: colors.tint }]}><AppText tone="tint" style={styles.formText}>{exercise.form}</AppText></View> : null}
       <AppText tone="secondary" style={styles.why}>{exercise.why}</AppText>
       <ExerciseSetHeader kind={exercise.kind} />
       {exercise.sets.map((set, setIndex) => <ExerciseSetRow key={set.id} exercise={exercise} setIndex={setIndex} onUpdateSet={onUpdateSet} />)}
@@ -172,27 +182,28 @@ function ExerciseCard(props: ExerciseCardProps) {
   );
 }
 
-function NumberInput({ value, onChange }: { value: number | null; onChange: (value: number | null) => void }) {
+function NumberInput({ label, value, onChange }: { label: string; value: number | null; onChange: (value: number | null) => void }) {
   const { colors } = useApp();
-  return <TextInput keyboardType="decimal-pad" value={value == null ? '' : String(value)} onChangeText={(text) => { const parsed = Number(text.replace(',', '.')); onChange(text === '' || Number.isNaN(parsed) ? null : parsed); }} selectTextOnFocus style={[styles.numberInput, { color: colors.text, backgroundColor: colors.fill }]} />;
+  return <TextInput accessibilityLabel={label} keyboardType="decimal-pad" value={value == null ? '' : String(value)} onChangeText={(text) => { const parsed = Number(text.replace(',', '.')); onChange(text === '' || Number.isNaN(parsed) ? null : parsed); }} selectTextOnFocus style={[styles.numberInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.separator }]} />;
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  header: { minHeight: 64, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  close: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' }, headerCopy: { flex: 1 }, headerSub: { fontSize: 11, lineHeight: 15 },
-  timer: { minHeight: 34, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10 }, timerText: { fontSize: 12 },
-  progress: { height: 3 }, progressFill: { height: 3 }, content: { padding: 14, paddingBottom: 30, gap: 10 },
+  header: { minHeight: 76, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  close: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, headerCopy: { flex: 1 }, headerTitle: { fontSize: 16, lineHeight: 22 }, headerSub: { fontSize: 11, lineHeight: 17, marginTop: 3 },
+  timer: { minHeight: 34, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 11 }, timerText: { fontSize: 12, fontVariant: ['tabular-nums'] },
+  progress: { height: 2 }, progressFill: { height: 2 }, content: { padding: 20, paddingBottom: 36, gap: 14, width: '100%', maxWidth: 680, alignSelf: 'center' },
   skippedCard: { opacity: 0.55 }, exerciseHeader: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  exerciseNumber: { width: 32, height: 32, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, exerciseNumberText: { fontSize: 12 },
-  exerciseTitle: { fontSize: 16, lineHeight: 21 }, exerciseTarget: { marginTop: 2, fontSize: 12, lineHeight: 16 }, exerciseBody: { paddingTop: 12 },
-  formTip: { borderRadius: 13, padding: 11 }, formText: { fontSize: 12, lineHeight: 17 }, why: { fontSize: 12, lineHeight: 18, marginTop: 9, marginBottom: 13 },
-  setHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 }, setRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  setNumber: { width: 30, textAlign: 'center', fontSize: 11 }, inputHeading: { width: 68, textAlign: 'center', fontSize: 10 }, inputWide: { width: 144, textAlign: 'center', fontSize: 10 }, doneSpace: { width: 42 },
-  numberInput: { width: 68, height: 42, borderRadius: 12, textAlign: 'center', fontFamily: fonts.medium, fontSize: 15 }, timeTarget: { width: 144, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, timeTargetText: { fontSize: 13 },
-  done: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  setActions: { flexDirection: 'row', gap: 8, marginTop: 3 }, actionButton: { flex: 1, minHeight: 42 },
-  effort: { marginTop: 17, gap: 10 }, effortOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, effortChip: { minHeight: 38, flexGrow: 1 },
-  utilityRow: { marginTop: 16, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row' }, utility: { flex: 1, minHeight: 38, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center' }, utilityText: { fontSize: 12 },
-  note: { marginTop: 11, minHeight: 80, borderRadius: radius.panel, padding: 12, fontFamily: fonts.regular, fontSize: 14, textAlignVertical: 'top' }, finishHint: { textAlign: 'center', fontSize: 11, lineHeight: 16, paddingHorizontal: 16 },
+  exerciseNumber: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }, exerciseNumberText: { fontSize: 11, fontVariant: ['tabular-nums'] },
+  exerciseTitle: { fontSize: 17, lineHeight: 23 }, exerciseTarget: { marginTop: 3, fontSize: 12, lineHeight: 18 }, exerciseBody: { paddingTop: 22 },
+  formTip: { borderLeftWidth: 2, paddingLeft: 12, paddingVertical: 3 }, formText: { fontSize: 13, lineHeight: 20 }, why: { fontSize: 13, lineHeight: 20, marginTop: 12, marginBottom: 20 },
+  setHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }, setRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  setNumber: { width: 24, textAlign: 'center', fontSize: 11 }, inputHeading: { flex: 1, textAlign: 'center', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' }, inputWide: { flex: 1, textAlign: 'center', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' }, doneSpace: { width: 44 },
+  numberInput: { flex: 1, minWidth: 0, height: 48, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, textAlign: 'center', fontFamily: fonts.medium, fontSize: 17, fontVariant: ['tabular-nums'] }, timeTarget: { flex: 1, height: 48, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, timeTargetText: { fontSize: 15 },
+  done: { width: 44, height: 48, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  setActions: { flexDirection: 'row', gap: 8, marginTop: 8 }, actionButton: { flex: 1, minHeight: 44, paddingHorizontal: 8 },
+  effort: { marginTop: 17, gap: 10 }, effortOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, effortChip: { minHeight: 44, flexGrow: 1 },
+  utilityRow: { marginTop: 16, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row' }, utility: { flex: 1, minHeight: 44, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center' }, utilityText: { fontSize: 12 },
+  noteSection: { marginTop: 12 },
+  note: { marginTop: 12, minHeight: 110, borderRadius: radius.panel, borderWidth: StyleSheet.hairlineWidth, padding: 16, fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, textAlignVertical: 'top' }, finishHint: { textAlign: 'center', fontSize: 12, lineHeight: 18, paddingHorizontal: 16 },
 });

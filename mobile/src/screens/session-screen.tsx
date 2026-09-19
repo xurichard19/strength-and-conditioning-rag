@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Clock3, ShieldCheck } from 'lucide-react-native';
+import { ArrowLeft, ShieldCheck } from 'lucide-react-native';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText, Card, ModalityBadge, PrimaryButton, Screen, SectionTitle, ShieldLine } from '@/components/ui';
@@ -13,29 +13,32 @@ export default function SessionScreen() {
   if (!session) return <Screen title="Session"><Card><AppText>This session is no longer in the week.</AppText></Card></Screen>;
   return (
     <Screen title={session.title} subtitle={new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).format(new Date(`${session.date}T12:00:00`))} context={session.title}>
-      <Pressable onPress={() => router.back()} style={styles.back}><ArrowLeft color={colors.text} size={20} /><AppText weight="medium">Week</AppText></Pressable>
-      <Card>
+      <Pressable accessibilityRole="button" accessibilityLabel="Back to calendar" onPress={() => router.back()} style={styles.back}><ArrowLeft color={colors.text} size={20} /><AppText weight="medium">Calendar</AppText></Pressable>
+      <Card style={styles.summary}>
         <View style={styles.hero}>
-          <ModalityBadge modality={session.modality} />
+          <ModalityBadge modality={session.modality} size={38} />
           <View style={styles.copy}>
-            <AppText weight="bold" style={styles.title}>{session.title}</AppText>
-            <View style={styles.meta}><Clock3 color={colors.textSecondary} size={14} /><AppText tone="secondary">{session.minutes} min · {session.exercises.length} exercises</AppText></View>
+            <AppText tone="secondary" weight="medium" style={styles.eyebrow}>{session.modality} session</AppText>
+            <AppText style={styles.title}>{session.minutes}<AppText tone="secondary" style={styles.unit}> min</AppText></AppText>
           </View>
+          <View style={styles.exerciseCount}><AppText style={styles.title}>{session.exercises.length}</AppText><AppText tone="secondary" style={styles.detail}>Exercises</AppText></View>
         </View>
         {session.intent ? <AppText tone="secondary" style={styles.intent}>{session.intent}</AppText> : null}
         <ShieldLine>{session.protects === 'intensity' ? 'The important intensity stays protected.' : 'The plan keeps your week balanced.'}</ShieldLine>
       </Card>
       <SectionTitle>What you’ll do</SectionTitle>
+      <View>
       {session.exercises.map((exercise, index) => (
-        <Card key={exercise.id} style={styles.exercise}>
-          <View style={[styles.number, { backgroundColor: colors.fill }]}><AppText weight="bold" style={styles.numberText}>{index + 1}</AppText></View>
+        <View key={exercise.id} style={[styles.exercise, { borderTopColor: colors.separator }]}>
+          <View style={styles.number}><AppText tone="secondary" style={styles.numberText}>{String(index + 1).padStart(2, '0')}</AppText></View>
           <View style={styles.copy}>
-            <AppText weight="semibold">{exercise.name}</AppText>
+            <AppText weight="medium" style={styles.exerciseName}>{exercise.name}</AppText>
             <AppText tone="secondary" style={styles.detail}>{exercise.kind === 'time' ? `${Math.round((exercise.targetSeconds ?? 0) / 60)} minutes` : `${exercise.sets.length} sets × ${exercise.targetReps} reps`}</AppText>
             <AppText tone="secondary" style={styles.why}>{exercise.why}</AppText>
           </View>
-        </Card>
+        </View>
       ))}
+      </View>
       {session.receipt ? (
         <Card style={styles.receipt}>
           <ShieldCheck color={colors.success} size={20} />
@@ -48,15 +51,19 @@ export default function SessionScreen() {
 }
 
 const styles = StyleSheet.create({
-  back: { alignSelf: 'flex-start', minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  back: { alignSelf: 'flex-start', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  summary: { padding: 20 },
   hero: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   copy: { flex: 1 },
-  title: { fontSize: 22, lineHeight: 27 },
-  meta: { flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 4 },
-  intent: { fontSize: 14, lineHeight: 21, marginTop: 14 },
-  exercise: { flexDirection: 'row', gap: 12 },
-  number: { width: 32, height: 32, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  numberText: { fontSize: 13 },
+  eyebrow: { fontSize: 10, lineHeight: 16, letterSpacing: 1, textTransform: 'uppercase' },
+  title: { fontSize: 32, lineHeight: 40, letterSpacing: -0.8, fontVariant: ['tabular-nums'] },
+  unit: { fontSize: 14, lineHeight: 20 },
+  exerciseCount: { alignItems: 'flex-end' },
+  intent: { fontSize: 14, lineHeight: 22, marginTop: 20, marginBottom: 8 },
+  exercise: { flexDirection: 'row', gap: 14, paddingVertical: 22, borderTopWidth: StyleSheet.hairlineWidth },
+  number: { width: 28, paddingTop: 2 },
+  numberText: { fontSize: 12, lineHeight: 20, fontVariant: ['tabular-nums'] },
+  exerciseName: { fontSize: 17, lineHeight: 23 },
   detail: { fontSize: 13, lineHeight: 18, marginTop: 3 },
   why: { fontSize: 13, lineHeight: 18, marginTop: 9 },
   receipt: { flexDirection: 'row', gap: 11 },

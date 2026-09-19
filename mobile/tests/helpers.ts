@@ -12,7 +12,7 @@ type Stub = string | number | boolean | null | undefined | Stub[] | Stubs | ((..
 export type Stubs = { [name: string]: Stub };
 
 /** Load app code with explicit test doubles; unexpected imports never reach native APIs or the network. */
-export function load<T = TestModule>(file: string, modules: Stubs = {}): T {
+export function load<T = TestModule>(file: string, modules: Stubs = {}, globals: TestModule = {}): T {
   const source = readFileSync(resolve(import.meta.dirname, '../src', file), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS,
     target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
@@ -20,7 +20,7 @@ export function load<T = TestModule>(file: string, modules: Stubs = {}): T {
   vm.runInNewContext(code, { exports, require: (name: string) => {
     if (!(name in modules)) throw new Error(`unexpected import: ${name}`);
     return modules[name];
-  }, URL, URLSearchParams, Headers, TextDecoder, AbortController, console, process: { env: {
+  }, URL, URLSearchParams, Headers, TextDecoder, AbortController, console, ...globals, process: { env: {
     EXPO_PUBLIC_API_BASE_URL: 'https://api.test', EXPO_PUBLIC_SUPABASE_URL: 'https://db.test',
     EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
   } } });

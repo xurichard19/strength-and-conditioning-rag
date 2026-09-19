@@ -270,3 +270,11 @@ reindex with compose service
 
 run mobile client from /mobile
 >> npm start
+
+build and install offline app using xcode from /mobile
+
+>> npx expo run:ios --configuration Release --device
+
+run web client from /client
+
+>> npm run dev

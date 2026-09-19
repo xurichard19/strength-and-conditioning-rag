@@ -1,6 +1,5 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Check, HeartPulse, ShieldCheck, Sparkles, X } from 'lucide-react-native';
+import { ArrowLeft, Check, HeartPulse, Info, ShieldCheck, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,7 +16,7 @@ const stepHeadings: Record<number, { title: string; copy: string }> = {
   1: { title: 'Shape your week', copy: 'Start with the week you can actually repeat.' },
   2: { title: 'What you have', copy: 'Enough detail to make the plan practical.' },
   3: { title: 'Your starting point', copy: 'Plain estimates are perfect. No test day required.' },
-  4: { title: 'Train safely', copy: 'We’ll keep symptoms out of the bravado zone.' },
+  4: { title: 'Train safely', copy: 'Help us understand any current limits on your training.' },
   5: { title: 'Anything else?', copy: 'A sentence can be more useful than ten settings.' },
 };
 
@@ -74,9 +73,8 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
-      <LinearGradient colors={colors.washYou} style={styles.wash} />
       <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {editing ? <Pressable accessibilityRole="button" accessibilityLabel="Close setup" disabled={building} onPress={() => router.replace('/(tabs)/you')} style={{ alignSelf: 'flex-end', padding: 12 }}><X color={colors.text} size={24} /></Pressable> : null}
+        {editing ? <Pressable accessibilityRole="button" accessibilityLabel="Close setup" disabled={building} onPress={() => router.replace('/(tabs)/you')} style={styles.close}><X color={colors.text} size={24} /></Pressable> : null}
         <StepProgress step={step} onBack={() => setStep((value) => Math.max(1, value - 1))} />
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
           <StepHeading step={step} />
@@ -93,14 +91,12 @@ function WelcomeStep({ onStart }: { onStart: () => void }) {
   const { colors } = useApp();
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
-      <LinearGradient colors={colors.washToday} style={styles.fullWash} />
-      <View style={styles.welcome}>
-        <View style={[styles.mark, { backgroundColor: colors.tintSoft }]}><Sparkles color={colors.tintText} size={34} /></View>
-        <AppText weight="bold" style={styles.brand}>Arcel</AppText>
-        <AppText weight="bold" style={styles.welcomeTitle}>Training that keeps both threads moving.</AppText>
-        <AppText tone="secondary" style={styles.welcomeCopy}>A calm weekly plan for getting stronger and building cardio—without pretending life stays perfectly on schedule.</AppText>
-        <View style={styles.promiseList}>{promises.map((text) => <View key={text} style={styles.promise}><Check color={colors.success} size={18} /><AppText style={styles.promiseText}>{text}</AppText></View>)}</View>
-      </View>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.welcome}>
+        <AppText weight="medium" style={styles.brand}>Arcel</AppText>
+        <AppText style={styles.welcomeTitle}>{'Train with purpose.\nPlan for real life.'}</AppText>
+        <AppText tone="secondary" style={styles.welcomeCopy}>Strength and endurance, planned together around your goals and the time you have.</AppText>
+        <View style={[styles.promiseList, { borderTopColor: colors.separator }]}>{promises.map((text) => <View key={text} style={styles.promise}><Check color={colors.tint} size={17} strokeWidth={1.5} /><AppText style={styles.promiseText}>{text}</AppText></View>)}</View>
+      </ScrollView>
       <View style={styles.welcomeFooter}><PrimaryButton onPress={onStart}>Shape my week</PrimaryButton><AppText tone="secondary" style={styles.footerNote}>About 2 minutes · you can change this later</AppText></View>
     </SafeAreaView>
   );
@@ -109,13 +105,13 @@ function WelcomeStep({ onStart }: { onStart: () => void }) {
 function StepProgress({ step, onBack }: { step: number; onBack: () => void }) {
   const { colors } = useApp();
   const visibleStep = Math.min(step, 5);
-  return <View style={styles.topbar}><Pressable disabled={step === 1} onPress={onBack} style={styles.back}><ArrowLeft color={step === 1 ? colors.textTertiary : colors.text} size={21} /></Pressable><View style={[styles.progress, { backgroundColor: colors.fillStrong }]}><View style={[styles.progressFill, { backgroundColor: colors.tint, width: `${visibleStep * 20}%` }]} /></View><AppText tone="secondary" style={styles.stepLabel}>{visibleStep} / 5</AppText></View>;
+  return <View style={styles.topbar}><Pressable accessibilityRole="button" accessibilityLabel="Previous step" disabled={step === 1} onPress={onBack} style={styles.back}><ArrowLeft color={step === 1 ? colors.textTertiary : colors.text} size={21} /></Pressable><View style={[styles.progress, { backgroundColor: colors.fillStrong }]}><View style={[styles.progressFill, { backgroundColor: colors.tint, width: `${visibleStep * 20}%` }]} /></View><AppText tone="secondary" style={styles.stepLabel}>{visibleStep} / 5</AppText></View>;
 }
 
 function StepHeading({ step }: { step: number }) {
   const heading = stepHeadings[step];
   if (!heading) return null;
-  return <><AppText weight="bold" style={styles.stepTitle}>{heading.title}</AppText><AppText tone="secondary" style={styles.stepCopy}>{heading.copy}</AppText></>;
+  return <><AppText style={styles.stepTitle}>{heading.title}</AppText><AppText tone="secondary" style={styles.stepCopy}>{heading.copy}</AppText></>;
 }
 
 type StepContentProps = {
@@ -143,7 +139,7 @@ function EquipmentStep({ draft, update }: Pick<StepContentProps, 'draft' | 'upda
 
 function CapacityStep({ pushups, setPushups, runCapacity, setRunCapacity }: Pick<StepContentProps, 'pushups' | 'setPushups' | 'runCapacity' | 'setRunCapacity'>) {
   const { colors } = useApp();
-  return <View style={styles.form}><FieldTitle>Comfortable push-ups</FieldTitle><ChipGrid values={['0–4', '5–10', '11–20', '20+']} selected={pushups} onSelect={setPushups} /><FieldTitle>Easy continuous run</FieldTitle><ChipGrid values={['Under 10 min', '10–20 min', '20–40 min', '40+ min']} selected={runCapacity} onSelect={setRunCapacity} /><Card style={styles.softCard}><Sparkles color={colors.tint} size={19} /><AppText tone="secondary" style={styles.softText}>These answers only choose a sensible starting dose. Your logs will replace the estimate quickly.</AppText></Card></View>;
+  return <View style={styles.form}><FieldTitle>Comfortable push-ups</FieldTitle><ChipGrid values={['0–4', '5–10', '11–20', '20+']} selected={pushups} onSelect={setPushups} /><FieldTitle>Easy continuous run</FieldTitle><ChipGrid values={['Under 10 min', '10–20 min', '20–40 min', '40+ min']} selected={runCapacity} onSelect={setRunCapacity} /><Card style={styles.softCard}><Info color={colors.textSecondary} size={19} strokeWidth={1.5} /><AppText tone="secondary" style={styles.softText}>These answers only choose a sensible starting dose. Your logs will replace the estimate quickly.</AppText></Card></View>;
 }
 
 function SafetyStep({ pain, setPain }: Pick<StepContentProps, 'pain' | 'setPain'>) {
@@ -153,12 +149,12 @@ function SafetyStep({ pain, setPain }: Pick<StepContentProps, 'pain' | 'setPain'
 
 function NotesStep({ draft, update, note, setNote }: Pick<StepContentProps, 'draft' | 'update' | 'note' | 'setNote'>) {
   const { colors } = useApp();
-  return <View style={styles.form}><FieldTitle>What should Arcel know?</FieldTitle><TextInput value={note} onChangeText={setNote} multiline placeholder="Travel, exercises you avoid, old injuries, what usually derails a week…" placeholderTextColor={colors.textTertiary} style={[styles.noteInput, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} /><FieldTitle>What should we call you?</FieldTitle><TextInput value={draft.displayName} onChangeText={(displayName) => update({ displayName })} maxLength={60} placeholder="First name (optional)" placeholderTextColor={colors.textTertiary} style={[styles.nameInput, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} /></View>;
+  return <View style={styles.form}><FieldTitle>What should Arcel know?</FieldTitle><TextInput accessibilityLabel="What should Arcel know?" value={note} onChangeText={setNote} multiline placeholder="Travel, exercises you avoid, old injuries, what usually derails a week…" placeholderTextColor={colors.textTertiary} style={[styles.noteInput, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} /><FieldTitle>What should we call you?</FieldTitle><TextInput accessibilityLabel="Your name" value={draft.displayName} onChangeText={(displayName) => update({ displayName })} maxLength={60} placeholder="First name (optional)" placeholderTextColor={colors.textTertiary} style={[styles.nameInput, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} /></View>;
 }
 
 function RevealStep({ draft, pushups, runCapacity }: Pick<StepContentProps, 'draft' | 'pushups' | 'runCapacity'>) {
   const { colors } = useApp();
-  return <View style={styles.reveal}><View style={[styles.revealIcon, { backgroundColor: colors.tintSoft }]}><ShieldCheck color={colors.tintText} size={34} /></View><AppText weight="bold" style={styles.revealTitle}>Review your answers.</AppText><AppText tone="secondary" style={styles.revealCopy}>Save your preferences to your account. Planning will be connected later; you can start using chat now.</AppText><Card style={styles.summaryCard}><Summary label="Shape" value={`${draft.daysPerWeek} days · ${draft.sessionMinutes} min`} /><Summary label="Goal" value={draft.goal} /><Summary label="Setup" value={`${draft.equipment} · ${draft.cardio}`} /><Summary label="Starting point" value={`${pushups} push-ups · ${runCapacity} run`} /></Card></View>;
+  return <View style={styles.reveal}><View style={[styles.revealIcon, { borderColor: colors.separator }]}><ShieldCheck color={colors.tintText} size={26} strokeWidth={1.3} /></View><AppText style={styles.revealTitle}>Review your answers.</AppText><AppText tone="secondary" style={styles.revealCopy}>Save your preferences to your account. Planning will be connected later; you can start using chat now.</AppText><Card style={styles.summaryCard}><Summary label="Shape" value={`${draft.daysPerWeek} days · ${draft.sessionMinutes} min`} /><Summary label="Goal" value={draft.goal} /><Summary label="Setup" value={`${draft.equipment} · ${draft.cardio}`} /><Summary label="Starting point" value={`${pushups} push-ups · ${runCapacity} run`} /></Card></View>;
 }
 
 function StepContent(props: StepContentProps) {
@@ -180,31 +176,50 @@ function StepFooter({ step, building, onContinue, onBuild, onSkip, onFinish }: {
   return <View style={[styles.bottom, { borderTopColor: colors.separator }]}><PrimaryButton loading={building} onPress={onFinish}>Save and open chat</PrimaryButton></View>;
 }
 
-function FieldTitle({ children }: { children: string }) { return <AppText weight="semibold" style={styles.fieldTitle}>{children}</AppText>; }
+function FieldTitle({ children }: { children: string }) { return <AppText weight="medium" style={styles.fieldTitle}>{children}</AppText>; }
 function ChipGrid({ values, selected, onSelect, suffix = '' }: { values: string[]; selected: string; onSelect: (value: string) => void; suffix?: string }) { return <View style={styles.chips}>{values.map((value) => <ChoiceChip key={value} label={`${value}${suffix}`} selected={selected === value} onPress={() => onSelect(value)} style={styles.flexChip} />)}</View>; }
 function Summary({ label, value }: { label: string; value: string }) { return <View style={styles.summaryRow}><AppText tone="secondary" style={styles.summaryLabel}>{label}</AppText><AppText weight="medium" style={styles.summaryValue}>{value}</AppText></View>; }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 }, redirecting: { flex: 1, alignItems: 'center', justifyContent: 'center' }, fullWash: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }, wash: { position: 'absolute', top: 0, left: 0, right: 0, height: 320 },
-  welcome: { flex: 1, justifyContent: 'center', paddingHorizontal: 28 },
-  mark: { width: 70, height: 70, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  brand: { marginTop: 16, fontSize: 17, letterSpacing: 2, textTransform: 'uppercase' },
-  welcomeTitle: { marginTop: 18, fontSize: 36, lineHeight: 40, letterSpacing: -1.3 },
-  welcomeCopy: { marginTop: 14, fontSize: 16, lineHeight: 23 },
-  promiseList: { marginTop: 26, gap: 14 }, promise: { flexDirection: 'row', alignItems: 'center', gap: 10 }, promiseText: { flex: 1, fontSize: 14 },
-  welcomeFooter: { paddingHorizontal: 20, paddingBottom: 12, gap: 10 }, footerNote: { textAlign: 'center', fontSize: 11 },
-  topbar: { height: 60, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  back: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  progress: { flex: 1, height: 6, borderRadius: 3, overflow: 'hidden' }, progressFill: { height: '100%', borderRadius: 3 }, stepLabel: { width: 32, fontSize: 11 },
-  content: { paddingHorizontal: 20, paddingBottom: 30 }, stepTitle: { marginTop: 16, fontSize: 31, lineHeight: 36, letterSpacing: -1 }, stepCopy: { marginTop: 9, fontSize: 15, lineHeight: 21 },
-  form: { marginTop: 27, gap: 11 }, fieldTitle: { fontSize: 15, marginTop: 11 }, chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, flexChip: { flexGrow: 1 },
-  dayGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, dayChip: { minWidth: 55, flexGrow: 1 },
-  softCard: { flexDirection: 'row', gap: 10, marginTop: 8, shadowOpacity: 0 }, softText: { flex: 1, fontSize: 13, lineHeight: 19 },
-  safetyCard: { flexDirection: 'row', gap: 11, marginTop: 8 }, flex: { flex: 1 },
-  noteInput: { minHeight: 128, borderRadius: radius.panel, borderWidth: StyleSheet.hairlineWidth, padding: 14, fontFamily: fonts.regular, fontSize: 15, textAlignVertical: 'top' },
-  nameInput: { minHeight: 52, borderRadius: radius.panel, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, fontFamily: fonts.regular, fontSize: 15 },
-  bottom: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 4, borderTopWidth: StyleSheet.hairlineWidth, gap: 8 },
-  reveal: { alignItems: 'center', paddingTop: 35 }, revealIcon: { width: 68, height: 68, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  revealTitle: { marginTop: 20, textAlign: 'center', fontSize: 30, lineHeight: 35 }, revealCopy: { marginTop: 10, textAlign: 'center', fontSize: 15, lineHeight: 22 }, summaryCard: { alignSelf: 'stretch', marginTop: 26, gap: 0 },
-  summaryRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 12 }, summaryLabel: { width: 90, fontSize: 12 }, summaryValue: { flex: 1, textAlign: 'right', fontSize: 13 },
+  safe: { flex: 1 },
+  redirecting: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  welcome: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 28, paddingVertical: 32 },
+  brand: { fontSize: 14, lineHeight: 20, letterSpacing: 3, textTransform: 'uppercase' },
+  welcomeTitle: { marginTop: 42, fontSize: 42, lineHeight: 47, letterSpacing: -1.7 },
+  welcomeCopy: { marginTop: 20, fontSize: 16, lineHeight: 25 },
+  promiseList: { marginTop: 34, paddingTop: 24, borderTopWidth: StyleSheet.hairlineWidth, gap: 16 },
+  promise: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  promiseText: { flex: 1, fontSize: 13, lineHeight: 20 },
+  welcomeFooter: { paddingHorizontal: 24, paddingBottom: 16, gap: 14 },
+  footerNote: { textAlign: 'center', fontSize: 11, lineHeight: 16 },
+  close: { alignSelf: 'flex-end', padding: 12 },
+  topbar: { minHeight: 68, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 16 },
+  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  progress: { flex: 1, height: 2, borderRadius: 1, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 1 },
+  stepLabel: { width: 36, fontSize: 11, letterSpacing: 0.7, fontVariant: ['tabular-nums'] },
+  content: { paddingHorizontal: 24, paddingBottom: 36 },
+  stepTitle: { marginTop: 24, fontSize: 36, lineHeight: 42, letterSpacing: -1.3 },
+  stepCopy: { marginTop: 12, fontSize: 15, lineHeight: 24 },
+  form: { marginTop: 30, gap: 12 },
+  fieldTitle: { fontSize: 14, lineHeight: 21, marginTop: 18 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  flexChip: { flexGrow: 1 },
+  dayGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  dayChip: { minWidth: 55, flexGrow: 1 },
+  softCard: { flexDirection: 'row', gap: 12, marginTop: 16 },
+  softText: { flex: 1, fontSize: 13, lineHeight: 21 },
+  safetyCard: { flexDirection: 'row', gap: 12, marginTop: 16 },
+  flex: { flex: 1 },
+  noteInput: { minHeight: 160, borderRadius: radius.panel, borderWidth: StyleSheet.hairlineWidth, padding: 16, fontFamily: fonts.regular, fontSize: 15, lineHeight: 23, textAlignVertical: 'top' },
+  nameInput: { minHeight: 56, borderRadius: radius.panel, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, fontFamily: fonts.regular, fontSize: 15 },
+  bottom: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 10, borderTopWidth: StyleSheet.hairlineWidth, gap: 8 },
+  reveal: { paddingTop: 30 },
+  revealIcon: { width: 56, height: 56, borderRadius: 28, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
+  revealTitle: { marginTop: 26, fontSize: 36, lineHeight: 42, letterSpacing: -1.3 },
+  revealCopy: { marginTop: 14, fontSize: 15, lineHeight: 24 },
+  summaryCard: { alignSelf: 'stretch', marginTop: 30, gap: 0 },
+  summaryRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  summaryLabel: { width: 88, fontSize: 12 },
+  summaryValue: { flex: 1, textAlign: 'right', fontSize: 13, lineHeight: 20 },
 });
