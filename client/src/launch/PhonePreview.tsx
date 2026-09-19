@@ -10,10 +10,10 @@ const days = [
   { label: 'S', date: 13, tone: 'rest' },
   { label: 'M', date: 14, tone: 'strength' },
   { label: 'T', date: 15, tone: 'run' },
-  { label: 'W', date: 16, tone: 'swim' },
+  { label: 'W', date: 16, tone: 'sport' },
   { label: 'T', date: 17, tone: 'rest' },
   { label: 'F', date: 18, tone: 'strength' },
-  { label: 'S', date: 19, tone: 'swim' },
+  { label: 'S', date: 19, tone: 'sport' },
 ]
 
 function CalendarPreview() {
@@ -30,9 +30,9 @@ function CalendarPreview() {
     <div className="phone-preview-section-heading"><span>Wednesday, Sep 16</span><Ellipsis size={18} /></div>
     <div className="phone-preview-session">
       <div className="phone-preview-session-eyebrow"><span>Sports session</span><span>● Planned</span></div>
-      <div className="phone-preview-session-heading"><p>Swimming</p><span className="phone-preview-session-icon"><Activity size={19} strokeWidth={1.65} /></span></div>
+      <div className="phone-preview-session-heading"><p>Boxing</p><span className="phone-preview-session-icon"><Activity size={19} strokeWidth={1.65} /></span></div>
       <p className="phone-preview-session-meta">7:00 AM · 45 min · Moderate</p>
-      <p className="phone-preview-session-note">Easy warm-up, then 8 × 100 m.<br />Keep the pace controlled.</p>
+      <p className="phone-preview-session-note">Footwork, then 6 × 3 min on the bag.<br />Focus on clean combinations.</p>
       <div className="phone-preview-session-foot"><span>Session details</span><ArrowUpRight size={13} /></div>
     </div>
     <div className="phone-preview-section-heading phone-preview-overview-heading"><span>At a glance</span></div>
@@ -49,17 +49,17 @@ function CalendarPreview() {
 
 const exercises = [
   ['Goblet squat', '3 × 8'], ['Dumbbell bench press', '3 × 8'],
-  ['One-arm row', '3 × 10'], ['Easy swim', '15 min'],
+  ['One-arm row', '3 × 10'], ['Bag work', '4 × 2 min'],
 ]
 
 function TodayPreview() {
   return <>
-    <div className="phone-preview-section-heading"><span>Your session</span><span className="phone-preview-small-label">Wednesday</span></div>
+    <div className="phone-preview-section-heading"><span>Your session</span><span className="phone-preview-small-label">Monday</span></div>
     <div className="phone-preview-panel">
       <p className="phone-preview-eyebrow">Mixed session</p>
-      <div className="phone-preview-session-heading"><p>Full body +<br />easy swim</p><span className="phone-preview-session-icon"><Dumbbell size={19} /></span></div>
+      <div className="phone-preview-session-heading"><p>Full body +<br />bag work</p><span className="phone-preview-session-icon"><Dumbbell size={19} /></span></div>
       <div className="phone-preview-facts"><div><strong>40 <small>min</small></strong><span>Duration</span></div><div><strong>4</strong><span>Exercises</span></div></div>
-      <p className="phone-preview-copy">A balanced strength session, followed by an easy aerobic finish.</p>
+      <p className="phone-preview-copy">Full-body strength, then controlled rounds on the bag.</p>
       <div className="phone-preview-exercises">{exercises.map(([name, target]) => <div key={name}><i className="phone-preview-dot phone-preview-dot-strength" /><span>{name}</span><span>{target}</span></div>)}</div>
       <span className="phone-preview-static-primary">Start session</span>
       <div className="phone-preview-static-actions"><span><Clock3 size={13} />25 min</span><span>Move<ArrowUpRight size={13} /></span></div>
@@ -68,8 +68,8 @@ function TodayPreview() {
 }
 
 const consistency = [
-  { label: 'Aug 24', strength: 2, cardio: 1 }, { label: 'Aug 31', strength: 2, cardio: 2 },
-  { label: 'Sep 7', strength: 2, cardio: 1 }, { label: 'Now', strength: 2, cardio: 2 },
+  { label: 'Aug 24', strength: 2, boxing: 1 }, { label: 'Aug 31', strength: 2, boxing: 2 },
+  { label: 'Sep 7', strength: 2, boxing: 1 }, { label: 'Now', strength: 2, boxing: 2 },
 ]
 
 function ProgressPreview() {
@@ -77,9 +77,9 @@ function ProgressPreview() {
     <div className="phone-preview-section-heading"><span>Consistency</span><span className="phone-preview-small-label">Last 4 weeks</span></div>
     <div className="phone-preview-panel">
       <p className="phone-preview-metric">14 <span>sessions</span></p>
-      <div className="phone-preview-chart-legend"><span><i className="phone-preview-dot phone-preview-dot-strength" />Strength</span><span><i className="phone-preview-dot phone-preview-dot-swim" />Cardio</span></div>
+      <div className="phone-preview-chart-legend"><span><i className="phone-preview-dot phone-preview-dot-strength" />Strength</span><span><i className="phone-preview-dot phone-preview-dot-sport" />Boxing</span></div>
       <div className="phone-preview-bar-chart" role="img" aria-label="Completed sessions over four weeks: 3, 4, 3, and 4. Each week includes two strength sessions.">
-        {consistency.map((week) => <div className="phone-preview-bar-column" key={week.label}><div className="phone-preview-bar-stack"><i style={{ height: `${week.cardio * 6}cqw` }} /><i style={{ height: `${week.strength * 6}cqw` }} /></div><span>{week.label}</span></div>)}
+        {consistency.map((week) => <div className="phone-preview-bar-column" key={week.label}><div className="phone-preview-bar-stack"><i style={{ height: `${week.boxing * 6}cqw` }} /><i style={{ height: `${week.strength * 6}cqw` }} /></div><span>{week.label}</span></div>)}
       </div>
       <p className="phone-preview-copy">Steady work. A stronger foundation.</p>
     </div>
@@ -95,12 +95,12 @@ function ProgressPreview() {
 
 function ChatPreview() {
   return <div className="phone-preview-chat">
-    <div className="phone-preview-chat-user">How should I fit swimming around my strength sessions?</div>
+    <div className="phone-preview-chat-user">How should I fit boxing around my strength sessions?</div>
     <div className="phone-preview-chat-response">
-      <p className="phone-preview-eyebrow"><i className="phone-preview-dot phone-preview-dot-swim" />ARCEL</p>
+      <p className="phone-preview-eyebrow"><i className="phone-preview-dot phone-preview-dot-sport" />ARCEL</p>
       <p>Start with what you want each session to do.</p>
-      <p className="phone-preview-copy">Keep the swim easy after a harder leg session. When both workouts need your best effort, leave some time between them.</p>
-      <div className="phone-preview-chat-takeaway"><p>A week with room for both</p><span>Strength on Monday and Friday.<br />Swim on Wednesday and Saturday.</span></div>
+      <p className="phone-preview-copy">Plan around your harder boxing sessions. Keep lifting focused, with room to recover before sparring.</p>
+      <div className="phone-preview-chat-takeaway"><p>A week with room for both</p><span>Strength on Monday and Friday.<br />Boxing on Wednesday and Saturday.</span></div>
       <div className="phone-preview-source-summary"><BookOpen size={16} /><div><p>Research context</p><span>Concurrent training · Recovery</span></div><ArrowUpRight size={13} /></div>
     </div>
     <div className="phone-preview-composer"><span>Ask a training question…</span><div><span><BookOpen size={12} />Research<ChevronRight size={12} /></span><span className="phone-preview-send"><ArrowUp size={16} /></span></div></div>
@@ -112,12 +112,12 @@ function YouPreview() {
   return <>
     <div className="phone-preview-section-heading"><span>Your plan</span></div>
     <div className="phone-preview-panel">
-      <p className="phone-preview-plan-title">Strong and fit</p>
+      <p className="phone-preview-plan-title">Strength for boxing</p>
       <div className="phone-preview-facts phone-preview-profile-facts"><div><strong>4</strong><span>days / week</span></div><div><strong>45</strong><span>minutes</span></div><div><strong className="phone-preview-equipment">Full gym</strong><span>equipment</span></div></div>
-      <div className="phone-preview-plan-days">{['Mon', 'Wed', 'Fri', 'Sat'].map((day) => <span key={day}><i className="phone-preview-dot phone-preview-dot-swim" />{day}</span>)}</div>
+      <div className="phone-preview-plan-days">{['Mon', 'Wed', 'Fri', 'Sat'].map((day) => <span key={day}><i className="phone-preview-dot phone-preview-dot-sport" />{day}</span>)}</div>
     </div>
     <div className="phone-preview-section-heading"><span>Current block</span></div>
-    <div className="phone-preview-panel"><div className="phone-preview-block-heading"><span>Strength</span><span>Week 3 of 8</span></div><div className="phone-preview-rail"><span /></div><p className="phone-preview-copy">Build strength. Keep your aerobic base.<br />Next up: speed.</p></div>
+    <div className="phone-preview-panel"><div className="phone-preview-block-heading"><span>Strength</span><span>Week 3 of 8</span></div><div className="phone-preview-rail"><span /></div><p className="phone-preview-copy">Build strength. Keep your conditioning.<br />Next up: power.</p></div>
     <div className="phone-preview-section-heading"><span>Appearance</span></div>
     <div className="phone-preview-panel"><div className="phone-preview-theme-label"><Palette size={15} /><span>Theme</span></div><div className="phone-preview-theme"><span>System</span><span>Light</span><span>Dark</span></div></div>
   </>

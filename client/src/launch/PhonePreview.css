@@ -7,7 +7,7 @@
   --phone-secondary: #b1bbc4;
   --phone-muted: #8d9ba6;
   --phone-accent: #c4b2eb;
-  --phone-swim: #c4b2eb;
+  --phone-sport: #c4b2eb;
   --phone-strength: #a8c8e6;
   --phone-fill: #1c242a;
   --phone-border: #303c45;
@@ -126,7 +126,7 @@
 .phone-preview-day strong { font-size: 4.2cqw; font-weight: 400; line-height: 1; }
 .phone-preview-dot { display: inline-block; width: 1.15cqw; height: 1.15cqw; flex-shrink: 0; border-radius: 50%; }
 .phone-preview-dot-strength { background: var(--phone-strength); }
-.phone-preview-dot-swim, .phone-preview-dot-run { background: var(--phone-swim); }
+.phone-preview-dot-sport, .phone-preview-dot-run { background: var(--phone-sport); }
 .phone-preview-dot-rest { background: transparent; }
 .phone-preview-day-selected { background: var(--phone-text); color: var(--phone-inverse); }
 .phone-preview-day-selected > span { color: var(--phone-inverse); }
@@ -137,7 +137,7 @@
 .phone-preview-session-eyebrow { display: flex; align-items: center; justify-content: space-between; color: var(--phone-secondary); font-size: 2.5cqw; }
 .phone-preview-session-eyebrow > span:first-child { text-transform: uppercase; font-size: 2.2cqw; letter-spacing: .12em; }
 .phone-preview-session-heading { display: flex; align-items: center; justify-content: space-between; gap: 2.6cqw; margin-block: 3cqw 1.8cqw; }
-.phone-preview-session-icon { display: grid; place-items: center; width: 9.5cqw; height: 9.5cqw; flex-shrink: 0; border-radius: 50%; background: var(--phone-fill); color: var(--phone-swim); }
+.phone-preview-session-icon { display: grid; place-items: center; width: 9.5cqw; height: 9.5cqw; flex-shrink: 0; border-radius: 50%; background: var(--phone-fill); color: var(--phone-sport); }
 .phone-preview-session-heading p { font-size: 6.3cqw; font-weight: 400; letter-spacing: -.035em; }
 .phone-preview .phone-preview-session-meta { color: var(--phone-secondary); font-size: 3cqw; }
 .phone-preview .phone-preview-session-note { margin-top: 3cqw; padding-top: 3cqw; border-top: .2924cqw solid var(--phone-border); color: var(--phone-secondary); font-size: 3cqw; line-height: 1.6; }
@@ -147,7 +147,7 @@
 .phone-preview-agenda-row { display: flex; align-items: center; gap: 2.6cqw; min-height: 15.8cqw; }
 .phone-preview-agenda-day { width: 6.4cqw; color: var(--phone-secondary); font-size: 2.8cqw; }
 .phone-preview-agenda-icon { display: grid; place-items: center; width: 8cqw; height: 8cqw; flex-shrink: 0; border-radius: 50%; background: var(--phone-fill); color: var(--phone-strength); }
-.phone-preview-agenda-icon-completed { color: var(--phone-swim); }
+.phone-preview-agenda-icon-completed { color: var(--phone-sport); }
 .phone-preview-agenda-copy { min-width: 0; }
 .phone-preview-agenda-copy p { font-size: 3.3cqw; font-weight: 500; }
 .phone-preview-agenda-copy > span { display: block; margin-top: 1cqw; color: var(--phone-secondary); font-size: 2.7cqw; }
@@ -186,7 +186,7 @@
 .phone-preview-bar-column { flex: 1; text-align: center; }
 .phone-preview-bar-stack { display: flex; min-height: 25cqw; flex-direction: column; justify-content: end; gap: 1cqw; }
 .phone-preview-bar-stack i { display: block; width: 100%; border-radius: 1.2cqw; background: var(--phone-strength); }
-.phone-preview-bar-stack i:first-child { background: var(--phone-swim); }
+.phone-preview-bar-stack i:first-child { background: var(--phone-sport); }
 .phone-preview-bar-column > span { display: block; margin-top: 2.6cqw; color: var(--phone-secondary); font-size: 2.4cqw; }
 .phone-preview-trend-heading { display: flex; align-items: center; justify-content: space-between; gap: 2cqw; margin-bottom: 3cqw; font-size: 3.2cqw; }
 .phone-preview-trend-heading > span:first-child { display: flex; align-items: center; gap: 2cqw; }
