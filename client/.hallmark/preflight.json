@@ -1,0 +1,12 @@
+{
+  "date": "2026-09-18",
+  "scope": "Public landing page at /",
+  "design_md": null,
+  "font": { "existing": "Rubik, Inter, system fallback", "source": "src/launch/ComingSoonPage.css:89", "change": "Self-host existing licensed Rubik 400/500/600; one deliberate family for display and body" },
+  "palette": { "existing": "Dark violet/charcoal with multiple blue/violet/teal accents", "source": "src/launch/ComingSoonPage.css:71", "change": "Preserve dark identity; cool charcoal, restrained blue interaction accent, semantic success/change colors" },
+  "motion": { "existing": "CSS orbit/pulse/float; no motion dependency", "source": "package.json:12", "change": "Purposeful state transitions, native scrolling, reduced-motion support" },
+  "spacing": { "existing": "No shared spacing token scale", "source": "src/index.css:1", "change": "4px token scale in tokens.css" },
+  "framework": { "existing": "React 19, TypeScript, Vite 8", "source": "package.json:12" },
+  "preserved": ["ComingSoonPage component ownership", "public routes", "LaunchFooter", "information pages and their shared stylesheet", "Arcel brand and development status"],
+  "reference": "../docs/design-studies/2026-09-18-superpower-the-grove.md"
+}

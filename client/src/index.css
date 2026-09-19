@@ -138,3 +138,16 @@ code {
   filter: invert(1);
   mix-blend-mode: screen;
 }
+
+/* Preserve document scrolling while containing decorative horizontal overflow. */
+html,
+body {
+  overflow-x: clip;
+  min-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
