@@ -1,6 +1,19 @@
 [
   {
     "date": "2026-09-19",
+    "scope": "Shared policy pages: /terms, /privacy, /disclaimer, /accessibility",
+    "macrostructure": "Index-First (policy index and document pane)",
+    "theme": "studied-DNA",
+    "source": "https://superpower.com/the-grove",
+    "theme_axes": "dark / regular sans / cool blue",
+    "user_override": "Match the accepted landing/About theme; preserve exact policy text and the explicit four-page selector",
+    "nav": "N9 Edge-aligned minimal with persistent policy index",
+    "footer": "Ft2 Inline-rule (existing shared footer)",
+    "enrichment": "None; typography only",
+    "brief": "Four readable policy documents with selected-page navigation and unchanged placeholder content"
+  },
+  {
+    "date": "2026-09-19",
     "scope": "About page at /about",
     "macrostructure": "Long Document (open rows, team gallery)",
     "theme": "studied-DNA",
