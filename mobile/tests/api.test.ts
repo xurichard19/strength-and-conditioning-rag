@@ -1361,13 +1361,13 @@ test('About Us appears before the policy links and public pages open without aut
     } },
   });
   const links = (): TestNode[] => PolicyLinks().props.children[0].props.children;
-  assert.deepEqual(plain(links().map(link => link.props.accessibilityLabel)), ['About Us', 'Privacy Policy', 'Terms of Service']);
+  assert.deepEqual(plain(links().map(link => link.props.accessibilityLabel)), ['About Us', 'Privacy Policy', 'Terms of Service', 'Consumer Health Privacy']);
   for (const link of links()) {
     assert.equal(link.props.accessibilityRole, 'link');
     link.props.onPress();
   }
   await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual(urls, ['https://arcelassist.vercel.app/about', 'https://arcelassist.vercel.app/privacy', 'https://arcelassist.vercel.app/terms']);
+  assert.deepEqual(urls, ['https://arcelassist.vercel.app/about', 'https://arcelassist.vercel.app/privacy', 'https://arcelassist.vercel.app/terms', 'https://arcelassist.vercel.app/health-privacy']);
   assert.equal(error, null);
   fail = true;
   links()[0].props.onPress(); await new Promise(resolve => setImmediate(resolve));

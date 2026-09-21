@@ -1,4 +1,4 @@
-export const infoPages = ["about", "terms", "privacy", "disclaimer", "accessibility"] as const
+export const infoPages = ["about", "terms", "privacy", "health-privacy", "disclaimer", "accessibility"] as const
 
 export type InfoPageName = (typeof infoPages)[number]
 
@@ -7,6 +7,7 @@ const pagePaths = {
     about: "/about",
     terms: "/terms",
     privacy: "/privacy",
+    "health-privacy": "/health-privacy",
     disclaimer: "/disclaimer",
     accessibility: "/accessibility",
 } as const

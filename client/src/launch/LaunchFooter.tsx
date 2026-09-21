@@ -4,6 +4,7 @@ const links = [
   { page: 'about', label: 'About us' },
   { page: 'terms', label: 'Terms' },
   { page: 'privacy', label: 'Privacy Policy' },
+  { page: 'health-privacy', label: 'Consumer Health Privacy' },
   { page: 'disclaimer', label: 'Disclaimer' },
   { page: 'accessibility', label: 'Accessibility' },
 ] as const

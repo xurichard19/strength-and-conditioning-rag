@@ -9,6 +9,7 @@ const policies = [
   { path: 'about', label: 'About Us' },
   { path: 'privacy', label: 'Privacy Policy' },
   { path: 'terms', label: 'Terms of Service' },
+  { path: 'health-privacy', label: 'Consumer Health Privacy' },
 ] as const;
 
 /** Open About and public policies in a browser sheet, before or after sign-in. */

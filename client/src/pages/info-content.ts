@@ -1,13 +1,7 @@
 import type { InfoPageName } from '../routing'
+import { legalContent, type InfoContent } from './legal-content'
 
-export const pageContent: Record<InfoPageName, {
-    eyebrow: string
-    title: string
-    sections: Array<{
-        heading: string
-        body: string
-    }>
-}> = {
+export const pageContent: Record<InfoPageName, InfoContent> = {
     about: {
         eyebrow: "Company",
         title: "About Arcel",
@@ -30,74 +24,7 @@ export const pageContent: Record<InfoPageName, {
             },
         ],
     },
-    terms: {
-        eyebrow: "Legal",
-        title: "Terms of Service",
-        sections: [
-            {
-                heading: "Acceptance of terms",
-                body: "Placeholder copy. By using Arcel, users agree to follow these terms and any additional policies referenced here.",
-            },
-            {
-                heading: "Accounts and subscriptions",
-                body: "Placeholder copy. Users are responsible for their accounts, payment information, subscription choices, and cancellation requests.",
-            },
-            {
-                heading: "Limitations",
-                body: "Placeholder copy. Arcel is provided as-is, without guarantees of availability, accuracy, performance outcomes, or fitness results.",
-            },
-        ],
-    },
-    privacy: {
-        eyebrow: "Legal",
-        title: "Privacy Policy",
-        sections: [
-            {
-                heading: "Information collected",
-                body: "Placeholder copy. Arcel may collect account information, authentication data, prompts, generated outputs, usage data, and billing-related information.",
-            },
-            {
-                heading: "Service providers",
-                body: "Placeholder copy. Arcel may use third-party providers for authentication, hosting, payments, analytics, AI generation, and document retrieval.",
-            },
-            {
-                heading: "User choices",
-                body: "Placeholder copy. Users may request access, correction, deletion, or other privacy actions by contacting the operator.",
-            },
-        ],
-    },
-    disclaimer: {
-        eyebrow: "Safety",
-        title: "Fitness Disclaimer",
-        sections: [
-            {
-                heading: "Educational information",
-                body: "Arcel provides educational training information for hybrid athletes and does not provide medical advice, diagnosis, or treatment.",
-            },
-            {
-                heading: "Exercise risk",
-                body: "Placeholder copy. Exercise involves risk. Users should stop if they experience pain, dizziness, or unusual symptoms and should consult a qualified professional when appropriate.",
-            },
-            {
-                heading: "No guaranteed results",
-                body: "Placeholder copy. Training outcomes vary by person, context, consistency, health status, and many other factors.",
-            },
-        ],
-    },
-    accessibility: {
-        eyebrow: "Policy",
-        title: "Accessibility",
-        sections: [
-            {
-                heading: "Commitment",
-                body: "Placeholder copy. Arcel aims to provide a usable experience for people with diverse access needs.",
-            },
-            {
-                heading: "Feedback",
-                body: "Placeholder copy. Users who encounter accessibility issues should contact the operator with details about the issue, device, browser, and assistive technology used.",
-            },
-        ],
-    },
+    ...legalContent,
 }
 
 export const teamIntroductions = [

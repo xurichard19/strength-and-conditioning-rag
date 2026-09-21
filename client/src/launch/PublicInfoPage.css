@@ -3,7 +3,7 @@
  * user override: match the accepted landing/About theme; preserve every policy heading and paragraph
  * canvas: oklch(17% 0.012 250) · accent: oklch(84% 0.08 250) · display/body: Rubik 400
  * genre: modern-minimal · nav: N9 Edge-aligned · footer: Ft2 Inline-rule · enrichment: none
- * audience: Arcel visitors · use: read and move between four public policies · motion: none
+ * audience: Arcel visitors · use: read and move between five public policies · motion: none
  * pre-emit critique: P5 H5 E4 S4 R5 V4
  */
 
@@ -45,6 +45,12 @@
   font-size: clamp(1rem, 1.4vw, 1.125rem);
 }
 
+.arcel-policy .policy-updated {
+  margin-block-start: var(--space-4);
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+
 .arcel-policy .policy-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -82,7 +88,7 @@
   color: var(--color-muted);
   font-size: var(--text-body);
   line-height: 1.4;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .arcel-policy .policy-sidebar a[aria-current='page'] {
@@ -133,6 +139,8 @@
   line-height: 1.25;
   letter-spacing: -0.025em;
   text-wrap: initial;
+  scroll-margin-top: var(--space-8);
+  overflow-wrap: anywhere;
 }
 
 .arcel-policy .policy-section > p {
@@ -140,6 +148,81 @@
   color: var(--color-muted);
   line-height: 1.8;
   overflow-wrap: anywhere;
+}
+
+.arcel-policy .policy-section p + p {
+  margin-block-start: var(--space-4);
+}
+
+.arcel-policy .policy-section ul {
+  max-width: 65ch;
+  margin-block-start: var(--space-5);
+  padding-inline-start: var(--space-6);
+  color: var(--color-muted);
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.arcel-policy .policy-section li + li {
+  margin-block-start: var(--space-3);
+}
+
+.arcel-policy .policy-section .policy-related-links {
+  padding: 0;
+  list-style: none;
+}
+
+.arcel-policy .policy-section a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.arcel-policy .policy-contents {
+  margin-block-start: var(--space-6);
+  padding-block-start: var(--space-4);
+  border-top: var(--rule-width) solid var(--color-line);
+}
+
+.arcel-policy .policy-contents summary {
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-ink);
+  font-size: var(--text-small);
+  cursor: pointer;
+}
+
+.arcel-policy .policy-contents nav {
+  display: block;
+  max-height: min(25rem, 40vh);
+  margin-block-start: var(--space-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.arcel-policy .policy-contents ol {
+  padding: var(--space-1);
+  list-style: none;
+}
+
+.arcel-policy .policy-contents a {
+  justify-content: flex-start;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: var(--space-3);
+  font-size: var(--text-small);
+}
+
+.arcel-policy .policy-contents a > span {
+  color: var(--color-accent);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.arcel-policy .policy-contents summary:focus-visible,
+.arcel-policy .policy-section h2:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 4px;
 }
 
 @media (hover: hover) {

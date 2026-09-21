@@ -100,7 +100,7 @@ export default function AuthScreen() {
             <ShieldCheck color={colors.textTertiary} size={15} />
             <AppText tone="secondary" style={styles.trustText}>Your account keeps your plan and training history in sync.</AppText>
           </View>
-          <AppText tone="secondary" style={styles.legal}>By continuing, you agree to Arcel’s Terms and Privacy Policy.</AppText>
+          <AppText tone="secondary" style={styles.legal}>By continuing, you agree to Arcel’s Terms of Service. See our privacy policies for how we handle your information.</AppText>
           <PolicyLinks />
         </ScrollView>
       </KeyboardAvoidingView>
