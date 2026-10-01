@@ -19,7 +19,7 @@ The Expo/React Native mobile client connects to the containerized FastAPI backen
 
 #### Mobile App Demo
 
-https://github.com/user-attachments/assets/cf2673ce-adf9-4a41-bcad-e3dce9a2e8ee
+https://github.com/user-attachments/assets/b91a3d4c-24e4-497a-b0c3-b5eb1353975a
 
 #### App Infrastructure
 ```mermaid
