@@ -53,7 +53,7 @@ export default function YouScreen() {
         <DisclosureRow title="Reminders" value="Not wired" icon={Bell} onPress={() => {}} />
         <DisclosureRow title="Calendar" value="Not wired" icon={CalendarClock} onPress={() => {}} />
         <DisclosureRow title="Connected apps" value="Not wired" icon={Link2} onPress={() => {}} />
-        <DisclosureRow title="Run setup again" icon={RotateCcw} onPress={() => { router.push('/onboarding?edit=1'); }} last />
+        <DisclosureRow title="Redo onboarding" icon={RotateCcw} onPress={() => { router.push('/onboarding?edit=1'); }} last />
       </Card>
       <PolicyLinks />
     </Screen>
