@@ -1,225 +1,370 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Check, HeartPulse, Info, ShieldCheck, X } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { Check, ChevronLeft, ChevronRight, Send, ShieldCheck, X } from 'lucide-react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import Animated, { FadeInLeft, FadeInRight, ReduceMotion } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AppText, Card, ChoiceChip, PrimaryButton, SecondaryButton, ShieldLine } from '@/components/ui';
-import { fonts, radius } from '@/design/tokens';
-import type { Profile } from '@/domain/types';
+import { BalanceSlider } from '@/components/balance-slider';
+import { DurationWheel } from '@/components/duration-wheel';
+import { AppText, Card, PrimaryButton, SecondaryButton } from '@/components/ui';
+import { fonts, radius, shadow } from '@/design/tokens';
+import {
+  BALANCE_LABELS, onboardingDraft, onboardingSubmission, QUESTION_IDS, questionError,
+  SPORTS, TRAINING_DAYS, VENUE_LABELS, type OnboardingDraft, type QuestionId, type Venue,
+} from '@/lib/onboarding';
+import { formatSessionDuration } from '@/lib/session-duration';
 import { useApp } from '@/state/app-context';
-import { surveyAnswers, type Answers } from '@/services/api';
 
-const trainingDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const promises = ['One plan, two distinct progress tracks', 'Repairs the week when plans move', 'Explains what changed and what stayed protected'];
-const stepHeadings: Record<number, { title: string; copy: string }> = {
-  1: { title: 'Shape your week', copy: 'Start with the week you can actually repeat.' },
-  2: { title: 'What you have', copy: 'Enough detail to make the plan practical.' },
-  3: { title: 'Your starting point', copy: 'Plain estimates are perfect. No test day required.' },
-  4: { title: 'Train safely', copy: 'Help us understand any current limits on your training.' },
-  5: { title: 'Anything else?', copy: 'A sentence can be more useful than ten settings.' },
+const NOTE_PROMPTS = [
+  "I'm training for something", 'I have some discomfort',
+  'My week is unpredictable', "I'm coming back from a break",
+];
+const NOTE_HINTS: Record<string, string> = {
+  "I'm training for something": 'What are you training for, and roughly when?',
+  'I have some discomfort': 'Where do you feel it, and which movements bring it on?',
+  'My week is unpredictable': 'What usually changes, and what time can you count on?',
+  "I'm coming back from a break": 'How long has it been, and what would you like to get back to?',
 };
 
-const experienceLabels: Record<Profile['experienceLevel'], string> = {
-  new: 'New / returning',
-  intermediate: '1–2 × / week',
-  experienced: '3+ × / week',
-};
-const experienceValues: Record<string, Profile['experienceLevel']> = {
-  'New / returning': 'new',
-  '1–2 × / week': 'intermediate',
-  '3+ × / week': 'experienced',
-};
-
-function toggleItem(items: string[], item: string) {
-  return items.includes(item) ? items.filter((value) => value !== item) : [...items, item];
-}
-
-function textAnswer(answers: Answers, key: string, fallback: string) {
-  return typeof answers[key] === 'string' ? answers[key] : fallback;
+function selectionFeedback() {
+  if (Platform.OS !== 'web') void Haptics.selectionAsync().catch(() => {});
 }
 
 export default function OnboardingScreen() {
+  const { accountReady, colors } = useApp();
+  if (!accountReady) return <View style={[styles.loading, { backgroundColor: colors.background }]}><ActivityIndicator color={colors.tint} /></View>;
+  return <OnboardingFlow />;
+}
+
+function OnboardingFlow() {
   const { accountReady, colors, profile, onboardingAnswers, notice, finishOnboarding } = useApp();
   const { edit } = useLocalSearchParams<{ edit?: string }>();
   const editing = edit === '1' && profile.onboardingComplete;
-  const [step, setStep] = useState(editing ? 1 : 0);
-  const [draft, setDraft] = useState<Profile>(profile);
-  const [building, setBuilding] = useState(false);
-  const [runCapacity, setRunCapacity] = useState(textAnswer(onboardingAnswers, 'runCapacity', '10–20 min'));
-  const [pushups, setPushups] = useState(textAnswer(onboardingAnswers, 'pushups', '5–10'));
-  const [pain, setPain] = useState(textAnswer(onboardingAnswers, 'pain', 'Nothing current'));
-  const [note, setNote] = useState(textAnswer(onboardingAnswers, 'note', ''));
-  const update = (value: Partial<Profile>) => setDraft((current) => ({ ...current, ...value }));
-  const toggleDay = (day: string) => update({ trainingDays: toggleItem(draft.trainingDays, day) });
-  const finish = async () => {
-    if (building) return;
-    setBuilding(true);
-    const saved = await finishOnboarding(draft, surveyAnswers(draft, { ...onboardingAnswers, runCapacity, pushups, pain, note }));
-    setBuilding(false);
-    if (saved) router.replace('/(tabs)/chat');
-  };
+  const [step, setStep] = useState(0);
+  const [direction, setDirection] = useState(1);
+  const [draft, setDraft] = useState(() => onboardingDraft(profile, onboardingAnswers));
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [validation, setValidation] = useState<string | null>(null);
+  const saveInFlight = useRef(false);
+  const scroll = useRef<ScrollView>(null);
+  const question = QUESTION_IDS[step - 1];
+  const reviewing = step === QUESTION_IDS.length + 1;
   const shouldRedirect = accountReady && profile.onboardingComplete && !editing && step === 0;
+  const update = (patch: Partial<OnboardingDraft>) => {
+    setDraft(current => ({ ...current, ...patch }));
+    setValidation(null);
+  };
 
   useEffect(() => {
     if (shouldRedirect) router.replace('/(tabs)/today');
   }, [shouldRedirect]);
 
-  if (shouldRedirect) {
-    return <View style={[styles.redirecting, { backgroundColor: colors.background }]}><ActivityIndicator color={colors.tint} /></View>;
-  }
+  const move = (to: number) => {
+    Keyboard.dismiss();
+    selectionFeedback();
+    setDirection(to > step ? 1 : -1);
+    setValidation(null);
+    setStep(to);
+    scroll.current?.scrollTo({ y: 0, animated: false });
+  };
+  const next = () => {
+    const error = questionError(question, draft);
+    if (error) { setValidation(error); return; }
+    // The final typed note is saved even when the send arrow wasn't tapped.
+    if (question === 'notes' && note.trim()) {
+      update({ notes: [...draft.notes, note.trim()] });
+      setNote('');
+    }
+    move(step + 1);
+  };
+  const finish = async () => {
+    if (saveInFlight.current) return;
+    saveInFlight.current = true;
+    setSaving(true);
+    const submission = onboardingSubmission(profile, draft, note);
+    try {
+      const saved = await finishOnboarding(submission.profile, submission.answers);
+      if (saved) router.replace(editing ? '/(tabs)/you' : '/(tabs)/chat');
+    } finally {
+      saveInFlight.current = false;
+      setSaving(false);
+    }
+  };
 
-  if (step === 0) return <WelcomeStep onStart={() => setStep(1)} />;
+  if (!accountReady || shouldRedirect) {
+    return <View style={[styles.loading, { backgroundColor: colors.background }]}><ActivityIndicator color={colors.tint} /></View>;
+  }
+  if (step === 0) return <WelcomeStep editing={editing} onStart={() => move(1)} />;
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {editing ? <Pressable accessibilityRole="button" accessibilityLabel="Close setup" disabled={building} onPress={() => router.replace('/(tabs)/you')} style={styles.close}><X color={colors.text} size={24} /></Pressable> : null}
-        <StepProgress step={step} onBack={() => setStep((value) => Math.max(1, value - 1))} />
-        <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-          <StepHeading step={step} />
-          {notice ? <AppText>{notice}</AppText> : null}
-          <StepContent step={step} draft={draft} update={update} toggleDay={toggleDay} pushups={pushups} setPushups={setPushups} runCapacity={runCapacity} setRunCapacity={setRunCapacity} pain={pain} setPain={setPain} note={note} setNote={setNote} />
+        <View style={styles.topbar}>
+          <View style={styles.topSpacer} />
+          <View accessibilityRole="progressbar" accessibilityLabel={reviewing ? 'Review your answers' : `Question ${step} of ${QUESTION_IDS.length}`}
+            accessibilityValue={{ min: 0, max: QUESTION_IDS.length, now: Math.min(step, QUESTION_IDS.length) }}
+            style={[styles.progress, { backgroundColor: colors.fillStrong }]}>
+            <View style={[styles.progressFill, { backgroundColor: colors.tint, width: `${Math.min(step, QUESTION_IDS.length) / QUESTION_IDS.length * 100}%` }]} />
+          </View>
+          {editing ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Close onboarding without saving" disabled={saving}
+              onPress={() => router.replace('/(tabs)/you')} style={styles.close}>
+              <X color={colors.textSecondary} size={21} />
+            </Pressable>
+          ) : <View style={styles.topSpacer} />}
+        </View>
+        <ScrollView ref={scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+          <Animated.View key={step} entering={(direction > 0 ? FadeInRight : FadeInLeft).duration(220).reduceMotion(ReduceMotion.System)} style={styles.stage}>
+            {reviewing ? <ReviewStep draft={draft} /> : (
+              <Question id={question} draft={draft} update={update} note={note} setNote={setNote} />
+            )}
+            {validation ? <AppText accessibilityRole="alert" style={[styles.message, { color: colors.danger }]}>{validation}</AppText> : null}
+            {reviewing && notice ? <AppText accessibilityRole="alert" style={[styles.message, { color: colors.danger }]}>{notice}</AppText> : null}
+          </Animated.View>
         </ScrollView>
-        <StepFooter step={step} building={building} onContinue={() => setStep((value) => value + 1)} onBuild={() => setStep(6)} onSkip={() => { setNote(''); setStep(6); }} onFinish={() => void finish()} />
+        {reviewing ? (
+          <View style={styles.reviewFooter}>
+            <PrimaryButton loading={saving} onPress={() => void finish()}>{editing ? 'Save changes' : 'Save and open chat'}</PrimaryButton>
+            <SecondaryButton disabled={saving} onPress={() => move(QUESTION_IDS.length)}>Back to my answers</SecondaryButton>
+          </View>
+        ) : (
+          <View style={styles.footer}>
+            <Pressable accessibilityRole="button" onPress={() => move(step - 1)} style={styles.navLink}>
+              <ChevronLeft color={colors.textSecondary} size={19} /><AppText tone="secondary" weight="medium">Back</AppText>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={next} style={styles.navLink}>
+              <AppText tone="tint" weight="semibold">{question === 'notes' ? 'Review answers' : 'Next'}</AppText><ChevronRight color={colors.tintText} size={19} />
+            </Pressable>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-function WelcomeStep({ onStart }: { onStart: () => void }) {
+function WelcomeStep({ editing, onStart }: { editing: boolean; onStart: () => void }) {
   const { colors } = useApp();
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.welcome}>
-        <AppText weight="medium" style={styles.brand}>Arcel</AppText>
-        <AppText style={styles.welcomeTitle}>{'Train with purpose.\nPlan for real life.'}</AppText>
-        <AppText tone="secondary" style={styles.welcomeCopy}>Strength and endurance, planned together around your goals and the time you have.</AppText>
-        <View style={[styles.promiseList, { borderTopColor: colors.separator }]}>{promises.map((text) => <View key={text} style={styles.promise}><Check color={colors.tint} size={17} strokeWidth={1.5} /><AppText style={styles.promiseText}>{text}</AppText></View>)}</View>
+      <View style={styles.welcomeBrand}><AppText weight="medium" style={styles.brand}>Arcel</AppText></View>
+      <ScrollView contentContainerStyle={styles.welcome}>
+        <AppText accessibilityRole="header" style={styles.welcomeTitle}>{editing ? 'Make room for\nwhat’s changed.' : 'Your sport.\nYour week.'}</AppText>
+        <AppText tone="secondary" style={styles.welcomeCopy}>{editing
+          ? 'Update your sport, your schedule, and what you want to work toward. Your current answers stay saved until you finish.'
+          : 'Tell us what you play and what fits your life. We’ll keep that context close as you train.'}</AppText>
       </ScrollView>
-      <View style={styles.welcomeFooter}><PrimaryButton onPress={onStart}>Shape my week</PrimaryButton><AppText tone="secondary" style={styles.footerNote}>About 2 minutes · you can change this later</AppText></View>
+      <View style={styles.welcomeFooter}>
+        <PrimaryButton onPress={onStart}>{editing ? 'Update my answers' : 'Let’s get started'}</PrimaryButton>
+        {editing ? <SecondaryButton onPress={() => router.replace('/(tabs)/you')}>Keep my current answers</SecondaryButton>
+          : <AppText tone="secondary" style={styles.footerNote}>8 short questions · change your answers anytime</AppText>}
+      </View>
     </SafeAreaView>
   );
 }
 
-function StepProgress({ step, onBack }: { step: number; onBack: () => void }) {
-  const { colors } = useApp();
-  const visibleStep = Math.min(step, 5);
-  return <View style={styles.topbar}><Pressable accessibilityRole="button" accessibilityLabel="Previous step" disabled={step === 1} onPress={onBack} style={styles.back}><ArrowLeft color={step === 1 ? colors.textTertiary : colors.text} size={21} /></Pressable><View style={[styles.progress, { backgroundColor: colors.fillStrong }]}><View style={[styles.progressFill, { backgroundColor: colors.tint, width: `${visibleStep * 20}%` }]} /></View><AppText tone="secondary" style={styles.stepLabel}>{visibleStep} / 5</AppText></View>;
+function Heading({ children }: { children: ReactNode }) {
+  return <AppText accessibilityRole="header" style={styles.title}>{children}</AppText>;
 }
 
-function StepHeading({ step }: { step: number }) {
-  const heading = stepHeadings[step];
-  if (!heading) return null;
-  return <><AppText style={styles.stepTitle}>{heading.title}</AppText><AppText tone="secondary" style={styles.stepCopy}>{heading.copy}</AppText></>;
+function ChoiceTile({ label, selected, onPress, multi = false, compact = false }: {
+  label: string; selected: boolean; onPress: () => void; multi?: boolean; compact?: boolean;
+}) {
+  const { colors, colorScheme } = useApp();
+  const foreground = selected ? colorScheme === 'dark' ? colors.background : colors.white : colors.text;
+  return (
+    <Pressable accessibilityRole={multi ? 'checkbox' : 'radio'} accessibilityLabel={label}
+      accessibilityState={{ checked: selected }} aria-checked={selected} onPress={() => { selectionFeedback(); onPress(); }}
+      style={({ pressed }) => [styles.tile, compact && styles.dayTile, {
+        backgroundColor: selected ? colors.tint : colors.card, borderColor: selected ? colors.tint : colors.separator,
+      }, pressed && styles.pressed]}>
+      <AppText weight={selected ? 'semibold' : 'medium'} style={[styles.tileText, compact && styles.dayText, { color: foreground }]}>{label}</AppText>
+      {selected ? <Check color={foreground} size={compact ? 12 : 16} strokeWidth={2.5} style={compact ? styles.dayCheck : styles.check} /> : null}
+    </Pressable>
+  );
 }
 
-type StepContentProps = {
-  step: number;
-  draft: Profile;
-  update: (value: Partial<Profile>) => void;
-  toggleDay: (day: string) => void;
-  pushups: string;
-  setPushups: (value: string) => void;
-  runCapacity: string;
-  setRunCapacity: (value: string) => void;
-  pain: string;
-  setPain: (value: string) => void;
-  note: string;
-  setNote: (value: string) => void;
+function Choices({ label, children, wide = false }: { label: string; children: ReactNode; wide?: boolean }) {
+  return <View accessibilityRole="radiogroup" accessibilityLabel={label} style={[styles.choices, wide && styles.wide]}>{children}</View>;
+}
+
+type QuestionProps = {
+  id: QuestionId; draft: OnboardingDraft; update: (value: Partial<OnboardingDraft>) => void;
+  note: string; setNote: (value: string) => void;
 };
 
-function ScheduleStep({ draft, update, toggleDay }: Pick<StepContentProps, 'draft' | 'update' | 'toggleDay'>) {
-  return <View style={styles.form}><FieldTitle>What should this plan lean toward?</FieldTitle><ChipGrid values={['Strong and fit', 'Mostly strength', 'Mostly cardio']} selected={draft.goal} onSelect={(goal) => update({ goal })} /><FieldTitle>How many training days?</FieldTitle><ChipGrid values={['3', '4', '5']} selected={String(draft.daysPerWeek)} onSelect={(value) => update({ daysPerWeek: Number(value) })} /><FieldTitle>Usual session length</FieldTitle><ChipGrid values={['30', '45', '60']} selected={String(draft.sessionMinutes)} onSelect={(value) => update({ sessionMinutes: Number(value) })} suffix=" min" /><FieldTitle>Days that usually work</FieldTitle><View style={styles.dayGrid}>{trainingDays.map((day) => <ChoiceChip key={day} label={day} selected={draft.trainingDays.includes(day)} onPress={() => toggleDay(day)} style={styles.dayChip} />)}</View></View>;
-}
-
-function EquipmentStep({ draft, update }: Pick<StepContentProps, 'draft' | 'update'>) {
-  return <View style={styles.form}><FieldTitle>Equipment</FieldTitle><ChipGrid values={['Full gym', 'Dumbbells', 'Bodyweight']} selected={draft.equipment} onSelect={(equipment) => update({ equipment })} /><FieldTitle>Cardio you’ll actually do</FieldTitle><ChipGrid values={['Running', 'Bike', 'Mixed']} selected={draft.cardio} onSelect={(cardio) => update({ cardio })} /><FieldTitle>Recent lifting</FieldTitle><ChipGrid values={Object.values(experienceLabels)} selected={experienceLabels[draft.experienceLevel]} onSelect={(value) => update({ experienceLevel: experienceValues[value] })} /></View>;
-}
-
-function CapacityStep({ pushups, setPushups, runCapacity, setRunCapacity }: Pick<StepContentProps, 'pushups' | 'setPushups' | 'runCapacity' | 'setRunCapacity'>) {
+function Question({ id, draft, update, note, setNote }: QuestionProps) {
   const { colors } = useApp();
-  return <View style={styles.form}><FieldTitle>Comfortable push-ups</FieldTitle><ChipGrid values={['0–4', '5–10', '11–20', '20+']} selected={pushups} onSelect={setPushups} /><FieldTitle>Easy continuous run</FieldTitle><ChipGrid values={['Under 10 min', '10–20 min', '20–40 min', '40+ min']} selected={runCapacity} onSelect={setRunCapacity} /><Card style={styles.softCard}><Info color={colors.textSecondary} size={19} strokeWidth={1.5} /><AppText tone="secondary" style={styles.softText}>These answers only choose a sensible starting dose. Your logs will replace the estimate quickly.</AppText></Card></View>;
-}
-
-function SafetyStep({ pain, setPain }: Pick<StepContentProps, 'pain' | 'setPain'>) {
-  const { colors } = useApp();
-  return <View style={styles.form}><FieldTitle>Current pain or limitation?</FieldTitle><ChipGrid values={['Nothing current', 'Manageable niggle', 'Needs a clinician']} selected={pain} onSelect={setPain} /><Card style={styles.safetyCard}><HeartPulse color={colors.danger} size={22} /><View style={styles.flex}><AppText weight="semibold">A useful boundary</AppText><AppText tone="secondary" style={styles.softText}>Sharp, worsening, or unexplained pain is a stop signal—not something the plan should train through.</AppText></View></Card><ShieldLine>Arcel is training guidance, not diagnosis or medical care.</ShieldLine></View>;
-}
-
-function NotesStep({ draft, update, note, setNote }: Pick<StepContentProps, 'draft' | 'update' | 'note' | 'setNote'>) {
-  const { colors } = useApp();
-  return <View style={styles.form}><FieldTitle>What should Arcel know?</FieldTitle><TextInput accessibilityLabel="What should Arcel know?" value={note} onChangeText={setNote} multiline placeholder="Travel, exercises you avoid, old injuries, what usually derails a week…" placeholderTextColor={colors.textTertiary} style={[styles.noteInput, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} /><FieldTitle>What should we call you?</FieldTitle><TextInput accessibilityLabel="Your name" value={draft.displayName} onChangeText={(displayName) => update({ displayName })} maxLength={60} placeholder="First name (optional)" placeholderTextColor={colors.textTertiary} style={[styles.nameInput, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} /></View>;
-}
-
-function RevealStep({ draft, pushups, runCapacity }: Pick<StepContentProps, 'draft' | 'pushups' | 'runCapacity'>) {
-  const { colors } = useApp();
-  return <View style={styles.reveal}><View style={[styles.revealIcon, { borderColor: colors.separator }]}><ShieldCheck color={colors.tintText} size={26} strokeWidth={1.3} /></View><AppText style={styles.revealTitle}>Review your answers.</AppText><AppText tone="secondary" style={styles.revealCopy}>Save your preferences to your account. Planning will be connected later; you can start using chat now.</AppText><Card style={styles.summaryCard}><Summary label="Shape" value={`${draft.daysPerWeek} days · ${draft.sessionMinutes} min`} /><Summary label="Goal" value={draft.goal} /><Summary label="Setup" value={`${draft.equipment} · ${draft.cardio}`} /><Summary label="Starting point" value={`${pushups} push-ups · ${runCapacity} run`} /></Card></View>;
-}
-
-function StepContent(props: StepContentProps) {
-  switch (props.step) {
-    case 1: return <ScheduleStep {...props} />;
-    case 2: return <EquipmentStep {...props} />;
-    case 3: return <CapacityStep {...props} />;
-    case 4: return <SafetyStep {...props} />;
-    case 5: return <NotesStep {...props} />;
-    case 6: return <RevealStep {...props} />;
-    default: return null;
+  const inputStyle = [styles.input, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }];
+  switch (id) {
+    case 'sport': return <>
+      <Heading>What sport do you play?</Heading>
+      <Choices label="Your sport">{SPORTS.map(sport => <ChoiceTile key={sport} label={sport}
+        selected={draft.sport === sport} onPress={() => update({ sport })} />)}</Choices>
+    </>;
+    case 'sportGoal': return <>
+      <Heading>Any goals for {draft.sport.trim() ? draft.sport.trim().toLowerCase() : 'your sport'} this season?</Heading>
+      <TextInput accessibilityLabel="Goals for your sport" value={draft.sportGoal} onChangeText={sportGoal => update({ sportGoal })}
+        multiline placeholder="Make the starting team, get faster off the line, last the whole game…"
+        placeholderTextColor={colors.textTertiary} style={[inputStyle, styles.textarea]} />
+      <AppText tone="secondary" style={styles.hint}>Optional — it’s okay to figure this out as you go.</AppText>
+    </>;
+    case 'balance': return <>
+      <Heading>Around your sport, what should the week lean toward?</Heading>
+      <View style={styles.wide}>
+        <View style={styles.sliderLabels}><AppText tone="secondary">Lifting</AppText><AppText tone="secondary">Cardio</AppText></View>
+        <BalanceSlider balance={draft.balance} onChange={balance => { if (balance !== draft.balance) { selectionFeedback(); update({ balance }); } }} />
+        <AppText weight="medium" style={styles.balanceLabel}>{BALANCE_LABELS[draft.balance]}</AppText>
+      </View>
+    </>;
+    case 'trainingDays': return <>
+      <Heading>Which days can you train?</Heading>
+      <View accessibilityLabel="Training days" style={styles.days}>{TRAINING_DAYS.map(day => <ChoiceTile key={day} compact multi label={day}
+        selected={draft.trainingDays.includes(day)} onPress={() => update({ trainingDays: draft.trainingDays.includes(day)
+          ? draft.trainingDays.filter(value => value !== day) : [...draft.trainingDays, day] })} />)}</View>
+      <AppText tone="secondary" style={styles.hint}>Select all the days that usually work.</AppText>
+    </>;
+    case 'minutes': return <>
+      <Heading>How long per session?</Heading>
+      <DurationWheel minutes={draft.sessionMinutes} onChange={sessionMinutes => { selectionFeedback(); update({ sessionMinutes }); }} />
+      <AppText tone="secondary" style={styles.hint}>Scroll to choose · 15 min to 2 hours+</AppText>
+    </>;
+    case 'venue': return <>
+      <Heading>Where will you train?</Heading>
+      <Choices label="Training setup" wide>{(Object.keys(VENUE_LABELS) as Venue[]).map(venue => <ChoiceTile key={venue} label={VENUE_LABELS[venue]}
+        selected={draft.venue === venue} onPress={() => update({ venue })} />)}</Choices>
+    </>;
+    case 'lifts14': return <>
+      <Heading>How many times have you lifted in the last two weeks?</Heading>
+      <Choices label="Lifting sessions in the last two weeks">{[0, 1, 2, 3, 4, 5, 6].map(count => <ChoiceTile key={count} label={count === 6 ? '6+' : String(count)}
+        selected={draft.lifts14 === count} onPress={() => update({ lifts14: count })} />)}</Choices>
+    </>;
+    case 'notes': return <NotesStep draft={draft} update={update} note={note} setNote={setNote} />;
   }
 }
 
-function StepFooter({ step, building, onContinue, onBuild, onSkip, onFinish }: { step: number; building: boolean; onContinue: () => void; onBuild: () => void; onSkip: () => void; onFinish: () => void }) {
+function NotesStep({ draft, update, note, setNote }: Pick<QuestionProps, 'draft' | 'update' | 'note' | 'setNote'>) {
   const { colors } = useApp();
-  if (step < 5) return <View style={[styles.bottom, { borderTopColor: colors.separator }]}><PrimaryButton onPress={onContinue}>Continue</PrimaryButton></View>;
-  if (step === 5) return <View style={[styles.bottom, { borderTopColor: colors.separator }]}><PrimaryButton onPress={onBuild}>Review answers</PrimaryButton><SecondaryButton onPress={onSkip}>Skip for now</SecondaryButton></View>;
-  return <View style={[styles.bottom, { borderTopColor: colors.separator }]}><PrimaryButton loading={building} onPress={onFinish}>Save and open chat</PrimaryButton></View>;
+  const lastNote = draft.notes.at(-1);
+  const hint = lastNote ? NOTE_HINTS[lastNote] : undefined;
+  const add = (value: string, clearInput = true) => {
+    if (!value.trim()) return;
+    selectionFeedback();
+    update({ notes: [...draft.notes, value.trim()] });
+    if (clearInput) setNote('');
+  };
+  return <>
+    <Heading>Anything else I should know?</Heading>
+    {!draft.notes.length ? <View style={[styles.choices, styles.wide]}>{NOTE_PROMPTS.map(prompt => (
+      <Pressable key={prompt} accessibilityRole="button" onPress={() => add(prompt, false)}
+        style={({ pressed }) => [styles.tile, { backgroundColor: colors.card, borderColor: colors.separator }, pressed && styles.pressed]}>
+        <AppText style={styles.promptText}>{prompt}</AppText>
+      </Pressable>
+    ))}</View> : (
+      <View style={[styles.thread, styles.wide]}>{draft.notes.map((text, index) => (
+        <View key={`${index}-${text}`} style={[styles.bubble, { backgroundColor: colors.tintSoft }]}>
+          <AppText style={styles.noteText}>{text}</AppText>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Remove note: ${text}`}
+            onPress={() => update({ notes: draft.notes.filter((_, i) => i !== index) })} style={styles.removeNote}>
+            <X color={colors.textSecondary} size={15} />
+          </Pressable>
+        </View>
+      ))}</View>
+    )}
+    {hint ? <AppText accessibilityLiveRegion="polite" tone="secondary" style={[styles.noteHint, styles.wide]}>{hint}</AppText> : null}
+    <View style={[styles.composer, styles.wide, { backgroundColor: colors.card, borderColor: colors.separator }]}>
+      <TextInput accessibilityLabel="Tell Arcel anything else" value={note} onChangeText={setNote} multiline
+        placeholder="Type anything…" placeholderTextColor={colors.textTertiary}
+        style={[styles.noteInput, { color: colors.text }]} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Add note" accessibilityState={{ disabled: !note.trim() }}
+        disabled={!note.trim()} onPress={() => add(note)} style={[styles.send, { backgroundColor: colors.strong }, !note.trim() && styles.disabled]}>
+        <Send color={colors.strongText} size={18} />
+      </Pressable>
+    </View>
+    <AppText tone="secondary" style={styles.hint}>Optional. Your notes will be saved with your answers.</AppText>
+    {draft.notes.includes('I have some discomfort') ? <AppText tone="secondary" style={styles.hint}>
+      Sharp, worsening, or unexplained pain is a reason to stop and seek medical advice.
+    </AppText> : null}
+  </>;
 }
 
-function FieldTitle({ children }: { children: string }) { return <AppText weight="medium" style={styles.fieldTitle}>{children}</AppText>; }
-function ChipGrid({ values, selected, onSelect, suffix = '' }: { values: string[]; selected: string; onSelect: (value: string) => void; suffix?: string }) { return <View style={styles.chips}>{values.map((value) => <ChoiceChip key={value} label={`${value}${suffix}`} selected={selected === value} onPress={() => onSelect(value)} style={styles.flexChip} />)}</View>; }
-function Summary({ label, value }: { label: string; value: string }) { return <View style={styles.summaryRow}><AppText tone="secondary" style={styles.summaryLabel}>{label}</AppText><AppText weight="medium" style={styles.summaryValue}>{value}</AppText></View>; }
+function ReviewStep({ draft }: { draft: OnboardingDraft }) {
+  const { colors } = useApp();
+  const days = TRAINING_DAYS.filter(day => draft.trainingDays.includes(day));
+  return <>
+    <View style={[styles.reviewIcon, { backgroundColor: colors.tintSoft }]}><ShieldCheck color={colors.tintText} size={26} strokeWidth={1.5} /></View>
+    <Heading>A little more you.</Heading>
+    <AppText tone="secondary" style={styles.reviewCopy}>Your sport, your goals, and the time you have. Save these answers so Arcel has your context when you chat.</AppText>
+    <Card style={styles.summary}>
+      <Summary label="Sport" value={draft.sport} />
+      {draft.sportGoal.trim() ? <Summary label="This season" value={draft.sportGoal.trim()} /> : null}
+      <Summary label="Focus" value={BALANCE_LABELS[draft.balance]} />
+      <Summary label="Your week" value={`${days.length} days · ${formatSessionDuration(draft.sessionMinutes)}\n${days.join(' · ')}`} />
+      <Summary label="Setup" value={VENUE_LABELS[draft.venue]} />
+      <Summary label="Recent lifting" value={`${draft.lifts14 === 6 ? '6+' : draft.lifts14} sessions in 2 weeks`} />
+      {draft.notes.length ? <Summary label="Your notes" value={draft.notes.join('\n\n')} /> : null}
+    </Card>
+    <AppText tone="secondary" style={styles.hint}>You can update these anytime in You → Settings.</AppText>
+  </>;
+}
+
+function Summary({ label, value }: { label: string; value: string }) {
+  return <View style={styles.summaryRow}><AppText tone="secondary" style={styles.summaryLabel}>{label}</AppText><AppText weight="medium" style={styles.summaryValue}>{value}</AppText></View>;
+}
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  redirecting: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  welcome: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 28, paddingVertical: 32 },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  topbar: { width: '100%', maxWidth: 600, alignSelf: 'center', minHeight: 60, paddingHorizontal: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  topSpacer: { width: 44 },
+  close: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  progress: { width: 120, height: 4, borderRadius: 2, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 2 },
+  content: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 20, paddingVertical: 28 },
+  stage: { width: '100%', maxWidth: 420, alignSelf: 'center' },
+  title: { fontSize: 30, lineHeight: 37, letterSpacing: -0.9, textAlign: 'center', marginBottom: 32 },
+  choices: { width: '100%', maxWidth: 300, alignSelf: 'center', gap: 10 },
+  wide: { width: '100%', maxWidth: 340, alignSelf: 'center' },
+  tile: { ...shadow, minHeight: 56, borderWidth: 1, borderRadius: radius.card, paddingVertical: 16, paddingHorizontal: 32, justifyContent: 'center' },
+  tileText: { fontSize: 16, lineHeight: 22, textAlign: 'center' },
+  check: { position: 'absolute', right: 12, top: 19 },
+  pressed: { opacity: 0.8, transform: [{ scale: 0.98 }] },
+  days: { width: '100%', maxWidth: 340, alignSelf: 'center', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 4 },
+  dayTile: { flex: 1, minWidth: 44, maxWidth: 48, minHeight: 66, paddingHorizontal: 1, paddingTop: 12, paddingBottom: 24, borderRadius: radius.segment },
+  dayText: { fontSize: 12, lineHeight: 18 },
+  dayCheck: { position: 'absolute', bottom: 8, alignSelf: 'center' },
+  input: { width: '100%', maxWidth: 340, alignSelf: 'center', minHeight: 56, borderWidth: 1, borderRadius: radius.card, padding: 16, fontFamily: fonts.regular, fontSize: 16, lineHeight: 25 },
+  textarea: { minHeight: 148, textAlignVertical: 'top' },
+  sliderLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  balanceLabel: { textAlign: 'center', marginTop: 14, fontSize: 18 },
+  hint: { fontSize: 12, lineHeight: 19, textAlign: 'center', marginTop: 20, maxWidth: 340, alignSelf: 'center' },
+  footer: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 18, width: '100%', maxWidth: 520, alignSelf: 'center' },
+  navLink: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4 },
+  message: { fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 20 },
+  welcomeBrand: { paddingHorizontal: 28, paddingTop: 28 },
   brand: { fontSize: 14, lineHeight: 20, letterSpacing: 3, textTransform: 'uppercase' },
-  welcomeTitle: { marginTop: 42, fontSize: 42, lineHeight: 47, letterSpacing: -1.7 },
-  welcomeCopy: { marginTop: 20, fontSize: 16, lineHeight: 25 },
-  promiseList: { marginTop: 34, paddingTop: 24, borderTopWidth: StyleSheet.hairlineWidth, gap: 16 },
-  promise: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  promiseText: { flex: 1, fontSize: 13, lineHeight: 20 },
-  welcomeFooter: { paddingHorizontal: 24, paddingBottom: 16, gap: 14 },
-  footerNote: { textAlign: 'center', fontSize: 11, lineHeight: 16 },
-  close: { alignSelf: 'flex-end', padding: 12 },
-  topbar: { minHeight: 68, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 16 },
-  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  progress: { flex: 1, height: 2, borderRadius: 1, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 1 },
-  stepLabel: { width: 36, fontSize: 11, letterSpacing: 0.7, fontVariant: ['tabular-nums'] },
-  content: { paddingHorizontal: 24, paddingBottom: 36 },
-  stepTitle: { marginTop: 24, fontSize: 36, lineHeight: 42, letterSpacing: -1.3 },
-  stepCopy: { marginTop: 12, fontSize: 15, lineHeight: 24 },
-  form: { marginTop: 30, gap: 12 },
-  fieldTitle: { fontSize: 14, lineHeight: 21, marginTop: 18 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  flexChip: { flexGrow: 1 },
-  dayGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  dayChip: { minWidth: 55, flexGrow: 1 },
-  softCard: { flexDirection: 'row', gap: 12, marginTop: 16 },
-  softText: { flex: 1, fontSize: 13, lineHeight: 21 },
-  safetyCard: { flexDirection: 'row', gap: 12, marginTop: 16 },
-  flex: { flex: 1 },
-  noteInput: { minHeight: 160, borderRadius: radius.panel, borderWidth: StyleSheet.hairlineWidth, padding: 16, fontFamily: fonts.regular, fontSize: 15, lineHeight: 23, textAlignVertical: 'top' },
-  nameInput: { minHeight: 56, borderRadius: radius.panel, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, fontFamily: fonts.regular, fontSize: 15 },
-  bottom: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 10, borderTopWidth: StyleSheet.hairlineWidth, gap: 8 },
-  reveal: { paddingTop: 30 },
-  revealIcon: { width: 56, height: 56, borderRadius: 28, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
-  revealTitle: { marginTop: 26, fontSize: 36, lineHeight: 42, letterSpacing: -1.3 },
-  revealCopy: { marginTop: 14, fontSize: 15, lineHeight: 24 },
-  summaryCard: { alignSelf: 'stretch', marginTop: 30, gap: 0 },
-  summaryRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  summaryLabel: { width: 88, fontSize: 12 },
+  welcome: { flexGrow: 1, justifyContent: 'flex-end', paddingHorizontal: 28, paddingVertical: 44, width: '100%', maxWidth: 460, alignSelf: 'center' },
+  welcomeTitle: { fontSize: 46, lineHeight: 52, letterSpacing: -1.7 },
+  welcomeCopy: { marginTop: 22, fontSize: 16, lineHeight: 26 },
+  welcomeFooter: { width: '100%', maxWidth: 460, alignSelf: 'center', paddingHorizontal: 24, paddingBottom: 24, gap: 14 },
+  footerNote: { textAlign: 'center', fontSize: 12, lineHeight: 19 },
+  promptText: { fontSize: 15, lineHeight: 22 },
+  thread: { gap: 12 },
+  bubble: { maxWidth: '94%', alignSelf: 'flex-end', borderRadius: radius.card, borderBottomRightRadius: 4, paddingLeft: 16, paddingVertical: 12, paddingRight: 46, minHeight: 48 },
+  noteText: { fontSize: 15, lineHeight: 23 },
+  removeNote: { position: 'absolute', right: 0, top: 2, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  noteHint: { fontSize: 14, lineHeight: 23, marginTop: 16 },
+  composer: { marginTop: 24, borderWidth: 1, borderRadius: 28, padding: 6, paddingLeft: 18, flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  noteInput: { flex: 1, minWidth: 0, minHeight: 44, maxHeight: 140, paddingVertical: 10, fontFamily: fonts.regular, fontSize: 15, lineHeight: 24, textAlignVertical: 'top' },
+  send: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  disabled: { opacity: 0.4 },
+  reviewIcon: { width: 56, height: 56, borderRadius: 28, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  reviewCopy: { textAlign: 'center', fontSize: 15, lineHeight: 24, marginTop: -12, marginBottom: 24 },
+  summary: { gap: 0 },
+  summaryRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, paddingVertical: 12 },
+  summaryLabel: { width: 92, fontSize: 12, lineHeight: 20 },
   summaryValue: { flex: 1, textAlign: 'right', fontSize: 13, lineHeight: 20 },
+  reviewFooter: { width: '100%', maxWidth: 460, alignSelf: 'center', paddingHorizontal: 24, paddingTop: 12, paddingBottom: 16, gap: 8 },
 });
