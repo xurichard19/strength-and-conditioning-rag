@@ -19,7 +19,7 @@ The Expo/React Native mobile client connects to the containerized FastAPI backen
 
 #### Mobile App Demo
 
-[![Watch the Arcel mobile app demo](docs/media/arcel-app-demo-poster.jpg)](docs/media/arcel-app-demo.mp4)
+https://github.com/user-attachments/assets/b91a3d4c-24e4-497a-b0c3-b5eb1353975a
 
 #### App Infrastructure
 ```mermaid

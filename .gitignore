@@ -10,10 +10,6 @@ docs/
 !/docs/
 /docs/*
 !/docs/database-schema.svg
-!/docs/media/
-/docs/media/*
-!/docs/media/arcel-app-demo.mp4
-!/docs/media/arcel-app-demo-poster.jpg
 
 __pycache__/
 .pytest_cache/
