@@ -72,7 +72,7 @@ class EndpointTests(unittest.TestCase):
         with patch.object(planning.planning_schedules, 'configure_planning_schedule', return_value=SCHEDULE) as save:
             self.assertEqual(self.client.put('/planning/schedule', json={'next_refresh_at': NOW}).status_code, 200)
             self.assertEqual(save.call_args.args[0], USER.id)
-            self.assertEqual(save.call_args.args[2:], (7, 7))
+            self.assertEqual(save.call_args.args[2:], (21, 7))
             save.reset_mock()
             for body in ({'next_refresh_at': '2026-09-14T12:00:00'},
                          {'next_refresh_at': NOW, 'horizon_days': 7, 'refresh_interval_days': 8},

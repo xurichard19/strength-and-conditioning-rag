@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
+from threading import get_ident
 import unittest
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
@@ -9,8 +10,8 @@ from fastapi.testclient import TestClient
 from google.api_core.exceptions import DeadlineExceeded
 from pydantic import ValidationError
 
-from app.contracts import ClaimedReplanJob, ReplanDeliveryClaim, ReplanResult
-from app.db.supabase import SupabaseDataError, replan_jobs
+from app.contracts import ClaimedReplanJob, PlanningProposal, ReplanDeliveryClaim, ReplanResult
+from app.db.supabase import SupabaseDataError, calendar, replan_jobs
 from app.jobs import replan_worker, scheduler
 from app.jobs.cloud_tasks import ReplanTask
 from app.jobs.settings import TaskSettings
@@ -164,13 +165,70 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
         self.complete.assert_not_called()
         self.fail.assert_not_called()
 
+    async def test_graph_adapter_loads_context_off_event_loop_and_publishes_subclass(self):
+        context = object()
+        event_thread = get_ident()
+        proposal = PlanningProposal(before_ids=[], workouts=[], day_decisions=[])
+
+        def load(claim):
+            self.assertNotEqual(get_ident(), event_thread)
+            self.assertIs(claim, CLAIM)
+            return context
+
+        with patch.object(calendar, "get_replan_context", side_effect=load) as read, \
+                patch("app.ai.workflows.plan.graph.generate_plan", new=AsyncMock(return_value=proposal)) as generate:
+            self.assertEqual(await replan_worker.execute(TASK, replan_worker.plan_job), {"status": "succeeded"})
+        read.assert_called_once_with(CLAIM)
+        generate.assert_awaited_once_with(CLAIM, context)
+        self.complete.assert_called_once_with(JOB.id, JOB.lease_token, [], [])
+        self.fail.assert_not_called()
+
+    async def test_stale_context_never_reaches_graph_or_publication(self):
+        with patch.object(calendar, "get_replan_context", side_effect=SupabaseDataError("stale", status_code=409)), \
+                patch("app.ai.workflows.plan.graph.generate_plan", new=AsyncMock()) as generate, \
+                self.assertLogs(replan_worker.logger), self.assertRaises(HTTPException) as raised:
+            await replan_worker.execute(TASK, replan_worker.plan_job)
+        self.assertEqual(raised.exception.status_code, 503)
+        generate.assert_not_awaited()
+        self.complete.assert_not_called()
+        self.fail.assert_called_once_with(JOB.id, JOB.lease_token, "SupabaseDataError", True)
+
+    async def test_graph_failure_and_revision_conflict_leave_calendar_unpublished(self):
+        with patch.object(calendar, "get_replan_context", return_value=object()), \
+                patch("app.ai.workflows.plan.graph.generate_plan", new=AsyncMock(side_effect=ValueError("invalid proposal"))), \
+                self.assertLogs(replan_worker.logger), self.assertRaises(HTTPException):
+            await replan_worker.execute(TASK, replan_worker.plan_job)
+        self.complete.assert_not_called()
+        self.fail.assert_called_once_with(JOB.id, JOB.lease_token, "ValueError", True)
+
+        self.fail.reset_mock()
+        self.complete.side_effect = SupabaseDataError("revision changed", status_code=409)
+        with self.assertLogs(replan_worker.logger), self.assertRaises(HTTPException):
+            await replan_worker.execute(TASK, self.generate)
+        self.fail.assert_called_once_with(JOB.id, JOB.lease_token, "SupabaseDataError", True)
+
+    async def test_lost_publication_response_is_reconciled_without_regeneration(self):
+        self.complete.side_effect = SupabaseDataError("publication response lost")
+        self.fail.side_effect = SupabaseDataError("job already completed", status_code=409)
+        with self.assertLogs(replan_worker.logger), self.assertRaises(SupabaseDataError):
+            await replan_worker.execute(TASK, self.generate)
+        self.claim.return_value = ReplanDeliveryClaim(status="terminal")
+        self.assertEqual(await replan_worker.execute(TASK, self.generate), {"status": "terminal"})
+        self.generate.assert_awaited_once()
+        self.complete.assert_called_once()
+        self.fail.assert_called_once()
+
 
 class RuntimeBoundaryTests(unittest.TestCase):
     def test_unconfigured_worker_rejects_before_claiming(self):
-        with patch.object(replan_jobs, "claim_replan_delivery") as claim, TestClient(replan_worker.app) as client:
+        with patch.object(replan_jobs, "claim_replan_delivery") as claim, TestClient(replan_worker.create_app()) as client:
             self.assertFalse(client.get("/health").json()["planner_ready"])
             self.assertEqual(client.post("/run", json=TASK.model_dump(mode="json")).status_code, 503)
         claim.assert_not_called()
+
+    def test_deployed_worker_has_a_plan_handler(self):
+        with TestClient(replan_worker.app) as client:
+            self.assertTrue(client.get("/health").json()["planner_ready"])
 
     def test_uncertain_database_outcome_is_retryable_without_leaking_details(self):
         worker = replan_worker.create_app(AsyncMock())

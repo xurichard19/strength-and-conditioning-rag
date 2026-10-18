@@ -73,6 +73,9 @@ begin
   exception when sqlstate 'PT409' then blocked := true; end;
   if not blocked then raise exception 'stale proposal accepted'; end if;
   perform public.fail_replan_job(j.id, j.lease_token, 'stale', false);
+  -- The sport write also queues its own bounded adjustment; isolate subsequent RPC checks.
+  perform public.cancel_replan_job(u, id) from public.replan_jobs
+  where user_id = u and status = 'pending' and deduplication_key like 'sport:%';
   -- Window enforcement and atomic rollback on nested validation failure.
   j := public.enqueue_adjustment(u, 'bounds', 'sleep', current_date, current_date);
   c := public.claim_replan_job(); j := jsonb_populate_record(null::public.replan_jobs, c->'job');

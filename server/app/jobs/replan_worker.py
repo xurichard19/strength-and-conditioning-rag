@@ -1,4 +1,4 @@
-"""Private task handler; inject plan generation later, never acknowledge unfinished work."""
+"""Private task handler for revision-fenced planning and atomic publication."""
 
 import asyncio
 from collections.abc import Awaitable, Callable
@@ -7,7 +7,7 @@ import logging
 from fastapi import FastAPI, HTTPException
 
 from app.contracts import ClaimedReplanJob, ReplanResult
-from app.db.supabase import replan_jobs
+from app.db.supabase import calendar, replan_jobs
 from app.jobs.cloud_tasks import ReplanTask
 
 
@@ -15,6 +15,14 @@ logger = logging.getLogger(__name__)
 PlanHandler = Callable[[ClaimedReplanJob], Awaitable[ReplanResult]]
 ATTEMPT_SECONDS = 240
 LEASE_SECONDS = 300
+
+
+async def plan_job(claim: ClaimedReplanJob) -> ReplanResult:
+    """load authoritative context off the event loop, then generate validated changes"""
+    from app.ai.workflows.plan.graph import generate_plan
+
+    context = await asyncio.to_thread(calendar.get_replan_context, claim)
+    return await generate_plan(claim, context)
 
 
 async def execute(job: ReplanTask, generate_plan: PlanHandler) -> dict:
@@ -27,7 +35,7 @@ async def execute(job: ReplanTask, generate_plan: PlanHandler) -> dict:
     durable state and never assume that a timeout means nothing was committed.
 
     - **job**: validated id and delivery generation; Cloud Run IAM authenticates the caller
-    - **generate_plan**: async generation/validation hook, supplied by the later graph integration
+    - **generate_plan**: async context loading, generation and validation handler
     - **returns**: durable completion or harmless obsolete/terminal delivery acknowledgement
     """
     delivery = await asyncio.to_thread(replan_jobs.claim_replan_delivery,
@@ -75,4 +83,4 @@ def create_app(generate_plan: PlanHandler | None = None) -> FastAPI:
     return worker
 
 
-app = create_app()
+app = create_app(plan_job)
