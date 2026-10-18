@@ -5,40 +5,12 @@ from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Settings(BaseSettings):
+class DatabaseSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
-
-    app_name: str = "arcel api"
-    environment: str = "development"
-
-    cors_origins: list[str] = Field(
-        default_factory=lambda: [
-            "http://localhost:5173",
-            "http://localhost:8081",
-            "https://arcelassist.vercel.app",
-        ]
-    )
-
-    doc_source: str = "local"
-    gcs_bucket: str | None = None
-    gcs_prefix_raw: str = "raw/system"
-    google_application_credentials: str | None = None
-
-    chroma_tenant: str
-    chroma_database: str
-    chroma_api_key: str
-
-    openai_api_key: str
-    cohere_api_key: str
-
-    tavily_api_key: str
-
-    sentry_dsn: str | None = None
-    sentry_traces_sample_rate: float = Field(default=0.1, ge=0, le=1)
 
     supabase_url: str
     supabase_publishable_key: str = Field(
@@ -61,6 +33,25 @@ class Settings(BaseSettings):
             raise ValueError("supabase url must be an https url without credentials, query, or fragment")
         return value.rstrip("/")
 
+
+class Settings(DatabaseSettings):
+    app_name: str = "arcel api"
+    environment: str = "development"
+    cors_origins: list[str] = Field(default_factory=lambda: [
+        "http://localhost:5173", "http://localhost:8081", "https://arcelassist.vercel.app"])
+
+    doc_source: str = "local"
+    gcs_bucket: str | None = None
+    gcs_prefix_raw: str = "raw/system"
+    google_application_credentials: str | None = None
+    chroma_tenant: str
+    chroma_database: str
+    chroma_api_key: str
+    openai_api_key: str
+    cohere_api_key: str
+    tavily_api_key: str
+    sentry_dsn: str | None = None
+    sentry_traces_sample_rate: float = Field(default=0.1, ge=0, le=1)
     system_collection_name: str = "system-docs"
     retrieval_top_k: int = 15
     index_batch_size: int = 300
@@ -69,3 +60,9 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+@lru_cache
+def get_database_settings() -> DatabaseSettings:
+    """load only database configuration in background processes; no AI credentials required"""
+    return DatabaseSettings()

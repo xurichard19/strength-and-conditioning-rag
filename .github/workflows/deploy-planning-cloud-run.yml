@@ -1,0 +1,143 @@
+name: provision planning infrastructure
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.GCP_REGION || 'us-east1' }}
+  ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY || 'arcel' }}
+  CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE || 'arcel-backend' }}
+
+jobs:
+  provision:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+      - uses: google-github-actions/setup-gcloud@v3
+
+      # The caller builds this commit, applies migrations, and serializes the whole deployment.
+      - name: verify existing image and configure queue identities
+        id: setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPOSITORY}/${CLOUD_RUN_SERVICE}:${GITHUB_SHA}"
+          gcloud artifacts docker images describe "$image" --format='value(image_summary.digest)'
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          gcloud services enable cloudtasks.googleapis.com cloudscheduler.googleapis.com --project="$GCP_PROJECT_ID"
+          for name in planning-worker planning-dispatcher planning-task-invoker planning-scheduler; do
+            if ! gcloud iam service-accounts describe "$name@${GCP_PROJECT_ID}.iam.gserviceaccount.com" --project="$GCP_PROJECT_ID" --format='value(email)' >/dev/null 2>&1; then
+              gcloud iam service-accounts create "$name" --display-name="$name" --project="$GCP_PROJECT_ID"
+            fi
+          done
+          if ! gcloud tasks queues describe planning --location="$GCP_REGION" --project="$GCP_PROJECT_ID" --format='value(name)' >/dev/null 2>&1; then
+            gcloud tasks queues create planning --location="$GCP_REGION" --project="$GCP_PROJECT_ID"
+          fi
+          queue_state=$(gcloud tasks queues describe planning --location="$GCP_REGION" --project="$GCP_PROJECT_ID" --format='value(state)')
+          if [[ "$queue_state" != "PAUSED" ]]; then
+            gcloud tasks queues pause planning --location="$GCP_REGION" --project="$GCP_PROJECT_ID"
+          fi
+          gcloud tasks queues update planning --location="$GCP_REGION" --project="$GCP_PROJECT_ID" \
+            --max-concurrent-dispatches=4 --max-dispatches-per-second=1 \
+            --max-attempts=100 --max-retry-duration=86400s --min-backoff=10s --max-backoff=300s
+          api_runtime=$(gcloud run services describe "$CLOUD_RUN_SERVICE" --region="$GCP_REGION" --project="$GCP_PROJECT_ID" --format='value(spec.template.spec.serviceAccountName)')
+          test -n "$api_runtime"
+          for account in "$api_runtime" "planning-dispatcher@${GCP_PROJECT_ID}.iam.gserviceaccount.com"; do
+            gcloud tasks queues add-iam-policy-binding planning --location="$GCP_REGION" --project="$GCP_PROJECT_ID" \
+              --member="serviceAccount:$account" --role=roles/cloudtasks.enqueuer --quiet >/dev/null
+            gcloud iam service-accounts add-iam-policy-binding "planning-task-invoker@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+              --project="$GCP_PROJECT_ID" --member="serviceAccount:$account" --role=roles/iam.serviceAccountUser --quiet >/dev/null
+          done
+          gcloud tasks queues add-iam-policy-binding planning --location="$GCP_REGION" --project="$GCP_PROJECT_ID" \
+            --member="serviceAccount:planning-dispatcher@${GCP_PROJECT_ID}.iam.gserviceaccount.com" --role=roles/cloudtasks.viewer --quiet >/dev/null
+
+      - name: deploy private worker without a plan handler
+        id: worker
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          region: ${{ env.GCP_REGION }}
+          service: planning-worker
+          image: ${{ steps.setup.outputs.image }}
+          env_vars: |-
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+            SUPABASE_SECRET_KEY=${{ secrets.SUPABASE_SECRET_KEY }}
+          flags: >-
+            --service-account=planning-worker@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+            --command=python --args=-m,uvicorn,app.jobs.replan_worker:app,--host,0.0.0.0,--port,8000
+            --port=8000 --cpu=1 --memory=512Mi --concurrency=1 --min-instances=0 --max-instances=4
+            --timeout=300 --cpu-throttling --no-allow-unauthenticated --invoker-iam-check
+
+      - name: deploy private dispatcher disabled
+        id: dispatcher
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          region: ${{ env.GCP_REGION }}
+          service: planning-dispatcher
+          image: ${{ steps.setup.outputs.image }}
+          env_vars: |-
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+            SUPABASE_SECRET_KEY=${{ secrets.SUPABASE_SECRET_KEY }}
+            PLANNING_ENABLED=false
+            PLANNING_QUEUE=projects/${{ env.GCP_PROJECT_ID }}/locations/${{ env.GCP_REGION }}/queues/planning
+            PLANNING_WORKER_URL=${{ steps.worker.outputs.url }}
+            PLANNING_INVOKER_EMAIL=planning-task-invoker@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+          flags: >-
+            --service-account=planning-dispatcher@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+            --command=python --args=-m,uvicorn,app.jobs.scheduler:app,--host,0.0.0.0,--port,8000
+            --port=8000 --cpu=1 --memory=512Mi --concurrency=1 --min-instances=0 --max-instances=1
+            --timeout=120 --cpu-throttling --no-allow-unauthenticated --invoker-iam-check
+
+      - name: grant invocation and create paused minute schedule
+        env:
+          WORKER_URL: ${{ steps.worker.outputs.url }}
+          DISPATCHER_URL: ${{ steps.dispatcher.outputs.url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run services add-iam-policy-binding planning-worker --region="$GCP_REGION" --project="$GCP_PROJECT_ID" \
+            --member="serviceAccount:planning-task-invoker@${GCP_PROJECT_ID}.iam.gserviceaccount.com" --role=roles/run.invoker --quiet >/dev/null
+          gcloud run services add-iam-policy-binding planning-dispatcher --region="$GCP_REGION" --project="$GCP_PROJECT_ID" \
+            --member="serviceAccount:planning-scheduler@${GCP_PROJECT_ID}.iam.gserviceaccount.com" --role=roles/run.invoker --quiet >/dev/null
+          action=create
+          if scheduler_state=$(gcloud scheduler jobs describe planning-dispatch --location="$GCP_REGION" --project="$GCP_PROJECT_ID" --format='value(state)'); then
+            action=update
+            if [[ "$scheduler_state" != "PAUSED" ]]; then
+              gcloud scheduler jobs pause planning-dispatch --location="$GCP_REGION" --project="$GCP_PROJECT_ID"
+            fi
+          fi
+          gcloud scheduler jobs "$action" http planning-dispatch --location="$GCP_REGION" --project="$GCP_PROJECT_ID" \
+            --schedule='* * * * *' --time-zone=UTC --uri="${DISPATCHER_URL}/dispatch" --http-method=POST \
+            --oidc-service-account-email="planning-scheduler@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+            --oidc-token-audience="$DISPATCHER_URL" --attempt-deadline=120s --max-retry-attempts=0
+          scheduler_state=$(gcloud scheduler jobs describe planning-dispatch --location="$GCP_REGION" --project="$GCP_PROJECT_ID" --format='value(state)')
+          if [[ "$scheduler_state" != "PAUSED" ]]; then
+            gcloud scheduler jobs pause planning-dispatch --location="$GCP_REGION" --project="$GCP_PROJECT_ID"
+          fi
+          echo "Planning infrastructure is paused until a plan handler is connected." >> "$GITHUB_STEP_SUMMARY"
+          echo "Worker: $WORKER_URL" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: configure backend task settings
+        env:
+          WORKER_URL: ${{ steps.worker.outputs.url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$WORKER_URL"
+          api_url=$(gcloud run services update "$CLOUD_RUN_SERVICE" --region="$GCP_REGION" --project="$GCP_PROJECT_ID" \
+            --update-env-vars="PLANNING_ENABLED=false,PLANNING_QUEUE=projects/${GCP_PROJECT_ID}/locations/${GCP_REGION}/queues/planning,PLANNING_WORKER_URL=${WORKER_URL},PLANNING_INVOKER_EMAIL=planning-task-invoker@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+            --quiet --format='value(status.url)')
+          curl --fail --show-error --silent --retry 5 --retry-delay 5 --max-time 30 "${api_url}/health"
+          echo "Backend task settings configured automatically; processing remains disabled." >> "$GITHUB_STEP_SUMMARY"

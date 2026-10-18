@@ -180,6 +180,9 @@ class ReplanJobRecord(BaseModel):
     completed_at: datetime.datetime | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    delivery_token: UUID | None = None
+    dispatched_at: datetime.datetime | None = None
+    dispatch_recoveries: int = Field(default=0, ge=0, le=1)
 
     @model_validator(mode="after")
     def check_adjustment_window(self):
@@ -264,6 +267,24 @@ class ClaimedReplanJob(BaseModel):
     effective_from: datetime.date
     effective_through: datetime.date
     horizon_end: datetime.date
+
+
+class ReplanDeliveryClaim(BaseModel):
+    status: Literal["claimed", "missing", "obsolete", "terminal", "busy", "not_ready"]
+    claim: ClaimedReplanJob | None = None
+
+    @model_validator(mode="after")
+    def check_claim(self):
+        if (self.status == "claimed") != (self.claim is not None):
+            raise ValueError("only a claimed delivery must contain a job claim")
+        return self
+
+
+class ReplanResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    before_ids: list[UUID]
+    workouts: list[PlannedWorkout]
 
 
 # -------------------- database write inputs --------------------
