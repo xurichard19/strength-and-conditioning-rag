@@ -108,7 +108,7 @@ class PlanningScheduleRecord(BaseModel):
     """coverage and fixed local refresh cadence; revision covers all planning inputs"""
 
     user_id: UUID
-    horizon_days: int = Field(default=7, gt=0)
+    horizon_days: int = Field(default=21, gt=0)
     refresh_interval_days: int = Field(default=7, gt=0)
     horizon_end: datetime.date | None = None
     next_refresh_at: datetime.datetime
@@ -183,6 +183,7 @@ class ReplanJobRecord(BaseModel):
     delivery_token: UUID | None = None
     dispatched_at: datetime.datetime | None = None
     dispatch_recoveries: int = Field(default=0, ge=0, le=1)
+    claimed_on: datetime.date | None = None
 
     @model_validator(mode="after")
     def check_adjustment_window(self):
@@ -285,6 +286,23 @@ class ReplanResult(BaseModel):
 
     before_ids: list[UUID]
     workouts: list[PlannedWorkout]
+
+
+class PlanningDayDecision(BaseModel):
+    """account for each date without saving empty rest-day workouts"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scheduled_date: datetime.date
+    rest: bool
+
+
+class PlanningProposal(ReplanResult):
+    """bounded changes and explicit coverage, validated before publication"""
+
+    before_ids: list[UUID] = Field(max_length=100)
+    workouts: list[PlannedWorkout] = Field(max_length=100)
+    day_decisions: list[PlanningDayDecision] = Field(max_length=366)
 
 
 # -------------------- database write inputs --------------------
