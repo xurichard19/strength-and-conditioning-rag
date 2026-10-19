@@ -192,6 +192,7 @@ test('day menu opens Chat without prompting and carries the chosen date into the
     '@/state/app-context': { useApp: () => ({ colors: {} }) },
   });
   const menu = CalendarDayActions({ date: '2027-01-02', onClose: () => closes++ });
+  assert.equal(menu.props.glass, true);
   const buttons = children(menu).filter(node => node.type === 'button');
   buttons[0].props.onPress(); buttons[1].props.onPress();
   assert.deepEqual(plain(routes), ['/chat', { pathname: '/sports-workout', params: { date: '2027-01-02' } }]);
@@ -229,7 +230,7 @@ function detailFixture(write: () => Promise<unknown>, fields: TestModule = {}) {
     'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react-native': { Ellipsis: 'icon' },
     'expo-linear-gradient': { LinearGradient: 'gradient' },
     'react-native': { View: 'view', Pressable: 'button', ScrollView: 'scroll', StyleSheet: { create: value => value } },
-    './action-sheet': { ActionSheet: 'sheet' }, './ui': { AppText: 'text', OutlineButton: 'outline' },
+    './action-sheet': { ActionSheet: 'sheet' }, './ui': { AppText: 'text', PrimaryButton: 'button', SecondaryButton: 'button' },
     '@/lib/calendar': calendar, '@/lib/errors': { errorMessage: error => error.message },
     '@/services/api': { backendFor: owner => ({ deleteSportsWorkout: async (id: string) => { calls.push({ owner, id }); return write(); } }) },
     '@/state/app-context': { useApp: () => ({ colors: { endurance: '#63E6E2' }, invalidateCalendar: (...args: string[]) => invalidations.push(args) }) },
@@ -241,7 +242,7 @@ function detailFixture(write: () => Promise<unknown>, fields: TestModule = {}) {
     return { ...node, props: { ...node.props, children: expand(node.props.children) } };
   };
   const render = () => { cursor = 0; return expand(SportsWorkoutDetails({ session, userId: 'owner', onClose: () => closes++ })); };
-  const button = (label: string) => children(render()).find(node => node.type === 'outline' && node.props.children === label)?.props;
+  const button = (label: string) => children(render()).find(node => node.type === 'button' && node.props.children === label)?.props;
   const options = () => render().props.headerAction.props.onPress();
   return { render, button, options, calls, invalidations, unmount: () => cleanups.forEach(fn => fn?.()), get closes() { return closes; } };
 }

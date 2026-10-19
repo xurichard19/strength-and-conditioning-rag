@@ -9,7 +9,7 @@ import { AppText } from './ui';
 
 export function CalendarDayActions({ date, onClose }: { date: string; onClose: () => void }) {
   const { colors } = useApp();
-  return <ActionSheet title={calendarLabel(date, { weekday: 'long', month: 'short', day: 'numeric' })} onClose={onClose}>
+  return <ActionSheet glass title={calendarLabel(date, { weekday: 'long', month: 'short', day: 'numeric' })} onClose={onClose}>
     <View style={styles.group}>
       <Pressable accessibilityRole="button" accessibilityLabel="Chat about this day" onPress={() => {
         onClose();

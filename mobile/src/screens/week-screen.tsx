@@ -1,6 +1,6 @@
 import { Activity, ArrowUpRight, Check, ChevronLeft, ChevronRight, Dumbbell, Ellipsis } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText, Card, Screen, SecondaryButton, SectionTitle } from '@/components/ui';
 import { CalendarDayActions } from '@/components/calendar-day-actions';
@@ -89,21 +89,15 @@ function CalendarGrid({ view, selectedDate, byDate, loaded, onSelect, onHold }: 
   </Card>;
 }
 
-function CalendarFeedback({ loading, error, hasData, onRetry }: {
-  loading: boolean; error: string | null; hasData: boolean; onRetry: () => void;
+function CalendarFeedback({ error, hasData, onRetry }: {
+  error: string | null; hasData: boolean; onRetry: () => void;
 }) {
   const { colors } = useApp();
-  return <>
-    {loading && !hasData ? <View accessibilityLiveRegion="polite" style={styles.loading}>
-      <ActivityIndicator color={colors.tint} size="small" />
-      <AppText tone="secondary">Loading calendar…</AppText>
-    </View> : null}
-    {error ? <Card style={styles.selectedCard}>
-      <AppText style={{ color: colors.danger }}>{error}</AppText>
-      {hasData ? <AppText tone="secondary">Showing the last loaded calendar. It may be out of date.</AppText> : null}
-      <SecondaryButton onPress={onRetry}>Retry calendar</SecondaryButton>
-    </Card> : null}
-  </>;
+  return error ? <Card style={styles.selectedCard}>
+    <AppText style={{ color: colors.danger }}>{error}</AppText>
+    {hasData ? <AppText tone="secondary">Showing the last loaded calendar. It may be out of date.</AppText> : null}
+    <SecondaryButton onPress={onRetry}>Retry calendar</SecondaryButton>
+  </Card> : null;
 }
 
 function EntryBadge({ entry, size = 40 }: { entry: CalendarEntry; size?: number }) {
@@ -198,7 +192,7 @@ export default function WeekScreen() {
   const step = (direction: number) => setSelectedDate(view === 'month' ? shiftMonth(selectedDate, direction) : shiftDays(selectedDate, direction * 7));
 
   return (
-    <Screen title="Calendar" subtitle="Your training, in view." onRefresh={refresh} refreshing={loading && Boolean(data)} preview={false}>
+    <Screen title="Calendar" subtitle="Your training, in view." onRefresh={refresh} refreshing={loading} preview={false}>
       <View style={styles.toolbar}>
         <View accessibilityRole="tablist" accessibilityLabel="Calendar view" style={[styles.viewSwitch, { borderColor: colors.separator }]}>
           {(['week', 'month'] as const).map((option) => <Pressable key={option} accessibilityRole="tab"
@@ -221,7 +215,7 @@ export default function WeekScreen() {
         </Pressable>
       </View>
       <CalendarGrid view={view} selectedDate={selectedDate} byDate={byDate} loaded={Boolean(data)} onSelect={setSelectedDate} onHold={hold} />
-      <CalendarFeedback loading={loading} error={error} hasData={Boolean(data)} onRetry={() => void refresh()} />
+      <CalendarFeedback error={error} hasData={Boolean(data)} onRetry={() => void refresh()} />
 
       <View style={styles.agendaHeading}>
         <View style={styles.copy}><SectionTitle>{selectedDayLabel(selectedDate)}</SectionTitle></View>
@@ -276,7 +270,6 @@ const styles = StyleSheet.create({
   copy: { flex: 1 },
   sessionTitle: { fontSize: 24, lineHeight: 30, letterSpacing: -0.6 },
   detailsLink: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 13 },
-  loading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   meta: { fontSize: 12, lineHeight: 17 },
   detail: { fontSize: 14, lineHeight: 20 },
   listCard: { borderTopWidth: StyleSheet.hairlineWidth },

@@ -9,10 +9,10 @@ import type { ThemeMode } from '@/design/tokens';
 import { useApp } from '@/state/app-context';
 
 export default function YouScreen() {
-  const { colors, profile, block, setThemeMode, refreshLiveData } = useApp();
+  const { colors, profile, setThemeMode, refreshLiveData } = useApp();
   const themes: { label: string; value: ThemeMode }[] = [{ label: 'System', value: 'system' }, { label: 'Light', value: 'light' }, { label: 'Dark', value: 'dark' }];
   return (
-    <Screen title={profile.displayName.trim() || 'You'} subtitle="Your training, on your terms." onRefresh={refreshLiveData}>
+    <Screen title={profile.displayName.trim() || 'You'} subtitle="Your training, on your terms." onRefresh={refreshLiveData} preview={false}>
       <SectionTitle>Your plan</SectionTitle>
       <Card>
         <AppText style={styles.planTitle}>{profile.goal}</AppText>
@@ -22,13 +22,6 @@ export default function YouScreen() {
           <View style={[styles.fact, styles.factDivider, { borderLeftColor: colors.separator }]}><AppText weight="medium" style={styles.factEquipment}>{profile.equipment}</AppText><AppText tone="secondary" style={styles.factLabel}>equipment</AppText></View>
         </View>
         <View style={[styles.days, { borderTopColor: colors.separator }]}>{profile.trainingDays.map((day) => <View key={day} style={styles.day}><View style={[styles.dayDot, { backgroundColor: colors.tint }]} /><AppText tone="secondary" style={styles.dayText}>{day}</AppText></View>)}</View>
-      </Card>
-
-      <SectionTitle>Current block</SectionTitle>
-      <Card>
-        <View style={styles.blockHeader}><AppText weight="medium" style={styles.blockTitle}>{block.name}</AppText><AppText tone="secondary" style={styles.blockWeek}>Week {block.week} of {block.of}</AppText></View>
-        <View style={[styles.rail, { backgroundColor: colors.fillStrong }]}><View style={[styles.railFill, { backgroundColor: colors.tint, width: `${(block.week / block.of) * 100}%` }]} /></View>
-        <AppText tone="secondary" style={styles.blockText}>Builds {block.builds}. Holds {block.holds}. Next: {block.next}.</AppText>
       </Card>
 
       <SectionTitle>Appearance</SectionTitle>
@@ -72,12 +65,6 @@ const styles = StyleSheet.create({
   day: { flexDirection: 'row', gap: 5, alignItems: 'center', minHeight: 20 },
   dayDot: { width: 4, height: 4, borderRadius: 2 },
   dayText: { fontSize: 11, lineHeight: 16 },
-  blockHeader: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center' },
-  blockTitle: { fontSize: 20, lineHeight: 26, letterSpacing: -0.35 },
-  blockWeek: { fontSize: 12 },
-  rail: { marginTop: 20, height: 3, borderRadius: 2, overflow: 'hidden' },
-  railFill: { height: '100%', borderRadius: 2 },
-  blockText: { fontSize: 13, lineHeight: 21, marginTop: 16 },
   appearanceHeader: { flexDirection: 'row', gap: 9, alignItems: 'center', marginBottom: 18 },
   themeRow: { flexDirection: 'row', gap: 8 },
   themeChip: { flex: 1 },

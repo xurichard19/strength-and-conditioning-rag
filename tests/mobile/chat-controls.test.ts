@@ -37,7 +37,8 @@ function fixture(reduceMotion = false) {
       },
       Easing: { linear: 'linear' },
     },
-    './ui': { AppText: 'text' }, '@/state/app-context': { useApp: () => ({ colors: {}, chatMode,
+    './ui': { AppText: 'text' }, './glass-surface': { GlassBackdrop: 'glass-backdrop' },
+    '@/state/app-context': { useApp: () => ({ colors: {}, chatMode,
       setChatMode: (value: string) => { chatMode = value; } }) },
   } satisfies Stubs;
   return {
@@ -57,6 +58,8 @@ test('mode selector defaults to quick, updates shared selection, and marks the s
   const toggleStyle = Object.assign({}, ...toggle.props.style({ pressed: false }));
   assert.ok(toggleStyle.minHeight >= 44);
   toggle.props.onPress();
+  assert.equal(render().find(node => node.type === 'modal')?.props.animationType, 'slide');
+  assert.equal(render().filter(node => node.type === 'glass-backdrop').length, 1);
   let options = render().filter(node => node.props.accessibilityRole === 'radio');
   assert.equal(options.length, 2);
   assert.equal(options[0].props['aria-checked'], true);

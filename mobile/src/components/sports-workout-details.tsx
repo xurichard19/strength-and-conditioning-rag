@@ -1,4 +1,4 @@
-import { Activity, CalendarDays, Clock3, Ellipsis, FileText, Gauge, Timer } from 'lucide-react-native';
+import { Activity, CalendarDays, Clock3, Ellipsis, FileText, Gauge, Timer, Trash2 } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -7,7 +7,7 @@ import { errorMessage } from '@/lib/errors';
 import { backendFor } from '@/services/api';
 import { useApp } from '@/state/app-context';
 import { ActionSheet } from './action-sheet';
-import { AppText, OutlineButton } from './ui';
+import { AppText, PrimaryButton, SecondaryButton } from './ui';
 
 const label = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
@@ -63,7 +63,6 @@ export function SportsWorkoutDetails({ session, userId, onClose }: {
   const pending = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const buttonStyle = [styles.button, { borderColor: colors.textTertiary }];
 
   async function remove() {
     if (pending.current) return;
@@ -89,13 +88,13 @@ export function SportsWorkoutDetails({ session, userId, onClose }: {
       <Ellipsis color={colors.textSecondary} size={22} />
     </Pressable> : undefined}>
     {action === 'details' ? <WorkoutFields session={session} /> : <View style={styles.actions}>
-      {action === 'delete' ? <AppText>Permanently delete {session.title.toLowerCase()} on {calendarLabel(session.date, { month: 'short', day: 'numeric', year: 'numeric' })}? This cannot be undone.</AppText> : null}
-      {error ? <AppText style={{ color: colors.danger }}>{error}</AppText> : null}
-      <OutlineButton disabled={busy} style={[buttonStyle, { borderColor: colors.danger }]}
-        onPress={action === 'menu' ? () => setAction('delete') : () => void remove()}>
+      {action === 'delete' ? <AppText tone="secondary" style={styles.confirmation}>This removes {session.title.toLowerCase()} on {calendarLabel(session.date, { month: 'short', day: 'numeric', year: 'numeric' })} from your calendar. This cannot be undone.</AppText> : null}
+      {error ? <AppText accessibilityRole="alert" style={{ color: colors.danger }}>{error}</AppText> : null}
+      {action === 'menu' ? <SecondaryButton destructive icon={Trash2} style={styles.button} onPress={() => setAction('delete')}>Delete workout</SecondaryButton> :
+      <PrimaryButton destructive loading={busy} disabled={busy} style={styles.button} accessibilityLabel="Delete workout" onPress={() => void remove()}>
         {busy ? 'Deleting…' : 'Delete workout'}
-      </OutlineButton>
-      <OutlineButton disabled={busy} style={buttonStyle} onPress={() => { setError(null); setAction('details'); }}>Cancel</OutlineButton>
+      </PrimaryButton>}
+      <SecondaryButton disabled={busy} style={styles.button} onPress={() => { setError(null); setAction('details'); }}>Cancel</SecondaryButton>
     </View>}
   </ActionSheet>;
 }
@@ -124,6 +123,7 @@ const styles = StyleSheet.create({
   notesTitle: { fontSize: 14, lineHeight: 20 },
   notesText: { fontSize: 14, lineHeight: 23 },
   options: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  actions: { gap: 12, paddingVertical: 8 },
-  button: { minHeight: 48, borderRadius: 24, paddingHorizontal: 16, borderWidth: StyleSheet.hairlineWidth, backgroundColor: 'transparent' },
+  actions: { gap: 10, paddingTop: 16, paddingBottom: 8 },
+  confirmation: { fontSize: 15, lineHeight: 23, marginBottom: 10 },
+  button: { minHeight: 52, borderRadius: 16, borderWidth: 0 },
 });

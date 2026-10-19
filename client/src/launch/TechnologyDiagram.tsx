@@ -5,19 +5,19 @@ import './TechnologyDiagram.css'
 const components = [
   {
     id: 'mobile', label: 'Mobile app', technology: 'Expo · React Native', icon: Smartphone,
-    detail: 'The place to ask training questions, view your calendar, and record your sessions. Requests go to the API, and responses return to the app.',
+    detail: 'View your calendar and full workout prescriptions, manage sports sessions, and follow plan updates in Overview and Timeline. The floating chat opens training conversations without leaving your current screen.',
   },
   {
     id: 'api', label: 'API backend', technology: 'FastAPI · Cloud Run', icon: Server,
-    detail: 'The backend checks account access and routes requests to the right service. It runs on Google Cloud Run, behind Cloud Load Balancing and Cloud Armor.',
+    detail: 'The backend checks account access and routes requests. Chat streams its answer to the app. Planning requests become saved jobs delivered through Cloud Tasks to private Cloud Run workers; Cloud Scheduler discovers due weekly refreshes.',
   },
   {
     id: 'context', label: 'Athlete context', technology: 'Supabase', icon: Database,
-    detail: 'Profiles, training history, and conversations provide context for a response. The workflow loads the information relevant to the question from Supabase.',
+    detail: 'Profiles, onboarding answers, sports commitments, existing workouts, and conversations provide context. Supabase also stores plan coverage, job status, and change history.',
   },
   {
     id: 'workflow', label: 'AI workflows', technology: 'LangGraph', icon: GitBranch,
-    detail: 'LangGraph coordinates the response. It decides whether a question needs research or web search, gathers relevant training context, and passes the results to the model.',
+    detail: 'Separate LangGraph workflows handle chat and planning. Chat gathers context and evidence for a reply. Planning combines athlete context, existing workouts, and research, then validates proposed changes before publishing them.',
   },
   {
     id: 'research', label: 'Research library', technology: 'Chroma Cloud', icon: BookOpen,
@@ -53,7 +53,7 @@ export default function TechnologyDiagram() {
     <figure className="technology-diagram" aria-labelledby={`${diagramId}-title`}>
       <figcaption className="technology-diagram-heading">
         <div>
-          <p className="technology-diagram-eyebrow">Arcel system map</p>
+          <p className="technology-diagram-eyebrow">Chat & evidence flow</p>
           <h3 id={`${diagramId}-title`}>From a question to an informed answer</h3>
         </div>
         <p id={`${diagramId}-instructions`}>Select a component to explore.</p>
@@ -87,7 +87,7 @@ export default function TechnologyDiagram() {
         <div className="technology-detail-label"><ActiveIcon size={22} aria-hidden="true" /><h4>{active.label}</h4></div>
         <p>{active.detail}</p>
       </div>
-      <p className="technology-diagram-note">When a question calls for evidence, Arcel retrieves relevant research and context before generating an answer.</p>
+      <p className="technology-diagram-note">This map follows a chat answer. Planning uses a separate background job: queue the request, generate and validate the workouts, then save the update for the app to read. An accepted planning job can finish after the phone disconnects.</p>
     </figure>
   )
 }

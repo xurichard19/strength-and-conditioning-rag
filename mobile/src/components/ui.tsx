@@ -1,4 +1,3 @@
-import { useFocusEffect } from 'expo-router';
 import {
   ChevronRight,
   Dumbbell,
@@ -7,7 +6,7 @@ import {
   Timer,
   type LucideIcon,
 } from 'lucide-react-native';
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { createContext, useEffect, useContext, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -22,7 +21,7 @@ import {
   type TextProps,
   type ViewStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { cancelAnimation, Easing, ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { fonts, radius, type Palette } from '@/design/tokens';
@@ -31,6 +30,8 @@ import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/app-context';
 
 type Tone = 'default' | 'secondary' | 'tint' | 'inverse';
+
+export const TabDockContext = createContext(false);
 
 const modalityIcons: Record<Modality | 'intervals', LucideIcon> = {
   strength: Dumbbell,
@@ -93,20 +94,29 @@ export function Screen({
   preview?: boolean;
 }) {
   const { colors, notice, previewMode } = useApp();
+  const hasDock = useContext(TabDockContext);
+  const insets = useSafeAreaInsets();
+  const dockInset = hasDock ? 64 + Math.max(insets.bottom, 18) : 0;
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const refreshPending = useRef(false);
   const entrance = useSharedValue(1);
-  useFocusEffect(useCallback(() => {
+  useEffect(() => {
     entrance.set(0);
     entrance.set(withTiming(1, { duration: 380, easing: Easing.out(Easing.cubic), reduceMotion: ReduceMotion.System }));
     return () => cancelAnimation(entrance);
-  }, [entrance]));
+  }, [entrance]);
   const entranceStyle = useAnimatedStyle(() => ({
     opacity: 0.65 + entrance.get() * 0.35,
     transform: [{ translateY: (1 - entrance.get()) * 12 }],
   }));
   const refreshingContent = refreshing || externalRefreshing;
+  const shade = useSharedValue(refreshingContent ? 0.45 : 0);
+  useEffect(() => {
+    shade.set(withTiming(refreshingContent ? 0.45 : 0, { duration: 180, reduceMotion: ReduceMotion.System }));
+    return () => cancelAnimation(shade);
+  }, [refreshingContent, shade]);
+  const loadingStyle = useAnimatedStyle(() => ({ opacity: shade.get() }));
   const refresh = async () => {
     if (!onRefresh || refreshPending.current) return;
     refreshPending.current = true;
@@ -121,10 +131,10 @@ export function Screen({
       <ScrollView
         showsVerticalScrollIndicator={false}
         alwaysBounceVertical={Boolean(onRefresh)}
-        refreshControl={onRefresh ? <RefreshControl refreshing={refreshingContent} onRefresh={refresh}
+        refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={refresh}
           tintColor={colors.tint} colors={[colors.tint]} progressBackgroundColor={colors.card} /> : undefined}
-        contentContainerStyle={[styles.screenContent, contentContainerStyle]}
-        style={refreshingContent ? styles.refreshingContent : undefined}
+        contentContainerStyle={[styles.screenContent, contentContainerStyle, dockInset > 0 && { paddingBottom: 40 + dockInset }]}
+        scrollIndicatorInsets={{ bottom: dockInset }}
         accessibilityState={{ busy: refreshingContent }}
         {...scrollProps}>
         <Animated.View style={[styles.pageHeader, entranceStyle]}>
@@ -147,6 +157,8 @@ export function Screen({
         ) : null}
         <Animated.View style={[styles.sections, entranceStyle]}>{children}</Animated.View>
       </ScrollView>
+      <Animated.View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants"
+        style={[styles.loadingShade, loadingStyle]} />
     </SafeAreaView>
   );
 }
@@ -165,8 +177,9 @@ export function PrimaryButton({
   loading,
   style,
   disabled,
+  destructive = false,
   ...props
-}: PressableProps & { children: ReactNode; loading?: boolean; style?: StyleProp<ViewStyle> }) {
+}: PressableProps & { children: ReactNode; loading?: boolean; destructive?: boolean; style?: StyleProp<ViewStyle> }) {
   const { colors } = useApp();
   return (
     <Pressable
@@ -176,7 +189,7 @@ export function PrimaryButton({
       {...props}
       style={({ pressed }) => [
         styles.primaryButton,
-        { backgroundColor: colors.strong },
+        { backgroundColor: destructive ? colors.danger : colors.strong },
         pressed && styles.pressed,
         (disabled || loading) && styles.disabled,
         style,
@@ -192,17 +205,20 @@ export function SecondaryButton({
   icon: Icon,
   loading,
   disabled,
+  destructive = false,
   ...props
-}: PressableProps & { children: ReactNode; style?: StyleProp<ViewStyle>; icon?: LucideIcon; loading?: boolean }) {
+}: PressableProps & { children: ReactNode; style?: StyleProp<ViewStyle>; icon?: LucideIcon; loading?: boolean; destructive?: boolean }) {
   const { colors } = useApp();
+  const foreground = destructive ? colors.danger : colors.text;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading) }}
       disabled={disabled || loading}
       {...props}
-      style={({ pressed }) => [styles.secondaryButton, { backgroundColor: colors.fill, borderColor: colors.controlBorder }, pressed && styles.pressed, (disabled || loading) && styles.disabled, style]}>
-      {loading ? <ActivityIndicator color={colors.text} /> : <>{Icon ? <Icon size={18} color={colors.text} strokeWidth={1.8} /> : null}<AppText weight="medium" style={styles.buttonText}>{children}</AppText></>}
+      style={({ pressed }) => [styles.secondaryButton, { backgroundColor: destructive ? `${colors.danger}14` : colors.fill,
+        borderColor: destructive ? `${colors.danger}40` : colors.controlBorder }, pressed && styles.pressed, (disabled || loading) && styles.disabled, style]}>
+      {loading ? <ActivityIndicator color={foreground} /> : <>{Icon ? <Icon size={18} color={foreground} strokeWidth={1.8} /> : null}<AppText weight="medium" style={[styles.buttonText, { color: foreground }]}>{children}</AppText></>}
     </Pressable>
   );
 }
@@ -292,9 +308,9 @@ export function DisclosureRow({
 const styles = StyleSheet.create({
   text: { fontSize: 15, lineHeight: 22, letterSpacing: -0.15 },
   screen: { flex: 1 },
+  loadingShade: { ...StyleSheet.absoluteFill, backgroundColor: '#000' },
   screenContent: { paddingHorizontal: 22, paddingBottom: 40, gap: 16 },
   sections: { gap: 14 },
-  refreshingContent: { opacity: 0.55 },
   pageHeader: { minHeight: 122, paddingTop: 24, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 16 },
   pageHeaderCopy: { flex: 1 },
   brandLabel: { fontSize: 10, lineHeight: 15, letterSpacing: 2.3, marginBottom: 10 },

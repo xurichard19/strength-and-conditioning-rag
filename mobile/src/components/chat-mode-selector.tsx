@@ -5,6 +5,7 @@ import { Keyboard, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { useApp } from '@/state/app-context';
+import { GlassBackdrop } from './glass-surface';
 import { AppText } from './ui';
 
 const modes = [
@@ -27,12 +28,13 @@ export function ChatModeSelector() {
       <AppText tone="secondary" weight="medium" style={styles.toggleLabel}>{mode.name}</AppText>
       <ChevronDown color={colors.textSecondary} size={11} />
     </Pressable>
-    {open ? <Modal transparent visible animationType="fade" statusBarTranslucent onRequestClose={() => setOpen(false)}>
+    {open ? <Modal transparent visible animationType="slide" statusBarTranslucent onRequestClose={() => setOpen(false)}>
       <SafeAreaProvider style={{ flex: 1 }}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close chat mode selector"
           onPress={() => setOpen(false)} style={[styles.backdrop, { backgroundColor: colors.overlay }]} />
         <SafeAreaView pointerEvents="box-none" edges={['top', 'bottom']} style={styles.overlay}>
-          <View accessibilityViewIsModal style={[styles.menu, { backgroundColor: colors.elevated, borderColor: colors.separator }]}>
+          <View accessibilityViewIsModal style={styles.menu}>
+            <GlassBackdrop />
             <View style={styles.header}>
               <AppText weight="medium" style={styles.heading}>Chat mode</AppText>
               <Pressable accessibilityRole="button" accessibilityLabel="Close chat mode selector"
@@ -63,7 +65,7 @@ const styles = StyleSheet.create({
   toggleLabel: { fontSize: 11, lineHeight: 16, flexShrink: 1 },
   backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   overlay: { flex: 1, justifyContent: 'flex-end', paddingHorizontal: 16 },
-  menu: { marginBottom: 16, padding: 12, borderRadius: 28, borderWidth: StyleSheet.hairlineWidth, maxWidth: 440, maxHeight: '80%', width: '100%', alignSelf: 'center' },
+  menu: { marginBottom: 16, padding: 12, borderRadius: 28, maxWidth: 440, maxHeight: '80%', width: '100%', alignSelf: 'center' },
   header: { paddingLeft: 12, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   heading: { fontSize: 22, lineHeight: 28, letterSpacing: -0.7 },
   close: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },

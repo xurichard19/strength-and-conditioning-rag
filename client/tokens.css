@@ -4,8 +4,8 @@
   --color-surface: oklch(27% 0.016 250);
   --color-raised: oklch(33% 0.02 250);
   --color-ink: oklch(96% 0.008 85);
-  --color-muted: oklch(82% 0.017 250);
-  --color-faint: oklch(74% 0.02 250);
+  --color-muted: oklch(86% 0.017 250);
+  --color-faint: oklch(80% 0.02 250);
   --color-line: oklch(46% 0.02 250);
   --color-control: oklch(62% 0.025 250);
   --color-accent: #c4b2eb;

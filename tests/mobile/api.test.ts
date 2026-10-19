@@ -668,10 +668,12 @@ test('provider finishes onboarding only after API save and never calls planning'
   const f = providerFixture(); await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
   assert.equal(f.value.accountReady, true);
   assert.equal(f.value.sessions.length, 0);
+  const version = f.value.calendarCache.version;
   assert.equal(await f.value.finishOnboarding(profile, { pain: 'ankle' }), true);
   await f.flush();
   assert.deepEqual(f.calls, ['profile', ['answers', { pain: 'ankle' }], 'complete']);
   assert.equal(f.value.profile.onboardingComplete, true);
+  assert.equal(f.value.calendarCache.version, version + 1, 'onboarding exposes its newly queued planning job on the next visit');
 });
 
 test('an older account read cannot overwrite newly completed onboarding', async () => {
@@ -1314,13 +1316,14 @@ function refreshScreenFixture(onRefresh?: () => Promise<void>, state = { refresh
   const slots: TestValue[] = []; let cursor = 0;
   const { Screen } = load('components/ui.tsx', {
     react: {
+      createContext: value => ({ defaultValue: value }), useContext: () => true,
       useState: initial => {
         const index = cursor++;
         if (!(index in slots)) slots[index] = initial;
         return [slots[index], (value: TestValue) => { slots[index] = value; }];
       },
       useRef: initial => { const index = cursor++; return slots[index] ??= { current: initial }; },
-      useCallback: callback => callback,
+      useEffect: callback => { callback(); },
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     'expo-router': { useFocusEffect: callback => { callback(); } }, 'lucide-react-native': {},
@@ -1330,36 +1333,46 @@ function refreshScreenFixture(onRefresh?: () => Promise<void>, state = { refresh
       useAnimatedStyle: style => style(), withTiming: value => value,
       useSharedValue: initial => { let value = initial; return { get: () => value, set: (next: TestValue) => { value = next; } }; },
     },
-    'react-native': { ScrollView: 'scroll', RefreshControl: 'refresh', StyleSheet: { create: value => value } },
-    'react-native-safe-area-context': {},
+    'react-native': { ScrollView: 'scroll', RefreshControl: 'refresh', StyleSheet: { create: value => value,
+      absoluteFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 } } },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     '@/design/tokens': { fonts: {}, radius: {}, shadow: {} },
     '@/lib/errors': { errorMessage: (error, fallback) => error.message || fallback },
-    '@/state/app-context': { useApp: () => ({ colors: {}, previewMode: false }) },
+    '@/state/app-context': { useApp: () => ({ colors: { tint: '#CFB6F5', card: '#141D23' }, previewMode: false }) },
   });
   const render = () => { cursor = 0; return Screen({ title: 'Test', onRefresh, refreshing: state.refreshing, children: 'Cached content' }); };
   return {
     scroll: () => [render().props.children].flat().find((node: TestNode) => node.type === 'scroll').props,
+    shade: () => render().props.children.at(-1).props,
     output: () => JSON.stringify(render()),
   };
 }
 
-test('pull-to-refresh stays spinning until completion and blocks duplicate pulls', async () => {
+test('pull-to-refresh spins and darkens the page until completion and blocks duplicate pulls', async () => {
   let finish!: (value?: TestValue) => void; let calls = 0;
   const screen = refreshScreenFixture(() => {
     calls++; return new Promise(resolve => { finish = resolve; });
   });
   assert.equal(screen.scroll().alwaysBounceVertical, true); // Short/empty pages can pull too.
   assert.equal(screen.scroll().refreshControl.props.refreshing, false);
+  const shade = () => Object.assign({}, ...screen.shade().style);
+  assert.equal(shade().opacity, 0);
   const pending = screen.scroll().refreshControl.props.onRefresh();
   assert.equal(screen.scroll().refreshControl.props.refreshing, true);
-  assert.equal(screen.scroll().style.opacity, 0.55);
+  assert.ok(shade().opacity > 0 && shade().opacity < 1, 'cached content stays visible under the shade');
+  assert.equal(shade().backgroundColor, '#000', 'loading darkens both light and dark themes');
+  for (const edge of ['top', 'right', 'bottom', 'left']) assert.equal(shade()[edge], 0);
+  assert.equal(screen.shade().pointerEvents, 'none', 'loading must not block navigation');
+  assert.equal(screen.scroll().refreshControl.props.tintColor, '#CFB6F5');
+  assert.deepEqual(plain(screen.scroll().refreshControl.props.colors), ['#CFB6F5']);
+  assert.equal(screen.scroll().refreshControl.props.progressBackgroundColor, '#141D23');
   assert.equal(screen.scroll().accessibilityState.busy, true);
   assert.match(screen.output(), /Cached content/);
   await screen.scroll().refreshControl.props.onRefresh();
   assert.equal(calls, 1);
   finish(); await pending;
   assert.equal(screen.scroll().refreshControl.props.refreshing, false);
-  assert.equal(screen.scroll().style, undefined);
+  assert.equal(shade().opacity, 0);
 });
 
 test('pull-to-refresh stops on failure, shows the error, and allows retry', async () => {
@@ -1367,7 +1380,7 @@ test('pull-to-refresh stops on failure, shows the error, and allows retry', asyn
   const screen = refreshScreenFixture(async () => { if (fail) throw new Error('offline'); });
   await screen.scroll().refreshControl.props.onRefresh();
   assert.equal(screen.scroll().refreshControl.props.refreshing, false);
-  assert.equal(screen.scroll().style, undefined);
+  assert.equal(Object.assign({}, ...screen.shade().style).opacity, 0);
   assert.match(screen.output(), /offline/);
   fail = false;
   await screen.scroll().refreshControl.props.onRefresh();
@@ -1375,19 +1388,20 @@ test('pull-to-refresh stops on failure, shows the error, and allows retry', asyn
   assert.equal(refreshScreenFixture().scroll().refreshControl, undefined);
 });
 
-test('cache invalidation refresh dims existing content without needing a pull gesture', () => {
+test('external page loading darkens cached content without a pull spinner and clears when finished', () => {
   const state = { refreshing: true };
   const screen = refreshScreenFixture(async () => {}, state);
-  assert.equal(screen.scroll().refreshControl.props.refreshing, true);
-  assert.equal(screen.scroll().style.opacity, 0.55);
+  assert.equal(screen.scroll().refreshControl.props.refreshing, false);
+  assert.ok(Object.assign({}, ...screen.shade().style).opacity > 0);
+  assert.equal(screen.scroll().accessibilityState.busy, true);
   assert.match(screen.output(), /Cached content/);
   state.refreshing = false;
   assert.equal(screen.scroll().refreshControl.props.refreshing, false);
-  assert.equal(screen.scroll().style, undefined);
+  assert.equal(Object.assign({}, ...screen.shade().style).opacity, 0);
   assert.equal(screen.scroll().accessibilityState.busy, false);
 });
 
-test('You refreshes account data, Calendar refreshes ranges, other training tabs remain previews', () => {
+test('You refreshes account data, Today and Calendar refresh ranges, Progress remains a preview', () => {
   const refreshLiveData = async () => {};
   const refreshPreview = async () => {};
   const refreshCalendar = async () => {};
@@ -1397,7 +1411,7 @@ test('You refreshes account data, Calendar refreshes ranges, other training tabs
       metrics: populated ? [{ id: 'metric', lane: 'strength', series: [1, 2] }] : [] };
     for (const tab of ['today', 'week', 'progress', 'you']) {
       const page = load(`screens/${tab}-screen.tsx`, {
-        react: { useState: initial => [initial, () => {}], useMemo: fn => fn() },
+        react: { useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}], useMemo: fn => fn(), useEffect: () => {} },
         'react/jsx-runtime': { jsx, jsxs: jsx },
         'expo-router': {}, 'lucide-react-native': {}, 'react-native-svg': {},
         'react-native': { StyleSheet: { create: value => value }, useWindowDimensions: () => ({ width: 390 }) },
@@ -1412,7 +1426,7 @@ test('You refreshes account data, Calendar refreshes ranges, other training tabs
         '@/state/use-calendar-range': { useCalendarRange: () => ({ data: { entries: [] }, loading: false, error: null, refresh: refreshCalendar }) },
       }).default();
       assert.equal(page.type, 'screen');
-      assert.equal(page.props.onRefresh, tab === 'you' ? refreshLiveData : tab === 'week' ? refreshCalendar : refreshPreview);
+      assert.equal(page.props.onRefresh, tab === 'you' ? refreshLiveData : tab === 'progress' ? refreshPreview : refreshCalendar);
     }
   }
 });

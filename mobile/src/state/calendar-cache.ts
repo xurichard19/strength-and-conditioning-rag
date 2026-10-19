@@ -16,6 +16,7 @@ export function createCalendarCache(options: { now?: () => number; ttl?: number;
     maxEntries: options.maxRanges ?? 6, maxBytes: options.maxBytes ?? 2 * 1024 * 1024,
     sizeOf: entry => JSON.stringify(entry.data).length * 2 });
   const listeners = new Set<(range: Range) => void>();
+  let version = 0;
 
   function peek(start: string, end: string) {
     const range = { start, end };
@@ -28,13 +29,15 @@ export function createCalendarCache(options: { now?: () => number; ttl?: number;
     const range = { start, end };
     cache.markStale(row => overlaps(row, range));
     cache.fence(pending => overlaps(pending, range));
-    if (notify) listeners.forEach(listener => listener(range));
+    if (notify) { version++; listeners.forEach(listener => listener(range)); }
   }
 
   return {
     peek, invalidate,
+    // Let retained views notice writes made while they were off screen, even without cached rows.
+    get version() { return version; },
     subscribe(listener: (range: Range) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    clear: cache.clear,
+    clear() { version++; cache.clear(); },
     /** Fresh containing months satisfy week reads; concurrent containing reads share one request. */
     async load(api: Api, start: string, end: string, force = false): Promise<CalendarSnapshot | undefined> {
       if (force) invalidate(start, end, false);
@@ -45,7 +48,11 @@ export function createCalendarCache(options: { now?: () => number; ttl?: number;
         const response = await api.getCalendarRange(start, end);
         if (!valid()) return;
         const result = within(calendarSnapshot(response), range);
-        cache.markStale(row => overlaps(row, range));
+        cache.markStale(row => {
+          if (!overlaps(row, range)) return false;
+          const intersection = { start: row.start > start ? row.start : start, end: row.end < end ? row.end : end };
+          return JSON.stringify(within(row.data, intersection)) !== JSON.stringify(within(result, intersection));
+        });
         cache.set(`${start}:${end}`, { ...range, data: result, fetchedAt: cache.now() });
         return result;
       }, pending => covers(pending, range));

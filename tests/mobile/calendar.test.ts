@@ -60,28 +60,38 @@ test('local date arithmetic stays on the intended days across DST and extreme ti
   }
 });
 
-function fixture(sessions: TestModule[] = [], state: TestModule = {}, today = '2026-01-31') {
+function fixture(sessions: TestModule[] = [], state: TestModule = {}, today = '2026-01-31', page = 'week') {
   const slots: TestValue[] = []; let cursor = 0; const routes: TestValue[] = []; const ranges: [string, string][] = [];
+  const timers = new Map<number, () => void>(); let timerId = 0;
+  const events = new Set<(state: string) => void>();
   let owner: string | null = 'owner';
   const refresh = async () => {};
   const colors = load('design/tokens.ts').palettes.dark;
-  const { default: Screen } = load('screens/week-screen.tsx', {
+  const { default: Screen } = load(`screens/${page}-screen.tsx`, {
     react: {
       useState: initial => {
         const index = cursor++;
-        if (!(index in slots)) slots[index] = initial;
+        if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial;
         return [slots[index], (value: TestValue) => { slots[index] = value; }];
       },
       useMemo: fn => fn(),
+      useEffect: (fn, deps) => {
+        const index = cursor++; const previous = slots[index];
+        if (!previous || deps.some((value: unknown, i: number) => previous.deps[i] !== value)) {
+          previous?.cleanup?.(); slots[index] = { deps, cleanup: fn() };
+        }
+      },
     },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
-    'react-native': { View: 'view', Pressable: 'button', ScrollView: 'scroll', StyleSheet: { create: value => value } },
+    'react-native': { View: 'view', Pressable: 'button', ScrollView: 'scroll', ActivityIndicator: 'spinner', StyleSheet: { create: value => value },
+      AppState: { addEventListener: (_, fn) => { events.add(fn); return { remove: () => events.delete(fn) }; } } },
     'expo-router': { router: { push: (path: TestValue) => routes.push(path) } },
     'lucide-react-native': { Check: 'check', ChevronLeft: 'left', ChevronRight: 'right', Clock3: 'clock' },
-    '@/components/ui': { AppText: 'text', Card: 'card', Screen: 'screen', SectionTitle: 'heading', SecondaryButton: 'retry' },
+    '@/components/ui': { AppText: 'text', Card: 'card', Screen: 'screen', SectionTitle: 'heading', SecondaryButton: 'retry', PrimaryButton: 'primary' },
     '@/components/calendar-day-actions': { CalendarDayActions: 'day-actions' },
     '@/components/sports-workout-details': { SportsWorkoutDetails: 'sport-details' },
     '@/components/workout-details': { WorkoutDetails: 'workout-details' },
+    '@/data/mock': { milestones: [{ text: 'First time squatting 60 kg', when: '12 Aug' }] },
     '@/lib/calendar': calendar,
     '@/lib/dates': { todayIso: () => today, isToday: date => date === today, formatDay: date => calendar.calendarLabel(date, { weekday: 'short' }) },
     '@/state/app-context': { useApp: () => ({ sessions, colors, authSession: owner ? { user: { id: owner } } : null, block: { week: 3, of: 8, name: 'Strength' }, refreshPreview: refresh }) },
@@ -89,7 +99,9 @@ function fixture(sessions: TestModule[] = [], state: TestModule = {}, today = '2
       ranges.push([start, end]);
       return { data: { entries: sessions.filter(row => row.date >= start && row.date <= end), revision: null }, loading: false, error: null, refresh, ...state };
     } },
-  });
+  }, { Date: class extends Date { static now() { return new Date(`${today}T12:00:00`).getTime(); } },
+    setTimeout: (fn: () => void, delay: number) => { assert.ok(delay > 0 && delay <= 25 * 60 * 60 * 1000); timers.set(++timerId, fn); return timerId; },
+    clearTimeout: (id: number) => timers.delete(id) });
   const expand = (node: TestValue): TestValue => {
     if (!node || typeof node !== 'object') return node;
     if (Array.isArray(node)) return node.map(expand);
@@ -99,6 +111,10 @@ function fixture(sessions: TestModule[] = [], state: TestModule = {}, today = '2
   const render = () => { cursor = 0; return expand(Screen()); };
   const find = (label: string) => nodes(render()).find(node => node.props.accessibilityLabel === label);
   return { render, refresh, routes, ranges, find,
+    midnight: (date: string) => { today = date; const work = [...timers.values()]; timers.clear(); work.forEach(fn => fn()); },
+    resume: (date: string) => { today = date; events.forEach(fn => fn('active')); },
+    unmount: () => slots.forEach(slot => slot?.cleanup?.()),
+    get timerCount() { return timers.size; }, get listenerCount() { return events.size; },
     menu: () => nodes(render()).find(node => node.type === 'day-actions'),
     details: () => nodes(render()).find(node => node.type === 'sport-details' || node.type === 'workout-details'),
     setOwner: (value: string | null) => { owner = value; },
@@ -108,6 +124,68 @@ function fixture(sessions: TestModule[] = [], state: TestModule = {}, today = '2
     days: () => nodes(render()).filter(node => /^\w+, \w+ \d+, \d{4}(?:, today)?\./.test(node.props.accessibilityLabel ?? '')),
   };
 }
+
+test('Today features only planned workouts and opens real details for every workout type without demo navigation', () => {
+  const entries = calendar.calendarSnapshot({ revision: 1, workouts: [
+    workout('Strength', '2026-01-31', { exercises: [{ id: 'squat', name: 'Squat', sets: [{ planned_reps: 8 }] }] }),
+    workout('Done', '2026-01-31', { status: 'completed' }), workout('Skipped', '2026-01-31', { status: 'skipped' }),
+    workout('Active', '2026-01-31', { status: 'in_progress' }), workout('Tomorrow', '2026-02-01'),
+    workout('Old plan', '2026-01-31', { superseded_at: '2026-01-30' }),
+  ], sports_workouts: [sports('boxing', '2026-01-31'), sports('deleted', '2026-01-31', { status: 'cancelled' })] }).entries;
+  const screen = fixture(entries, {}, '2026-01-31', 'today');
+  assert.equal(screen.render().props.preview, false);
+  assert.deepEqual(screen.ranges.at(-1), ['2026-01-31', '2026-01-31']);
+  assert.equal(nodes(screen.render()).filter(node => node.type === 'primary').length, 1);
+  assert.match(screen.text(), /Squat/);
+  assert.doesNotMatch(screen.text(), /Tomorrow|Old plan|deleted|Move|No workout today|training preview|Ease this week/);
+  assert.match(screen.text(), /Recent progress.*First time squatting 60 kg.*A milestone from .*12 Aug/);
+  screen.click('Start Strength');
+  assert.equal(screen.details()?.type, 'workout-details');
+  assert.equal(screen.details()?.props.session.exercises[0].prescriptions[0], 'Set 1 · 8 reps');
+  screen.details()!.props.onClose(); assert.equal(screen.details(), undefined);
+  for (const name of ['Done', 'Skipped', 'Active', 'Boxing']) {
+    screen.click(`View ${name} workout`);
+    assert.equal(screen.details()?.type, name === 'Boxing' ? 'sport-details' : 'workout-details');
+    assert.equal(screen.details()?.props.session.title, name);
+  }
+  assert.deepEqual(screen.routes, []);
+  screen.unmount();
+});
+
+test('Today distinguishes rest days from loading and failed reads and keeps pull-to-refresh', () => {
+  for (const [state, expected, rest] of [
+    [{}, /Take it easy/, true],
+    [{ data: undefined, loading: true }, /Your session/, false],
+    [{ data: undefined, error: 'offline' }, /offline/, false],
+    [{ error: 'offline' }, /last loaded workouts/, false],
+  ] as const) {
+    const screen = fixture([], state, '2026-01-31', 'today');
+    assert.match(screen.text(), expected);
+    assert.equal(screen.text().includes('No workout today.'), rest);
+    assert.equal(screen.render().props.onRefresh, screen.refresh);
+    assert.equal(screen.render().props.refreshing, 'loading' in state && state.loading);
+    assert.doesNotMatch(screen.text(), /Loading today's workouts/);
+    assert.equal(nodes(screen.render()).some(node => node.type === 'primary'), false);
+    screen.unmount();
+  }
+});
+
+test('Today updates at midnight/resume and open details track saved changes, deletions and account switches', () => {
+  const entries = calendar.calendarSnapshot({ ...empty(), workouts: [workout('Today', '2026-01-31'), workout('Next day', '2026-02-01')] }).entries;
+  const screen = fixture(entries, {}, '2026-01-31', 'today');
+  screen.click('Start Today');
+  screen.setEntries([{ ...entries[0], title: 'Updated' }, entries[1]]);
+  assert.equal(screen.details()?.props.session.title, 'Updated');
+  screen.midnight('2026-02-01');
+  assert.match(screen.text(), /Next day/); assert.equal(screen.details(), undefined);
+  assert.deepEqual(screen.ranges.at(-1), ['2026-02-01', '2026-02-01']);
+  screen.click('Start Next day'); screen.setOwner('other'); assert.equal(screen.details(), undefined);
+  screen.setOwner('owner'); screen.setEntries([]); assert.equal(screen.details(), undefined);
+  screen.resume('2026-02-03'); screen.render();
+  assert.deepEqual(screen.ranges.at(-1), ['2026-02-03', '2026-02-03']);
+  assert.equal(screen.timerCount, 1); assert.equal(screen.listenerCount, 1);
+  screen.unmount(); assert.equal(screen.timerCount, 0); assert.equal(screen.listenerCount, 0);
+});
 
 test('month screen renders the computed number of date cells without empty rows', () => {
   for (const [date, count] of [['2026-02-15', 28], ['2026-09-19', 35], ['2026-05-15', 42]] as const) {
@@ -236,9 +314,9 @@ test('screen requests only its week/month and distinguishes loading, errors, and
   screen.click('Month view'); screen.render();
   assert.deepEqual(screen.ranges.at(-1), ['2026-01-01', '2026-01-31']);
   const loading = fixture([], { data: undefined, loading: true });
-  assert.match(loading.text(), /Loading calendar/);
+  assert.doesNotMatch(loading.text(), /Loading calendar/);
   assert.doesNotMatch(loading.text(), /No workouts planned/);
-  assert.equal(loading.render().props.refreshing, false);
+  assert.equal(loading.render().props.refreshing, true);
   const refreshing = fixture([{ id: 's', kind: 'sport', date: '2026-01-31', title: 'Boxing', status: 'planned' }], { loading: true });
   assert.equal(refreshing.render().props.refreshing, true);
   assert.match(refreshing.text(), /Boxing/);
@@ -378,6 +456,22 @@ test('overlapping concurrent calendar reads share a covering request and filter 
   assert.equal((await month)!.entries.length, 2);
   assert.deepEqual(plain((await week)!.entries.map(row => row.id)), ['second']);
   assert.equal(calls, 1);
+});
+
+test('overlapping reads keep unchanged ranges fresh but invalidate changed workouts and sports at the same revision', async () => {
+  for (const kind of ['workouts', 'sports_workouts'] as const) {
+    let clock = 0; const cache = createCalendarCache({ now: () => clock });
+    const original = { ...empty(), workouts: [workout('lift', '2026-01-20')], sports_workouts: [sports('boxing', '2026-01-21')] };
+    await cache.load({ getCalendarRange: async () => original }, '2026-01-01', '2026-01-31');
+    clock = 30_000;
+    await cache.load({ getCalendarRange: async () => original }, '2026-01-18', '2026-02-07');
+    assert.equal(cache.peek('2026-01-01', '2026-01-31')?.fresh, true);
+    clock = 60_000;
+    assert.equal(cache.peek('2026-01-01', '2026-01-31')?.fresh, false, 'overlap does not extend the original TTL');
+    assert.equal(cache.peek('2026-01-18', '2026-02-07')?.fresh, true);
+    await cache.load({ getCalendarRange: async () => ({ ...original, [kind]: [] }) }, '2026-01-01', '2026-01-31');
+    assert.equal(cache.peek('2026-01-18', '2026-02-07')?.fresh, false, 'deleting an entry invalidates overlapping coverage');
+  }
 });
 
 test('sports invalidation fences old reads, invalidates overlapping months and weeks, and preserves unrelated ranges', async () => {
