@@ -33,7 +33,7 @@ export default function ChatWindow() {
         <Pressable accessibilityRole="button" accessibilityLabel={expanded ? 'Minimize chat' : 'Expand chat'}
           accessibilityHint={expanded ? 'Returns to the small chat window.' : 'Swipe up or tap to open full chat and history.'}
           onPress={() => setExpanded(value => !value)} style={styles.handleArea}>
-          <View style={[styles.handle, { backgroundColor: colors.fillStrong }]} />
+          <View style={[styles.handle, { backgroundColor: colors.controlBorder }]} />
           {!expanded ? <AppText tone="secondary" style={styles.hint}>Swipe up to expand</AppText> : null}
         </Pressable>
       </View>

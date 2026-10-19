@@ -76,7 +76,7 @@ function PasswordField({ label, value, onChange, visible, onToggle }: { label: s
   return (
     <View>
       <AppText weight="medium" style={styles.label}>{label}</AppText>
-      <View style={[styles.inputShell, { backgroundColor: colors.card, borderColor: colors.separator }]}>
+      <View style={[styles.inputShell, { backgroundColor: colors.card, borderColor: colors.controlBorder }]}>
         <LockKeyhole color={colors.textTertiary} size={18} />
         <TextInput accessibilityLabel={label} autoCapitalize="none" autoComplete="new-password" secureTextEntry={!visible} value={value} onChangeText={onChange} placeholder="At least 8 characters" placeholderTextColor={colors.textTertiary} style={[styles.input, { color: colors.text }]} />
         <Pressable accessibilityRole="button" accessibilityLabel={visible ? 'Hide password' : 'Show password'} onPress={onToggle} style={styles.eyeButton}>{visible ? <EyeOff color={colors.textSecondary} size={18} /> : <Eye color={colors.textSecondary} size={18} />}</Pressable>

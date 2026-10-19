@@ -178,7 +178,7 @@ function ChoiceTile({ label, selected, onPress, multi = false, compact = false }
     <Pressable accessibilityRole={multi ? 'checkbox' : 'radio'} accessibilityLabel={label}
       accessibilityState={{ checked: selected }} aria-checked={selected} onPress={() => { selectionFeedback(); onPress(); }}
       style={({ pressed }) => [styles.tile, compact && styles.dayTile, {
-        backgroundColor: selected ? colors.tint : colors.card, borderColor: selected ? colors.tint : colors.separator,
+        backgroundColor: selected ? colors.tint : colors.card, borderColor: selected ? colors.tint : colors.controlBorder,
       }, pressed && styles.pressed]}>
       <AppText weight={selected ? 'semibold' : 'medium'} style={[styles.tileText, compact && styles.dayText, { color: foreground }]}>{label}</AppText>
       {selected ? <Check color={foreground} size={compact ? 12 : 16} strokeWidth={2.5} style={compact ? styles.dayCheck : styles.check} /> : null}
@@ -197,7 +197,7 @@ type QuestionProps = {
 
 function Question({ id, draft, update, note, setNote }: QuestionProps) {
   const { colors } = useApp();
-  const inputStyle = [styles.input, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }];
+  const inputStyle = [styles.input, { color: colors.text, backgroundColor: colors.card, borderColor: colors.controlBorder }];
   switch (id) {
     case 'sport': return <>
       <Heading>What sport do you play?</Heading>
@@ -259,7 +259,7 @@ function NotesStep({ draft, update, note, setNote }: Pick<QuestionProps, 'draft'
     <Heading>Anything else I should know?</Heading>
     {!draft.notes.length ? <View style={[styles.choices, styles.wide]}>{NOTE_PROMPTS.map(prompt => (
       <Pressable key={prompt} accessibilityRole="button" onPress={() => add(prompt, false)}
-        style={({ pressed }) => [styles.tile, { backgroundColor: colors.card, borderColor: colors.separator }, pressed && styles.pressed]}>
+        style={({ pressed }) => [styles.tile, { backgroundColor: colors.card, borderColor: colors.controlBorder }, pressed && styles.pressed]}>
         <AppText style={styles.promptText}>{prompt}</AppText>
       </Pressable>
     ))}</View> : (
@@ -274,7 +274,7 @@ function NotesStep({ draft, update, note, setNote }: Pick<QuestionProps, 'draft'
       ))}</View>
     )}
     {hint ? <AppText accessibilityLiveRegion="polite" tone="secondary" style={[styles.noteHint, styles.wide]}>{hint}</AppText> : null}
-    <View style={[styles.composer, styles.wide, { backgroundColor: colors.card, borderColor: colors.separator }]}>
+    <View style={[styles.composer, styles.wide, { backgroundColor: colors.card, borderColor: colors.controlBorder }]}>
       <TextInput accessibilityLabel="Tell Arcel anything else" value={note} onChangeText={setNote} multiline
         placeholder="Type anything…" placeholderTextColor={colors.textTertiary}
         style={[styles.noteInput, { color: colors.text }]} />

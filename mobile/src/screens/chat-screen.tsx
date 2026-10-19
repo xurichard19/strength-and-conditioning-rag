@@ -56,7 +56,7 @@ function SourceRow({ source, index, onExcerpt }: { source: ChatSource; index: nu
             <AppText tone="tint" weight="medium" style={styles.sourceActionText}>Read excerpt</AppText>
             <ChevronRight color={colors.tintText} size={15} />
           </Pressable>
-          {url ? <Pressable accessibilityRole="link" accessibilityLabel={`Open source: ${title}`} hitSlop={4} onPress={() => void Linking.openURL(url).catch(() => undefined)} style={[styles.sourceLink, styles.sourceOpenButton, { borderColor: colors.separator, backgroundColor: colors.fill }]}>
+          {url ? <Pressable accessibilityRole="link" accessibilityLabel={`Open source: ${title}`} hitSlop={4} onPress={() => void Linking.openURL(url).catch(() => undefined)} style={[styles.sourceLink, styles.sourceOpenButton, { borderColor: colors.controlBorder, backgroundColor: colors.fill }]}>
             <ArrowUpRight color={colors.tintText} size={18} strokeWidth={1.8} />
           </Pressable> : null}
         </View>
@@ -104,7 +104,7 @@ function MessageSources({ sources }: { sources: ChatSource[] }) {
         accessibilityRole="button"
         accessibilityLabel={`Open ${label}`}
         onPress={() => setOpen(true)}
-        style={({ pressed }) => [styles.sourceToggle, { borderColor: colors.separator, backgroundColor: colors.card }, pressed && { opacity: 0.7 }]}>
+        style={({ pressed }) => [styles.sourceToggle, { borderColor: colors.controlBorder, backgroundColor: colors.card }, pressed && { opacity: 0.7 }]}>
         <View style={[styles.sourceToggleIcon, { backgroundColor: colors.tintSoft }]}><BookOpen color={colors.tintText} size={20} strokeWidth={1.6} /></View>
         <View style={styles.sourceToggleCopy}><AppText weight="medium" style={styles.sourceToggleText}>Sources</AppText>
           <AppText tone="secondary" style={styles.sourceToggleHint}>{label} · View excerpts</AppText></View>
@@ -115,7 +115,7 @@ function MessageSources({ sources }: { sources: ChatSource[] }) {
           <View accessibilityViewIsModal style={styles.sourceModal}>
             <Pressable accessibilityRole="button" accessibilityLabel="Close sources" onPress={close} style={[styles.sourceBackdrop, { backgroundColor: colors.overlay }]} />
             <SafeAreaView edges={['bottom']} style={[styles.sourceSheet, { backgroundColor: colors.background, borderColor: colors.separator }]}>
-              <View style={[styles.sourceHandle, { backgroundColor: colors.fillStrong }]} />
+              <View style={[styles.sourceHandle, { backgroundColor: colors.controlBorder }]} />
               <View style={[styles.sourceSheetHeader, { borderBottomColor: colors.separator }]}>
                 {source ? <Pressable accessibilityRole="button" accessibilityLabel="Back to sources" onPress={() => setSelected(null)} style={styles.sourceLink}><ArrowLeft color={colors.tintText} size={20} /></Pressable>
                   : null}
@@ -169,7 +169,7 @@ function QuickQuestions({ context, compact }: { context?: string; compact?: bool
         <AppText tone="secondary" style={styles.welcomeCopy}>Ask about your week, explore the research, or work through a training decision.</AppText>
       </View>}
       <AppText tone="secondary" weight="medium" style={styles.quickTitle}>START WITH A QUESTION</AppText>
-      <View style={styles.quickList}>{(compact ? quickQuestions.slice(0, 2) : quickQuestions).map((question) => <Pressable accessibilityRole="button" accessibilityLabel={question} key={question} onPress={() => void sendChat(question, context)} style={({ pressed }) => [styles.quick, { borderColor: colors.separator }, pressed && { backgroundColor: colors.fill }]}><AppText style={styles.quickText}>{question}</AppText><ArrowUpRight color={colors.tintText} size={18} strokeWidth={1.7} /></Pressable>)}</View>
+      <View style={styles.quickList}>{(compact ? quickQuestions.slice(0, 2) : quickQuestions).map((question) => <Pressable accessibilityRole="button" accessibilityLabel={question} key={question} onPress={() => void sendChat(question, context)} style={({ pressed }) => [styles.quick, { borderColor: colors.controlBorder }, pressed && { backgroundColor: colors.fill }]}><AppText style={styles.quickText}>{question}</AppText><ArrowUpRight color={colors.tintText} size={18} strokeWidth={1.7} /></Pressable>)}</View>
     </View>
   );
 }
@@ -179,7 +179,7 @@ function Composer({ draft, busy, onChange, onSubmit }: { draft: string; busy: bo
   const canSend = Boolean(draft.trim()) && !busy;
   return (
     <View style={[styles.composerWrap, { backgroundColor: colors.background }]}>
-      <View style={[styles.composer, { backgroundColor: colors.card, borderColor: colors.separator }]}>
+      <View style={[styles.composer, { backgroundColor: colors.card, borderColor: colors.controlBorder }]}>
         <TextInput value={draft} onChangeText={onChange} onSubmitEditing={onSubmit} placeholder="Ask a training question…" placeholderTextColor={colors.textTertiary} style={[styles.input, { color: colors.text }]} multiline maxLength={800} accessibilityLabel="Message Arcel" />
         <ChatModeSelector />
         <Pressable accessibilityRole="button" accessibilityLabel="Send message" onPress={onSubmit} disabled={!canSend} style={({ pressed }) => [styles.send, { backgroundColor: canSend ? colors.strong : colors.fillStrong }, pressed && { opacity: 0.75 }]}><ArrowUp color={canSend ? colors.strongText : colors.textTertiary} size={20} strokeWidth={2} /></Pressable>
@@ -194,7 +194,7 @@ type WindowControls = { compact?: boolean; onExpand?: () => void; onClose?: () =
 function ChatHeader({ onMenu, onOptions, compact, onExpand, onClose }: WindowControls & { onMenu: () => void; onOptions: () => void }) {
   const { colors, chatTitle, activeConversationId } = useApp();
   return <View style={[styles.header, compact && styles.compactHeader, { borderBottomColor: colors.separator }]}>
-    {!compact ? <Pressable accessibilityRole="button" accessibilityLabel="Open conversations" onPress={onMenu} style={[styles.headerButton, { borderColor: colors.separator }]}><Menu color={colors.text} size={21} strokeWidth={1.7} /></Pressable> : null}
+    {!compact ? <Pressable accessibilityRole="button" accessibilityLabel="Open conversations" onPress={onMenu} style={[styles.headerButton, { borderColor: colors.controlBorder }]}><Menu color={colors.text} size={21} strokeWidth={1.7} /></Pressable> : null}
     <View style={styles.headerCopy}><AppText tone="secondary" style={styles.subtitle}>TRAINING ASSISTANT</AppText><AppText weight="medium" style={[styles.title, compact && styles.compactTitle]} numberOfLines={compact ? 1 : 2}>{chatTitle}</AppText></View>
     {compact ? <Pressable accessibilityRole="button" accessibilityLabel="Expand chat" onPress={onExpand} style={styles.headerButton}><Maximize2 color={colors.text} size={19} /></Pressable>
       : activeConversationId ? <Pressable accessibilityRole="button" accessibilityLabel="Conversation options" onPress={onOptions} style={styles.headerButton}><MoreHorizontal color={colors.text} size={22} /></Pressable> : null}

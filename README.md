@@ -29,6 +29,9 @@ config:
   htmlLabels: false
   flowchart:
     htmlLabels: false
+    nodeSpacing: 30
+    rankSpacing: 30
+    padding: 10
 ---
 flowchart TB
     User(["User"]) --> FE["React Native<br/>mobile client · Expo"]
@@ -56,6 +59,9 @@ config:
   htmlLabels: false
   flowchart:
     htmlLabels: false
+    nodeSpacing: 30
+    rankSpacing: 30
+    padding: 10
 ---
 flowchart TB
     Inputs["Onboarding completion<br/>or edits · Sports changes"] --> API["FastAPI backend<br/>Cloud Run"]
@@ -84,6 +90,9 @@ config:
   htmlLabels: false
   flowchart:
     htmlLabels: false
+    nodeSpacing: 30
+    rankSpacing: 30
+    padding: 10
 ---
 flowchart TB
     Request["Chat request"] --> History["Load history node<br/>Supabase"]
@@ -112,16 +121,19 @@ config:
   htmlLabels: false
   flowchart:
     htmlLabels: false
+    nodeSpacing: 30
+    rankSpacing: 30
+    padding: 10
 ---
 flowchart TB
     Request["Claimed job + athlete context<br/>Initial plan / weekly extension<br/>or adjustment"] --> Context["Context node<br/>Fixed dates and editable workouts<br/>Athlete inputs"]
     Context --> Prepare["Prepare node · OpenAI<br/>Focused research query"]
     Prepare --> Search["Search node<br/>Chroma first<br/>Tavily available on retry"]
-    Search --> Evaluate{"Evaluate node · OpenAI<br/>Sufficient evidence?"}
+    Search --> Evaluate["Evaluate node · OpenAI<br/>Sufficient evidence?"]
     Evaluate -->|yes| Generate["Generate node · OpenAI<br/>Structured PlanningProposal"]
     Evaluate -->|one research retry| Search
     Evaluate -->|still insufficient / budget exhausted| Fail["Raise error<br/>No publication"]
-    Generate --> Validate{"Validate node<br/>Dates, coverage and prescriptions<br/>Protected workouts"}
+    Generate --> Validate["Validate node<br/>Dates, coverage and prescriptions<br/>Protected workouts"]
     Validate -->|one repair with feedback| Generate
     Validate -->|still invalid / budget exhausted| Fail
     Validate -->|valid| Plan["Return validated proposal<br/>Worker publishes<br/>outside the graph"]
@@ -130,6 +142,13 @@ flowchart TB
 #### Database Infrastructure
 
 ```mermaid
+---
+config:
+  er:
+    nodeSpacing: 80
+    rankSpacing: 80
+    entityPadding: 10
+---
 erDiagram
     direction LR
 

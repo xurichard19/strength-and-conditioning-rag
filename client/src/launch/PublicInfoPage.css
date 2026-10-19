@@ -92,7 +92,7 @@
 }
 
 .arcel-policy .policy-sidebar a[aria-current='page'] {
-  border-color: var(--color-line);
+  border-color: var(--color-accent);
   background: var(--color-surface);
   color: var(--color-accent);
 }

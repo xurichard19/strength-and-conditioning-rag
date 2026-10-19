@@ -17,7 +17,7 @@ function ActionFields({ action, busy, name, setName, setAction }: {
   action: Action; busy: boolean; name: string; setName: (name: string) => void; setAction: (action: Action) => void;
 }) {
   const { colors, chatBusy, chatTitle } = useApp();
-  const buttonStyle = [styles.actionButton, { borderColor: colors.separator }];
+  const buttonStyle = [styles.actionButton, { borderColor: colors.controlBorder }];
   if (action === 'menu') return <>
     <OutlineButton style={buttonStyle} disabled={chatBusy} onPress={() => { setName(chatTitle); setAction('rename'); }}>Rename conversation</OutlineButton>
     <OutlineButton style={[buttonStyle, { borderColor: colors.danger }]} disabled={chatBusy} onPress={() => setAction('delete')}>Delete conversation</OutlineButton>
@@ -25,13 +25,13 @@ function ActionFields({ action, busy, name, setName, setAction }: {
   </>;
   if (action === 'delete') return <AppText>This permanently deletes this conversation and all its messages. This cannot be undone.</AppText>;
   return <TextInput accessibilityLabel="Conversation name" autoFocus value={name} onChangeText={setName} maxLength={120} editable={!busy}
-    selectionColor={colors.tint} style={[styles.nameInput, { color: colors.text, backgroundColor: colors.fill, borderColor: colors.separator }]} />;
+    selectionColor={colors.tint} style={[styles.nameInput, { color: colors.text, backgroundColor: colors.fill, borderColor: colors.controlBorder }]} />;
 }
 
 /** Keep transient rename/delete form state separate from the streaming conversation view. */
 export function ConversationActions({ onClose }: { onClose: () => void }) {
   const { colors, renameConversation, deleteConversation } = useApp();
-  const buttonStyle = [styles.actionButton, { borderColor: colors.separator }];
+  const buttonStyle = [styles.actionButton, { borderColor: colors.controlBorder }];
   const [action, setAction] = useState<Action>('menu');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
