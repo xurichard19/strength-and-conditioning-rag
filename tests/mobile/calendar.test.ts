@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { load, plain, deferred, jsx, type TestValue, type TestModule, type TestNode, type Stubs } from './helpers.ts';
-import type { CalendarResponse, CalendarWorkout, SportsWorkout } from '../src/services/backend';
-const calendar = load<typeof import('../src/lib/calendar')>('lib/calendar.ts');
-const { createCalendarCache } = load<typeof import('../src/state/calendar-cache')>('state/calendar-cache.ts', {
+import type { CalendarResponse, CalendarWorkout, SportsWorkout } from '../../mobile/src/services/backend';
+const calendar = load<typeof import('../../mobile/src/lib/calendar')>('lib/calendar.ts');
+const { createCalendarCache } = load<typeof import('../../mobile/src/state/calendar-cache')>('state/calendar-cache.ts', {
   '../lib/calendar': calendar, './memory-cache': load('state/memory-cache.ts'),
 });
-const { createBackend } = load<typeof import('../src/services/backend')>('services/backend.ts');
+const { createBackend } = load<typeof import('../../mobile/src/services/backend')>('services/backend.ts');
 const empty = (): CalendarResponse => ({ workouts: [], sports_workouts: [], revision: null });
 const workout = (id: string, date: string, fields: Partial<CalendarWorkout> = {}): CalendarWorkout => ({ id, scheduled_date: date, name: id, status: 'planned', notes: null, superseded_at: null, exercises: [], ...fields });
 const sports = (id: string, date: string, fields: Partial<SportsWorkout> = {}): SportsWorkout => ({ id, user_id: 'owner', scheduled_date: date, sport: 'boxing', status: 'planned', notes: null,
@@ -346,7 +346,7 @@ test('calendar LRU and content budgets bound memory without truncating displayed
 
 // Run the actual focus hook with deterministic React/native lifecycle boundaries.
 function rangeFixture(api: Pick<ReturnType<typeof createBackend>, 'getCalendarRange'>, cache = createCalendarCache()) {
-  const slots: TestValue[] = []; let cursor = 0; let dirty = true; let effects: (() => void)[] = []; let value!: ReturnType<typeof import('../src/state/use-calendar-range').useCalendarRange>;
+  const slots: TestValue[] = []; let cursor = 0; let dirty = true; let effects: (() => void)[] = []; let value!: ReturnType<typeof import('../../mobile/src/state/use-calendar-range').useCalendarRange>;
   let dates: [string, string] = ['2026-01-01', '2026-01-31']; let owner: string | null = 'a'; let focused = true;
   const events = new Set<(status: string) => void>();
   const changed = (a: unknown[] | undefined, b: unknown[]) => !a || a.some((v, i) => v !== b[i]);

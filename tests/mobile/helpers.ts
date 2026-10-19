@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import vm from 'node:vm';
-import ts from 'typescript';
+
+const ts: typeof import('typescript') = createRequire(new URL('../../mobile/package.json', import.meta.url))('typescript');
 
 // VM exports and lightweight native/React stubs are deliberately partial and heterogeneous.
 // Keep their dynamic types at this test boundary; pure modules can request their real export type.
@@ -13,7 +15,7 @@ export type Stubs = { [name: string]: Stub };
 
 /** Load app code with explicit test doubles; unexpected imports never reach native APIs or the network. */
 export function load<T = TestModule>(file: string, modules: Stubs = {}, globals: TestModule = {}): T {
-  const source = readFileSync(resolve(import.meta.dirname, '../src', file), 'utf8');
+  const source = readFileSync(resolve(import.meta.dirname, '../../mobile/src', file), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS,
     target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
   const exports = {};

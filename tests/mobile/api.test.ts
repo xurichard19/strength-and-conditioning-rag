@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { load, plain, jsx, type TestValue, type TestModule, type TestNode, type Stubs } from './helpers.ts';
-import type { Profile, ChatSource, ChatStage } from '../src/domain/types';
-import type { SavedMessage, Conversation } from '../src/services/backend';
-const backend = load<typeof import('../src/services/backend')>('services/backend.ts');
+import type { Profile, ChatSource, ChatStage } from '../../mobile/src/domain/types';
+import type { SavedMessage, Conversation } from '../../mobile/src/services/backend';
+const backend = load<typeof import('../../mobile/src/services/backend')>('services/backend.ts');
 const memoryCache = load('state/memory-cache.ts');
-const { createChatCache: chatCache } = load<typeof import('../src/state/chat-cache')>('state/chat-cache.ts', { './memory-cache': memoryCache });
-const { createCalendarCache } = load<typeof import('../src/state/calendar-cache')>('state/calendar-cache.ts', { './memory-cache': memoryCache, '../lib/calendar': load('lib/calendar.ts') });
-const { webUrl } = load<typeof import('../src/lib/links')>('lib/links.ts');
+const { createChatCache: chatCache } = load<typeof import('../../mobile/src/state/chat-cache')>('state/chat-cache.ts', { './memory-cache': memoryCache });
+const { createCalendarCache } = load<typeof import('../../mobile/src/state/calendar-cache')>('state/calendar-cache.ts', { './memory-cache': memoryCache, '../lib/calendar': load('lib/calendar.ts') });
+const { webUrl } = load<typeof import('../../mobile/src/lib/links')>('lib/links.ts');
 type CacheApi = Parameters<ReturnType<typeof chatCache>['loadList']>[0];
 const unexpectedRead = () => { throw new Error('unexpected cache read'); };
 const unusedReads: CacheApi = { getConversations: unexpectedRead, getConversation: unexpectedRead, getMessages: unexpectedRead };
@@ -267,7 +267,7 @@ function authFixture() {
     signOut: async () => (session = null, {}),
     startAutoRefresh() {}, stopAutoRefresh() {} };
   let options!: TestModule;
-  const api = load<typeof import('../src/services/api')>('services/api.ts', {
+  const api = load<typeof import('../../mobile/src/services/api')>('services/api.ts', {
     'react-native-url-polyfill/auto': {}, '@react-native-async-storage/async-storage': {},
     '@supabase/supabase-js': { createClient: (_url, key, opts) => {
       assert.equal(key, 'sb_publishable_test'); options = opts; return { auth };
@@ -436,7 +436,7 @@ test('failed POST exposes the server error and is not retried', async () => {
 
 function readDeadlineFixture() {
   const timers = new Map<number, () => void>(); let next = 0;
-  const api = load<typeof import('../src/services/backend')>('services/backend.ts', {}, {
+  const api = load<typeof import('../../mobile/src/services/backend')>('services/backend.ts', {}, {
     setTimeout: (callback: () => void, delay: number) => {
       assert.equal(delay, 15_000); const id = ++next; timers.set(id, callback); return id;
     },
@@ -551,7 +551,7 @@ test('native auth callback restores tokens and rejects invalid links', async () 
 
 // Deterministic hook harness: exercise the provider without mounting native views.
 function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => TestValue> = {}) {
-  const slots: TestValue[] = []; let cursor = 0; let dirty = true; let value!: ReturnType<typeof import('../src/state/app-context').useApp>; let effects: (() => void)[] = [];
+  const slots: TestValue[] = []; let cursor = 0; let dirty = true; let value!: ReturnType<typeof import('../../mobile/src/state/app-context').useApp>; let effects: (() => void)[] = [];
   let now = 0; let timerId = 0;
   const timers = new Map<number, { at: number; callback: () => void }>();
   const changed = (a: unknown[] | undefined, b: unknown[] | undefined) => !a || !b || a.length !== b.length || a.some((item, i) => item !== b[i]);

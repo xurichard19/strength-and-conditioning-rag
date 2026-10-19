@@ -9,7 +9,7 @@ from app.api.routers import calendar, workouts
 from app.auth.supabase import require_user
 from app.contracts import CalendarSnapshot, WorkoutRecord, WorkoutSnapshot
 from app.db.supabase import SupabaseDataError
-from server.tests.test_profile import USER, NOW
+from tests.backend.test_profile import USER, NOW
 
 
 ID = UUID("22222222-2222-4222-8222-222222222222")

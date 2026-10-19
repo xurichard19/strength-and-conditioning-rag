@@ -4,7 +4,7 @@ note: web client depreciated, mobile client currently in development
 
 Arcel is a full-stack assistant for hybrid athletes building strength and conditioning programs around sport-specific demands. It answers conversational and research-backed training questions using more than 300 CC BY 4.0 research papers, live web search, and streamed LLM generation.
 
-The Expo/React Native mobile client connects to the containerized FastAPI backend running on Google Cloud Run behind Google Cloud Load Balancing and Cloud Armor. The backend uses LangGraph for request-level workflow orchestration, deterministic evidence retrieval with bounded chat search retries, OpenAI for model inference, Chroma Cloud for research retrieval, Tavily for web search, and Supabase for authentication and application data. Cohere reranking and hybrid retrieval are available separately but are not part of the active chat workflow. GitHub Actions builds and pushes backend images to Google Artifact Registry, deploys them to Cloud Run, and verifies backend health.
+The Expo/React Native mobile client connects to the containerized FastAPI backend running on Google Cloud Run behind Google Cloud Load Balancing and Cloud Armor. The backend uses LangGraph for request-level workflow orchestration, deterministic evidence retrieval with bounded chat search retries, OpenAI for model inference, Chroma Cloud for research retrieval, Tavily for web search, and Supabase for authentication and application data. Cohere reranking and hybrid retrieval are available separately but are not part of the active chat workflow. GitHub Actions runs the tests before building and pushing backend images to Google Artifact Registry, deploying them to Cloud Run, and verifying backend health.
 
 #### Table of Contents
 
@@ -258,6 +258,17 @@ erDiagram
 ---
 
 ### Local development services
+
+All tests live in `tests/`. With Python 3.12+, Node 22.18+, and Docker running, install dependencies and run the same checks used before deployment:
+
+```sh
+python -m pip install ".[test]"
+npm ci --prefix mobile
+npm ci --prefix client
+python tests/run.py
+```
+
+Run one suite with `python tests/run.py backend`, `mobile`, `database`, or `web`. Backend tests use dummy settings; database tests create and remove their own PostgreSQL container. No production credentials are needed. Pull requests to `main` run these checks, and backend deployments wait for them to pass before building images or applying migrations.
 
 build api image from /
 >> docker build -f server/Dockerfile -t arcel-backend .

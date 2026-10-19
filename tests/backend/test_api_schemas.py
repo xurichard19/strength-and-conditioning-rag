@@ -11,8 +11,8 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from app.api import schemas
 from app.api.routers import profile, sports_workouts, workouts
 from app.contracts import ExerciseSetResult, ProfileUpdate, Source, SportsWorkoutInput, SportsWorkoutUpdate
-from server.tests.test_endpoints import DAY, ID, SPORT, client
-from server.tests.test_profile import PROFILE
+from tests.backend.test_endpoints import DAY, ID, SPORT, client
+from tests.backend.test_profile import PROFILE
 
 
 class ApiSchemaTests(unittest.TestCase):
@@ -93,7 +93,7 @@ class ApiSchemaTests(unittest.TestCase):
         self.assertIn('application/x-ndjson', document['paths']['/chat']['post']['responses']['200']['content'])
 
     def test_handlers_and_business_models_do_not_import_api_schemas(self):
-        app_dir = Path(__file__).resolve().parents[1] / 'app'
+        app_dir = Path(__file__).resolve().parents[2] / 'server/app'
         for path in [app_dir / 'contracts.py', *app_dir.glob('db/supabase/*.py')]:
             tree = ast.parse(path.read_text(encoding='utf-8'))
             for node in ast.walk(tree):

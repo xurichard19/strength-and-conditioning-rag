@@ -5,7 +5,7 @@ from fastapi import HTTPException
 
 from app.contracts import OnboardingResponseRecord
 from app.db.supabase import SupabaseDataError
-from server.tests.test_profile import NOW, USER, api_client
+from tests.backend.test_profile import NOW, USER, api_client
 
 
 ANSWERS = {"new_question": ["running", "lifting"], "schedule": {"days": 3}, "optional": None}

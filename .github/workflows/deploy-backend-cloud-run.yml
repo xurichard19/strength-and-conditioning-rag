@@ -7,9 +7,11 @@ on:
     paths:
       - ".github/workflows/deploy-backend-cloud-run.yml"
       - ".github/workflows/deploy-planning-cloud-run.yml"
+      - ".github/workflows/tests.yml"
       - ".dockerignore"
       - "server/**"
       - "supabase/**"
+      - "tests/**"
       - "pyproject.toml"
   workflow_dispatch:
 
@@ -27,7 +29,11 @@ env:
   CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE || 'arcel-backend' }}
 
 jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
   deploy:
+    needs: tests
     runs-on: ubuntu-latest
 
     steps:

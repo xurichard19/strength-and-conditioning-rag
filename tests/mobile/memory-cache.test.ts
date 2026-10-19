@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { load, deferred } from './helpers.ts';
 
 // Exercise the shared core without React, a server, or credentials.
-const { createMemoryCache } = load<typeof import('../src/state/memory-cache')>('state/memory-cache.ts');
+const { createMemoryCache } = load<typeof import('../../mobile/src/state/memory-cache')>('state/memory-cache.ts');
 const row = <T>(value: T, fetchedAt = 0) => ({ value, fetchedAt });
 type Value<T = string> = { value: T; fetchedAt: number };
 type RangeValue = Value & { start: number; end: number };

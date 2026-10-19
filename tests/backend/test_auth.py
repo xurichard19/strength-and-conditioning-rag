@@ -5,7 +5,7 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 from app.auth.supabase import verify_supabase_token
-from server.tests.test_supabase_data import FakeResponse
+from tests.backend.test_supabase_data import FakeResponse
 
 
 class AuthFailureTests(unittest.TestCase):

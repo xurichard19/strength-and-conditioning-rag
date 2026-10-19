@@ -12,8 +12,8 @@ from app.ai.workflows.chat import models
 from app.ai.workflows.chat.state import ChatRoute, EvidenceReview
 from app.contracts import CalendarRecords, MessageRecord, Source
 from app.db.supabase import calendar
-from server.tests.test_chat_workflow import CONTEXT, ID, TODAY, route
-from server.tests.test_supabase_queries import workout_row
+from tests.backend.test_chat_workflow import CONTEXT, ID, TODAY, route
+from tests.backend.test_supabase_queries import workout_row
 
 
 class ChatServiceTests(unittest.IsolatedAsyncioTestCase):

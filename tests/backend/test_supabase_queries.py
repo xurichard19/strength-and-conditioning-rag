@@ -18,7 +18,7 @@ from app.contracts import (
 from app.db.supabase import calendar, messages, onboarding_responses, planning_changes
 from app.db.supabase import planning_schedules, profiles, replan_jobs, sports_workouts, workouts
 from app.db.supabase.transport import SupabaseDataError
-from server.tests.test_supabase_data import FakeResponse
+from tests.backend.test_supabase_data import FakeResponse
 
 
 USER = UUID('11111111-1111-4111-8111-111111111111')

@@ -14,7 +14,7 @@ def sql(statement):
     return subprocess.run(
         ['docker', 'exec', container, 'psql', '-U', 'postgres', '-At',
          '-v', 'ON_ERROR_STOP=1', '-c', statement],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, check=True, timeout=15,
     ).stdout
 
 

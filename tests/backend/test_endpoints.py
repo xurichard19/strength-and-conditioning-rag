@@ -11,7 +11,7 @@ from app.api.routers import calendar, chat, health, onboarding, planning, profil
 from app.auth.supabase import require_user
 from app.contracts import MessageRecord, PlanningHistoryPage, PlanningScheduleRecord, ReplanJobRecord, SportsWorkoutRecord, WorkoutWriteResult
 from app.db.supabase import SupabaseDataError
-from server.tests.test_profile import NOW, USER
+from tests.backend.test_profile import NOW, USER
 
 
 ID = UUID('22222222-2222-4222-8222-222222222222')

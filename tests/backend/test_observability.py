@@ -11,8 +11,8 @@ from sentry_sdk.transport import Transport
 from app.api.routers import chat, profile
 from app.contracts import MessageRecord
 from app.db.supabase import SupabaseDataError
-from server.tests.test_endpoints import ID, client
-from server.tests.test_profile import NOW, PROFILE, USER
+from tests.backend.test_endpoints import ID, client
+from tests.backend.test_profile import NOW, PROFILE, USER
 
 
 class MemoryTransport(Transport):

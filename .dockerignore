@@ -19,5 +19,6 @@ client/dist/
 secrets/
 gha-creds-*.json
 data/
+tests/
 
 .DS_Store

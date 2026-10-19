@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { load as loadModule, jsx, type TestValue, type TestModule, type TestNode, type Stubs } from './helpers.ts';
-import type { ChatMessage } from '../src/domain/types';
+import type { ChatMessage } from '../../mobile/src/domain/types';
 const messages: ChatMessage[] = [
   { id: 'human', role: 'user', text: 'My question' },
   { id: 'ai', role: 'assistant', text: '# Heading\nPlain **bold** and *italic* with `code`\n- Bullet\n1. Numbered\n> Quote\n```\nCode block\n```', basis: 'Research' },

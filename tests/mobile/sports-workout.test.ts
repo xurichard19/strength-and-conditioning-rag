@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { load, plain, jsx, type TestValue, type TestModule, type TestNode } from './helpers.ts';
-import type { SportsWorkoutInput, SportsWorkout } from '../src/services/backend';
-const options = load<typeof import('../src/lib/sports-workout')>('lib/sports-workout.ts');
-const calendar = load<typeof import('../src/lib/calendar')>('lib/calendar.ts');
-const { createBackend } = load<typeof import('../src/services/backend')>('services/backend.ts');
+import type { SportsWorkoutInput, SportsWorkout } from '../../mobile/src/services/backend';
+const options = load<typeof import('../../mobile/src/lib/sports-workout')>('lib/sports-workout.ts');
+const calendar = load<typeof import('../../mobile/src/lib/calendar')>('lib/calendar.ts');
+const { createBackend } = load<typeof import('../../mobile/src/services/backend')>('services/backend.ts');
 const children = (node: TestValue): TestNode[] => {
   if (!node || typeof node !== 'object') return [];
   if (Array.isArray(node)) return node.flatMap(children);

@@ -15,8 +15,8 @@ from app.db.supabase import SupabaseDataError, calendar, replan_jobs
 from app.jobs import replan_worker, scheduler
 from app.jobs.cloud_tasks import ReplanTask
 from app.jobs.settings import TaskSettings
-from server.tests.test_endpoints import DAY, JOB
-from server.tests.test_supabase_data import FakeResponse
+from tests.backend.test_endpoints import DAY, JOB
+from tests.backend.test_supabase_data import FakeResponse
 
 
 TOKEN = UUID(int=42)

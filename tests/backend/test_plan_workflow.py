@@ -16,7 +16,7 @@ from app.ai.workflows.plan.nodes.evaluate import evaluate_node
 from app.ai.workflows.plan.nodes.generate import generate_node
 from app.ai.workflows.plan.state import EvidenceReview, SearchQuery
 from app.contracts import OnboardingResponseRecord, PlanningProposal, Source, SportsWorkoutRecord
-from server.tests.test_planning_validation import DAY, END, NOW, OWNER, WORKOUT_ID, inputs, prescription, proposal, record
+from tests.backend.test_planning_validation import DAY, END, NOW, OWNER, WORKOUT_ID, inputs, prescription, proposal, record
 
 
 QUERY = SearchQuery(query="strength training around soccer recovery", providers="research")
