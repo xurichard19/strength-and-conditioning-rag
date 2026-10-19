@@ -27,16 +27,40 @@ flowchart TB
     User(["User"]) --> FE["React Native mobile client<br/>Expo"]
     FE --> Edge["Google Cloud edge<br/>Load Balancer and<br/>Cloud Armor"]
     Edge --> API["FastAPI backend<br/>Cloud Run"]
-    API --> Workflows["LangGraph workflows<br/>chat and plan"]
+    API -->|chat| Workflows["LangGraph workflows<br/>chat and plan"]
+    API -.->|Cloud Tasks| Worker["Planning worker<br/>Cloud Run"]
+    Worker -->|plan| Workflows
     API --> Supabase[("Supabase<br/>authentication<br/>and data")]
     API --> Sentry["Sentry<br/>monitoring"]
     Workflows --> OpenAI["OpenAI"]
     Workflows --> Chroma[("Chroma Cloud<br/>research index")]
-    Workflows --> SearchServices["Tavily and<br/>Cohere"]
+    Workflows --> SearchServices["Tavily<br/>web search"]
     Workflows --> LangSmith["LangSmith<br/>tracing"]
     Docs[("GCS source<br/>documents")] --> Index["Offline<br/>indexing"]
     Index --> Chroma
     API -.- ci["GitHub Actions<br/>deployment"]
+```
+
+##### Programming Infrastructure
+
+```mermaid
+flowchart TB
+    Inputs["Onboarding completion / edits<br/>Sports changes"] --> API["FastAPI backend<br/>Cloud Run"]
+    API -->|persist inputs and scheduling changes| DB[("Supabase<br/>21-day coverage · 7-day refreshes<br/>Durable jobs · calendar · history")]
+    Clock["Cloud Scheduler<br/>Every minute"] -->|OIDC POST /dispatch| Dispatcher["Private dispatcher<br/>Cloud Run"]
+    Dispatcher <-->|due refreshes and delivery recovery| DB
+    Dispatcher --> Queue["Cloud Tasks<br/>Deduplicated delivery and retries"]
+    API -.->|explicit adjustment / retry after commit| Queue
+    Queue -->|OIDC POST /run| Claim
+
+    subgraph Worker["Private planning worker · Cloud Run"]
+        Claim["Claim delivery lease<br/>Load authoritative context"] --> Graph["Planning LangGraph"]
+        Graph --> Publish["Publish atomically<br/>Check lease and revision"]
+    end
+
+    Claim <-->|job and athlete context| DB
+    Publish -->|workouts, history and job completion| DB
+    DB -->|calendar, job status and history| API
 ```
 
 #### Chat LangGraph Workflow
@@ -65,15 +89,17 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    Request["Plan request<br/>and user profile"] --> Rewrite["Rewrite node<br/>OpenAI"]
-    Rewrite --> Search["Search node"]
-    Search --> Agent["LangChain agent<br/>OpenAI search"]
-    Agent --> Chroma[("Chroma Cloud<br/>research index")]
-    Agent --> Tavily["Tavily<br/>web search"]
-    Agent --> Cohere["Cohere reranker<br/>research only"]
-    Agent --> Evidence["Selected<br/>evidence"]
-    Evidence --> Generate["Plan generation<br/>OpenAI"]
-    Generate --> Plan["Structured<br/>WorkoutPlan"]
+    Request["Claimed job + athlete context<br/>Initial plan / weekly extension / adjustment"] --> Context["Context node<br/>Fixed dates, editable workouts and athlete inputs"]
+    Context --> Prepare["Prepare node · OpenAI<br/>Focused research query"]
+    Prepare --> Search["Search node<br/>Chroma first · Tavily available on retry"]
+    Search --> Evaluate{"Evaluate node · OpenAI<br/>Sufficient evidence?"}
+    Evaluate -->|yes| Generate["Generate node · OpenAI<br/>Structured PlanningProposal"]
+    Evaluate -->|one research retry| Search
+    Evaluate -->|insufficient after retry / budget exhausted| Fail["Raise error<br/>No publication"]
+    Generate --> Validate{"Validate node<br/>Dates, coverage, prescriptions and protected workouts"}
+    Validate -->|one repair with feedback| Generate
+    Validate -->|invalid after repair / budget exhausted| Fail
+    Validate -->|valid| Plan["Return validated proposal<br/>Worker publishes outside the graph"]
 ```
 
 #### Database Infrastructure
@@ -263,17 +289,6 @@ erDiagram
 ---
 
 ### Local development services
-
-All tests live in `tests/`. With Python 3.12+, Node 22.18+, and Docker running, install dependencies and run the same checks used before deployment:
-
-```sh
-python -m pip install ".[test]"
-npm ci --prefix mobile
-npm ci --prefix client
-python tests/run.py
-```
-
-Run one suite with `python tests/run.py backend`, `mobile`, `database`, or `web`. Backend tests use dummy settings; database tests create and remove their own PostgreSQL container. No production credentials are needed. Pull requests to `main` run these checks, and backend deployments wait for them to pass before building images or applying migrations.
 
 build api image from /
 >> docker build -f server/Dockerfile -t arcel-backend .

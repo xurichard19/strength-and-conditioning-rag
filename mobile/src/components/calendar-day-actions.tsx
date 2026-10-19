@@ -14,7 +14,7 @@ export function CalendarDayActions({ date, onClose }: { date: string; onClose: (
       <Pressable accessibilityRole="button" accessibilityLabel="Chat about this day" onPress={() => {
         onClose();
         // Day-specific prompting is intentionally deferred; preserve the current chat.
-        router.push('/(tabs)/chat');
+        router.push('/chat');
       }} style={[styles.row, { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator }]}>
         <Sparkles color={colors.tintText} size={20} strokeWidth={1.6} />
         <AppText weight="medium" style={styles.copy}>Chat about this day</AppText>

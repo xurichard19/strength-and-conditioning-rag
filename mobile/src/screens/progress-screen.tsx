@@ -56,7 +56,7 @@ export default function ProgressScreen() {
   if (!metrics.length) return <Screen title="Progress" onRefresh={refreshPreview}><Card><AppText>No training history yet. Progress tracking is not connected in this build.</AppText></Card></Screen>;
 
   return (
-    <Screen title="Progress" subtitle="A longer view of your training." context="my progress" onRefresh={refreshPreview}>
+    <Screen title="Progress" subtitle="A longer view of your training." onRefresh={refreshPreview}>
       <SectionTitle>12-week consistency</SectionTitle>
       <Card>
         <View style={styles.consistencyHeader}>

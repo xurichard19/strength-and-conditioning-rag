@@ -287,7 +287,7 @@ test('notes and unsent text survive review and save once; a failed save can be r
   assert.ok(f.text('Unable to save'));
   assert.deepEqual(f.paths, []);
   f.press('Save and open chat'); f.complete(true); await new Promise(setImmediate);
-  assert.deepEqual(f.paths, ['/(tabs)/chat']);
+  assert.deepEqual(f.paths, ['/(tabs)/today']);
 });
 
 test('redo may be cancelled without changing saved answers, and successful redo returns to Settings', async () => {

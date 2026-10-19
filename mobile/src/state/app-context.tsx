@@ -2,7 +2,7 @@ import type { Session as AuthSession } from '@supabase/supabase-js';
 import { randomUUID } from 'expo-crypto';
 import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { AppState, Platform, useColorScheme } from 'react-native';
 
 import { palettes, type ColorScheme, type Palette, type ThemeMode } from '@/design/tokens';
@@ -37,6 +37,7 @@ function stopChatRun(run: ChatRun) {
 type AuthActionResult = { ok: true; message?: string } | { ok: false; message: string };
 
 type AppContextValue = {
+  chatDraft: RefObject<string>;
   chatMode: ChatMode;
   setChatMode: (mode: ChatMode) => void;
   conversations: Conversation[];
@@ -137,6 +138,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [chatTitle, setChatTitle] = useState('Ask Arcel');
   const [chatMode, setChatMode] = useState<ChatMode>('quick');
+  const chatDraft = useRef('');
   const chatEpoch = useRef(0);
   const listRequest = useRef(0);
   const owner = useRef<string | null>(null);
@@ -155,6 +157,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const userId = session?.user.id ?? null;
     if (owner.current !== userId) {
       owner.current = userId;
+      chatDraft.current = '';
       conversation.current = null;
       setActiveConversationId(null);
       setChatTitle('Ask Arcel');
@@ -319,6 +322,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [authSession?.user.id, refreshChat]);
 
   const openConversation = useCallback((id?: string, title?: string) => {
+    chatDraft.current = '';
     cancelChatPublish(conversation.current ? runs.current.get(conversation.current) : undefined);
     chatEpoch.current += 1;
     conversation.current = id ?? null;
@@ -633,7 +637,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const value: AppContextValue = {
-    chatMode, setChatMode,
+    chatDraft, chatMode, setChatMode,
     hydrated, accountReady, accountError, passwordRecovery, profile, onboardingAnswers,
     sessions, proposal, block: currentBlock, metrics: progressMetrics, authSession,
     previewMode: true, colors, colorScheme, notice, chatMessages, chatBusy, chatError,

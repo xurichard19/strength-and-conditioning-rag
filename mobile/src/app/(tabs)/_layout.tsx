@@ -1,5 +1,5 @@
 import { TopTabs } from 'expo-router/js-top-tabs';
-import { CalendarDays, ChartNoAxesCombined, MessageCircle, Sparkles, UserRound } from 'lucide-react-native';
+import { CalendarDays, ChartNoAxesCombined, ClipboardList, Sparkles, UserRound } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Keyboard, Platform, StyleSheet, type ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,7 +33,7 @@ export default function TabsLayout() {
       <TopTabs.Screen name="today" options={{ title: 'Today', tabBarIcon: ({ color }: { color: ColorValue }) => <Sparkles color={color} size={24} strokeWidth={1.8} /> }} />
       <TopTabs.Screen name="week" options={{ title: 'Calendar', tabBarIcon: ({ color }: { color: ColorValue }) => <CalendarDays color={color} size={24} strokeWidth={1.8} /> }} />
       <TopTabs.Screen name="progress" options={{ title: 'Progress', tabBarIcon: ({ color }: { color: ColorValue }) => <ChartNoAxesCombined color={color} size={24} strokeWidth={1.8} /> }} />
-      <TopTabs.Screen name="chat" options={{ title: 'Chat', tabBarIcon: ({ color }: { color: ColorValue }) => <MessageCircle color={color} size={24} strokeWidth={1.8} /> }} />
+      <TopTabs.Screen name="plans" options={{ title: 'Plans', tabBarIcon: ({ color }: { color: ColorValue }) => <ClipboardList color={color} size={24} strokeWidth={1.8} /> }} />
       <TopTabs.Screen name="you" options={{ title: 'You', tabBarIcon: ({ color }: { color: ColorValue }) => <UserRound color={color} size={24} strokeWidth={1.8} /> }} />
     </TopTabs>
   );

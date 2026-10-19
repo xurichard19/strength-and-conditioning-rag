@@ -18,9 +18,31 @@ export type SportsWorkout = Omit<SportsWorkoutInput, 'start_time' | 'planned_dur
 export type CalendarWorkout = {
   id: string; scheduled_date: string; name: string; notes: string | null;
   status: 'planned' | 'in_progress' | 'completed' | 'skipped'; superseded_at: string | null;
-  exercises: { id: string; name: string }[];
+  exercises: {
+    id: string; name: string; notes?: string | null; reps_per_side?: boolean;
+    weight_unit?: 'kg' | 'lb' | null; distance_unit?: 'm' | 'km' | 'mi' | null;
+    sets?: {
+      planned_reps?: number | null; planned_weight?: number | null; planned_distance?: number | null;
+      planned_duration_seconds?: number | null; planned_rpe?: number | null;
+      planned_rest_seconds?: number | null; planned_notes?: string | null;
+    }[];
+  }[];
 };
 export type CalendarResponse = { workouts: CalendarWorkout[]; sports_workouts: SportsWorkout[]; revision: number | null };
+export type PlanningJob = {
+  id: string; kind: 'adjustment' | 'refresh'; status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+  reason: string; effective_from: string | null; effective_through: string | null;
+  scheduled_for: string | null; change_id: string | null; created_at: string; completed_at: string | null;
+};
+export type PlanningChange = {
+  id: string; user_id: string; revision: number; kind: PlanningJob['kind']; status: 'applied' | 'undone' | 'discarded';
+  reason: string; effective_from: string; effective_through: string;
+  horizon_end_before: string | null; horizon_end_after: string; created_at: string;
+};
+export type PlanningHistory = { changes: PlanningChange[]; revision: number | null };
+export type PlanningChangePreview = {
+  change: PlanningChange; before: CalendarWorkout[]; after: CalendarWorkout[]; revision: number | null;
+};
 
 /** Use the device's named timezone, never a guessed UTC offset. */
 export function deviceTimezone(): string | undefined {
@@ -60,7 +82,7 @@ export function profileFromApi(profile: ApiProfile, onboarding: Onboarding | nul
   return result;
 }
 
-/** HTTP shapes only. Auth is supplied by the mobile adapter; this module never calls planning. */
+/** HTTP shapes only; auth is supplied by the mobile adapter. */
 export function createBackend(request: ApiRequest) {
   async function json<T>(path: string, options?: RequestInit, retryConflict = false): Promise<T> {
     if (options?.method && options.method !== 'GET') return (await checked(await request(path, options))).json();
@@ -92,6 +114,13 @@ export function createBackend(request: ApiRequest) {
       method: 'PUT', body: JSON.stringify({ answers }),
     }),
     completeOnboarding: () => json<Onboarding>('/onboarding/complete', { method: 'POST' }),
+    getPlanningJobs: () => json<PlanningJob[]>('/planning/jobs?limit=20'),
+    getPlanningHistory: (beforeRevision?: number) => {
+      const query = new URLSearchParams({ limit: '20' });
+      if (beforeRevision !== undefined) query.set('before_revision', String(beforeRevision));
+      return json<PlanningHistory>(`/planning/changes?${query}`);
+    },
+    getPlanningChange: (id: string) => json<PlanningChangePreview>(`/planning/changes/${encodeURIComponent(id)}`),
     /** Inclusive local dates, at most 31 days. Retry one read-only revision conflict. */
     getCalendarRange: (startDate: string, endDate: string) => {
       const query = new URLSearchParams({ start_date: startDate, end_date: endDate });

@@ -1,8 +1,8 @@
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as Linking from 'expo-linking';
-import { ArrowLeft, ArrowUp, ArrowUpRight, BookOpen, ChevronRight, Globe2, Menu, MoreHorizontal, Quote, X } from 'lucide-react-native';
+import { ArrowLeft, ArrowUp, ArrowUpRight, BookOpen, ChevronRight, Globe2, Maximize2, Menu, MoreHorizontal, Quote, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui';
@@ -159,17 +159,17 @@ function ChatBubble({ message, onSelectText }: { message: ChatMessage; onSelectT
   );
 }
 
-function QuickQuestions({ context }: { context?: string }) {
+function QuickQuestions({ context, compact }: { context?: string; compact?: boolean }) {
   const { colors, sendChat } = useApp();
   return (
     <View style={styles.quickArea}>
-      <View style={styles.welcome}>
+      {compact ? <AppText style={styles.compactWelcome}>What’s on your mind?</AppText> : <View style={styles.welcome}>
         <AppText tone="tint" weight="medium" style={styles.eyebrow}>RESEARCH MEETS YOUR ROUTINE</AppText>
         <AppText style={styles.welcomeTitle}>A clearer view of your training.</AppText>
         <AppText tone="secondary" style={styles.welcomeCopy}>Ask about your week, explore the research, or work through a training decision.</AppText>
-      </View>
+      </View>}
       <AppText tone="secondary" weight="medium" style={styles.quickTitle}>START WITH A QUESTION</AppText>
-      <View style={styles.quickList}>{quickQuestions.map((question) => <Pressable accessibilityRole="button" accessibilityLabel={question} key={question} onPress={() => void sendChat(question, context)} style={({ pressed }) => [styles.quick, { borderColor: colors.separator }, pressed && { backgroundColor: colors.fill }]}><AppText style={styles.quickText}>{question}</AppText><ArrowUpRight color={colors.tintText} size={18} strokeWidth={1.7} /></Pressable>)}</View>
+      <View style={styles.quickList}>{(compact ? quickQuestions.slice(0, 2) : quickQuestions).map((question) => <Pressable accessibilityRole="button" accessibilityLabel={question} key={question} onPress={() => void sendChat(question, context)} style={({ pressed }) => [styles.quick, { borderColor: colors.separator }, pressed && { backgroundColor: colors.fill }]}><AppText style={styles.quickText}>{question}</AppText><ArrowUpRight color={colors.tintText} size={18} strokeWidth={1.7} /></Pressable>)}</View>
     </View>
   );
 }
@@ -189,16 +189,20 @@ function Composer({ draft, busy, onChange, onSubmit }: { draft: string; busy: bo
   );
 }
 
-function ChatHeader({ onMenu, onOptions }: { onMenu: () => void; onOptions: () => void }) {
+type WindowControls = { compact?: boolean; onExpand?: () => void; onClose?: () => void };
+
+function ChatHeader({ onMenu, onOptions, compact, onExpand, onClose }: WindowControls & { onMenu: () => void; onOptions: () => void }) {
   const { colors, chatTitle, activeConversationId } = useApp();
-  return <View style={[styles.header, { borderBottomColor: colors.separator }]}>
-    <Pressable accessibilityRole="button" accessibilityLabel="Open conversations" onPress={onMenu} style={[styles.headerButton, { borderColor: colors.separator }]}><Menu color={colors.text} size={21} strokeWidth={1.7} /></Pressable>
-    <View style={styles.headerCopy}><AppText tone="secondary" style={styles.subtitle}>TRAINING ASSISTANT</AppText><AppText weight="medium" style={styles.title} numberOfLines={2}>{chatTitle}</AppText></View>
-    {activeConversationId ? <Pressable accessibilityRole="button" accessibilityLabel="Conversation options" onPress={onOptions} style={styles.headerButton}><MoreHorizontal color={colors.text} size={22} /></Pressable> : null}
+  return <View style={[styles.header, compact && styles.compactHeader, { borderBottomColor: colors.separator }]}>
+    {!compact ? <Pressable accessibilityRole="button" accessibilityLabel="Open conversations" onPress={onMenu} style={[styles.headerButton, { borderColor: colors.separator }]}><Menu color={colors.text} size={21} strokeWidth={1.7} /></Pressable> : null}
+    <View style={styles.headerCopy}><AppText tone="secondary" style={styles.subtitle}>TRAINING ASSISTANT</AppText><AppText weight="medium" style={[styles.title, compact && styles.compactTitle]} numberOfLines={compact ? 1 : 2}>{chatTitle}</AppText></View>
+    {compact ? <Pressable accessibilityRole="button" accessibilityLabel="Expand chat" onPress={onExpand} style={styles.headerButton}><Maximize2 color={colors.text} size={19} /></Pressable>
+      : activeConversationId ? <Pressable accessibilityRole="button" accessibilityLabel="Conversation options" onPress={onOptions} style={styles.headerButton}><MoreHorizontal color={colors.text} size={22} /></Pressable> : null}
+    {onClose ? <Pressable accessibilityRole="button" accessibilityLabel="Close chat" onPress={onClose} style={styles.headerButton}><X color={colors.textSecondary} size={21} /></Pressable> : null}
   </View>;
 }
 
-function ChatHistory({ context, onSelectText }: { context?: string; onSelectText: (message: ChatMessage) => void }) {
+function ChatHistory({ context, compact, onSelectText }: { context?: string; compact?: boolean; onSelectText: (message: ChatMessage) => void }) {
   const { colors, chatMessages, chatBusy, chatLoading, chatError, hasOlderMessages, refreshChat } = useApp();
   const busy = chatBusy || chatLoading;
   return <>
@@ -207,17 +211,18 @@ function ChatHistory({ context, onSelectText }: { context?: string; onSelectText
     {chatLoading ? <ActivityIndicator color={colors.tint} /> : null}
     {chatMessages.map((message) => <ChatBubble key={message.id} message={message}
       onSelectText={Platform.OS === 'ios' ? () => onSelectText(message) : undefined} />)}
-    {!chatLoading && !chatError && chatMessages.length === 0 ? <QuickQuestions context={context} /> : null}
+    {!chatLoading && !chatError && chatMessages.length === 0 ? <QuickQuestions context={context} compact={compact} /> : null}
   </>;
 }
 
-export default function ChatScreen() {
+export default function ChatScreen({ compact, onExpand, onClose }: WindowControls = {}) {
   const params = useLocalSearchParams<{ context?: string }>();
   const context = Array.isArray(params.context) ? params.context[0] : params.context;
-  const { colors, authSession, chatMessages, chatBusy, chatLoading, sendChat, refreshConversations, openConversation, activeConversationId } = useApp();
+  const { colors, authSession, chatDraft: chatDraftRef, chatMessages, chatBusy, chatLoading, sendChat, refreshConversations, openConversation, activeConversationId } = useApp();
   const [menuOpen, setMenuOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [draft, setDraft] = useState('');
+  const changeDraft = (value: string) => { chatDraftRef.current = value; setDraft(value); };
   const [selection, setSelection] = useState<{ text: string; userId?: string; conversationId: string | null } | null>(null);
   const userId = authSession?.user.id;
   const busy = chatBusy || chatLoading;
@@ -238,19 +243,21 @@ export default function ChatScreen() {
     const switched = (previous.activeConversationId !== null && previous.activeConversationId !== activeConversationId)
       || previous.userId !== userId;
     scrollContext.current = { activeConversationId, userId, hasMessages };
+    if (switched) setDraft(chatDraftRef.current);
     if (switched || !hasMessages || !previous.hasMessages) following.current = true;
     if (switched || hasMessages !== previous.hasMessages) followContent();
-  }, [activeConversationId, followContent, hasMessages, userId]);
-  // Keep the selected conversation and draft across tab visits; only dismiss menus.
+  }, [activeConversationId, chatDraftRef, followContent, hasMessages, userId]);
+  // Resizing keeps this screen mounted; route focus only dismisses auxiliary menus.
   useFocusEffect(useCallback(() => {
     focused.current = true;
+    setDraft(chatDraftRef.current);
     setMenuOpen(false); setOptionsOpen(false); setSelection(null);
     followContent();
     return () => { focused.current = false; setSelection(null); };
-  }, [followContent]));
+  }, [chatDraftRef, followContent]));
   const selectConversation = (id?: string, title?: string) => {
     following.current = true;
-    openConversation(id, title); setDraft(''); setMenuOpen(false); setSelection(null);
+    openConversation(id, title); changeDraft(''); setMenuOpen(false); setSelection(null);
     followContent();
   };
   const selectText = (message: ChatMessage) => {
@@ -259,32 +266,34 @@ export default function ChatScreen() {
     setSelection({ text: message.role === 'assistant' ? markdownPlainText(message.text) : message.text,
       userId, conversationId: activeConversationId });
   };
-  const submit = () => { if (!draft.trim() || busy) return; const message = draft; following.current = true; setDraft(''); void sendChat(message, context); };
+  const submit = () => { if (!draft.trim() || busy) return; const message = draft; following.current = true; changeDraft(''); void sendChat(message, context); };
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top']}>
+    <View style={[styles.safe, { backgroundColor: colors.background }]}>
       {selection && selection.userId === userId && selection.conversationId === activeConversationId
         ? <MessageTextSelection text={selection.text} onClose={() => setSelection(null)} /> : null}
       {optionsOpen ? <ConversationActions onClose={() => setOptionsOpen(false)} /> : null}
       {menuOpen ? <ConversationSidebar onClose={() => setMenuOpen(false)} onSelect={selectConversation} /> : null}
-      <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ChatHeader onMenu={() => { setMenuOpen(true); void refreshConversations(); }} onOptions={() => setOptionsOpen(true)} />
-        <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.messages} showsVerticalScrollIndicator={false}
+        <ChatHeader compact={compact} onExpand={onExpand} onClose={onClose} onMenu={() => { setMenuOpen(true); void refreshConversations(); }} onOptions={() => setOptionsOpen(true)} />
+        <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.messages, compact && styles.compactMessages]} showsVerticalScrollIndicator={false}
           onContentSizeChange={followContent} onLayout={followContent} scrollEventThrottle={100}
           onScroll={({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) => {
             following.current = contentSize.height - layoutMeasurement.height - contentOffset.y <= 96;
           }}>
-          <ChatHistory context={context} onSelectText={selectText} />
+          <ChatHistory context={context} compact={compact} onSelectText={selectText} />
         </ScrollView>
-        <Composer draft={draft} busy={busy} onChange={setDraft} onSubmit={submit} />
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        <Composer draft={draft} busy={busy} onChange={changeDraft} onSubmit={submit} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   header: { minHeight: 92, paddingHorizontal: 22, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: StyleSheet.hairlineWidth },
+  compactHeader: { minHeight: 64, paddingHorizontal: 16, paddingVertical: 6, gap: 4 },
+  compactTitle: { fontSize: 17, lineHeight: 23 },
+  compactWelcome: { fontSize: 24, lineHeight: 30, letterSpacing: -0.6 },
+  compactMessages: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 18, gap: 20 },
   headerButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth, borderColor: 'transparent' },
   headerCopy: { flex: 1 },
   title: { fontSize: 21, lineHeight: 27, letterSpacing: -0.6, marginTop: 3 },

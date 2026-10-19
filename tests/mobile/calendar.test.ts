@@ -186,7 +186,7 @@ test('multiple same-day sessions appear in the agenda and adjacent-month selecti
   const sessions = ['Strength session', 'Evening run'].map((title, index) => ({
     id: `session-${index}`, title, date: '2026-01-31', kind: index ? 'sport' : 'workout',
     minutes: index ? 30 : null, startTime: index ? '18:30:00' : null, intensity: index ? 'easy' : null,
-    status: 'planned', notes: null, exerciseCount: 2,
+    status: 'planned', notes: null, exercises: [],
   }));
   const screen = fixture(sessions);
   screen.click('Month view');
@@ -253,8 +253,8 @@ test('calendar GET uses inclusive range parameters, preserves empty responses, a
   }
 });
 
-test('calendar summaries combine both types without mock fields or retained nested exercise data', () => {
-  const exercise = { id: 'exercise', name: 'Squat', sets: [{ planned_reps: 5 }] };
+test('calendar combines both types and retains prescriptions without set results or metadata', () => {
+  const exercise = { id: 'exercise', name: 'Squat', sets: [{ planned_reps: 5, actual_reps: 4, result_notes: 'Private result', id: 'set' }] };
   const result = calendar.calendarSnapshot({ revision: 3,
     workouts: [workout('lift', '2026-01-02', { exercises: [exercise] }),
       workout('old', '2026-01-02', { superseded_at: '2026-01-01T00:00:00Z' })],
@@ -263,10 +263,53 @@ test('calendar summaries combine both types without mock fields or retained nest
   });
   assert.equal(result.revision, 3);
   assert.deepEqual(plain(result.entries.map(row => row.id)), ['early', 'lift', 'late']);
-  assert.equal(result.entries[1].exerciseCount, 1);
-  assert.equal('exercises' in result.entries[1], false);
+  assert.deepEqual(plain(result.entries[1].exercises), [
+    { id: 'exercise', name: 'Squat', notes: null, prescriptions: ['Set 1 · 5 reps'] },
+  ]);
+  assert.doesNotMatch(JSON.stringify(result), /actual_reps|Private result|result_notes/);
   assert.equal('minutes' in result.entries[1], false);
   assert.equal(result.entries[0].startTime, null);
+});
+
+test('calendar prescriptions preserve units, per-side reps, variable sets and exact time targets', () => {
+  const standard = { planned_reps: 8, planned_weight: 20, planned_rpe: 6.5, planned_rest_seconds: 90, planned_notes: 'Controlled lowering' };
+  const result = calendar.calendarSnapshot({ ...empty(), workouts: [workout('lift', '2026-01-31', { exercises: [
+    { id: 'split', name: 'Split squat', reps_per_side: true, weight_unit: 'lb', notes: 'Hold one dumbbell', sets: [standard, standard,
+      { planned_reps: 6, planned_weight: 25, planned_rest_seconds: 0 }, standard] },
+    { id: 'carry', name: 'Farmer carry', weight_unit: 'kg', distance_unit: 'm', sets: [{ planned_distance: 30, planned_weight: 24 }] },
+    { id: 'run', name: 'Easy run', distance_unit: 'km', sets: [{ planned_distance: 2, planned_duration_seconds: 605 }] },
+    { id: 'plank', name: 'Plank', sets: [{ planned_duration_seconds: 45 }, { planned_duration_seconds: 60 }] },
+    { id: 'unassigned', name: 'Mobility', sets: [] },
+  ] })] }).entries[0].exercises!;
+  assert.deepEqual(plain(result[0].prescriptions), [
+    'Sets 1–2 · 8 reps / side · 20 lb · RPE 6.5 · 1 min 30s rest · Controlled lowering',
+    'Set 3 · 6 reps / side · 25 lb · 0s rest',
+    'Set 4 · 8 reps / side · 20 lb · RPE 6.5 · 1 min 30s rest · Controlled lowering',
+  ]);
+  assert.equal(result[0].notes, 'Hold one dumbbell');
+  assert.deepEqual(plain(result[1].prescriptions), ['Set 1 · 24 kg · 30 m']);
+  assert.deepEqual(plain(result[2].prescriptions), ['Set 1 · 2 km · 10 min 5s']);
+  assert.deepEqual(plain(result[3].prescriptions), ['Set 1 · 45s', 'Set 2 · 1 min']);
+  assert.deepEqual(plain(result[4].prescriptions), []);
+});
+
+test('selected workout shows every exercise and prescription in both calendar views without another request', () => {
+  const response = { ...empty(), workouts: [workout('lift', '2026-01-31', { notes: 'Warm up first', exercises: [
+    { id: 'squat', name: 'Goblet squat', sets: [{ planned_reps: 8 }, { planned_reps: 8 }] },
+    { id: 'row', name: 'Dumbbell row', notes: 'Keep torso still', sets: [{ planned_reps: 10 }] },
+    { id: 'plank', name: 'Side plank', sets: [{ planned_duration_seconds: 30 }] },
+    { id: 'mobility', name: 'Mobility', sets: [] },
+  ] })] };
+  const screen = fixture(calendar.calendarSnapshot(response).entries);
+  for (const view of ['Week view', 'Month view']) {
+    screen.click(view);
+    const text = screen.text();
+    for (const name of ['Goblet squat', 'Dumbbell row', 'Side plank', 'Mobility', 'Warm up first', 'Keep torso still',
+      '4 exercises', 'Sets 1–2 · 8 reps', 'Set 1 · 10 reps', 'Set 1 · 30s', 'No set targets provided.']) {
+      assert.ok(text.includes(name), `missing ${name} in ${view}`);
+    }
+  }
+  assert.deepEqual(screen.routes, []);
 });
 
 test('calendar caches empty ranges until TTL, and containing months satisfy weeks without new calls', async () => {

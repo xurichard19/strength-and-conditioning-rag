@@ -12,7 +12,7 @@ export default function SessionScreen() {
 
   if (!session) return <Screen title="Session"><Card><AppText>This session is no longer in the week.</AppText></Card></Screen>;
   return (
-    <Screen title={session.title} subtitle={new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).format(new Date(`${session.date}T12:00:00`))} context={session.title}>
+    <Screen title={session.title} subtitle={new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).format(new Date(`${session.date}T12:00:00`))}>
       <Pressable accessibilityRole="button" accessibilityLabel="Back to calendar" onPress={() => router.back()} style={styles.back}><ArrowLeft color={colors.text} size={20} /><AppText weight="medium">Calendar</AppText></Pressable>
       <Card style={styles.summary}>
         <View style={styles.hero}>
