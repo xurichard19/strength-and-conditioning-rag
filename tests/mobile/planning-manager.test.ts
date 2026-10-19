@@ -23,11 +23,11 @@ const schedule = (revision = 1): PlanningSchedule => ({ user_id: 'a', horizon_da
 /** Exercise the actual hook across focus, account, network and timer boundaries. */
 function fixture(api: Api, initialAppState = 'active') {
   const slots: TestValue[] = []; let cursor = 0; let dirty = true; let effects: (() => void)[] = [];
-  let owner: string | null = 'a'; let focused = true; let timerId = 0;
+  let owner: string | null = 'a'; let focused = true; let timerId = 0; let clock = Date.parse('2026-10-18T12:00:00Z');
   let value!: ReturnType<typeof import('../../mobile/src/state/use-planning-manager').usePlanningManager>;
   const events = new Set<(status: string) => void>();
   const timers = new Map<number, () => void>();
-  const calendarCache = createCalendarCache();
+  const calendarCache = createCalendarCache({ now: () => clock });
   const hooks = {
     useRef: initial => { const i = cursor++; return slots[i] ??= { current: initial }; },
     useState: initial => {
@@ -56,7 +56,8 @@ function fixture(api: Api, initialAppState = 'active') {
     '@/lib/errors': { errorMessage: error => error.message },
     '@/services/api': { backendFor: userId => { assert.equal(userId, owner); return { getPlanningSchedule: async () => null, ...api }; } },
     '@/state/app-context': { useApp: () => ({ authSession: owner ? { user: { id: owner } } : null, calendarCache }) },
-  }, { setTimeout: (fn: () => void, ms: number) => { assert.equal(ms, 10_000); timers.set(++timerId, fn); return timerId; },
+  }, { Date: class extends Date { static now() { return clock; } },
+    setTimeout: (fn: () => void, ms: number) => { assert.equal(ms, 10_000); timers.set(++timerId, fn); return timerId; },
     clearTimeout: (id: number) => timers.delete(id) });
   // eslint-disable-next-line react-hooks/rules-of-hooks -- deterministic React lifecycle test harness.
   function render() { cursor = 0; dirty = false; value = usePlanningManager(); return value; }
@@ -67,7 +68,8 @@ function fixture(api: Api, initialAppState = 'active') {
       await new Promise(resolve => setImmediate(resolve));
     }
   }
-  return { flush, render, get value() { return value; }, get timerCount() { return timers.size; },
+  return { flush, render, calendarCache, advance: (ms: number) => { clock += ms; },
+    get value() { return value; }, get timerCount() { return timers.size; },
     tick: () => { const work = [...timers.values()]; timers.clear(); work.forEach(fn => fn()); },
     focus: (next: boolean) => { focused = next; dirty = true; },
     owner: (next: string | null) => { owner = next; dirty = true; },
@@ -105,6 +107,31 @@ test('planning does not request data when mounted in the background', async () =
   f.appState('active'); await f.flush(); assert.equal(calls, 1);
 });
 
+test('idle plans reuse fresh data on return; TTL, edits and manual refresh still fetch, including before the first plan', async () => {
+  for (const hasPlan of [false, true]) {
+    let jobs = 0; let calendars = 0;
+    const api = { getPlanningJobs: async () => { jobs++; return []; }, getPlanningHistory: async () => history(),
+      getPlanningSchedule: async () => hasPlan ? schedule() : null,
+      getCalendarRange: async () => { calendars++; return { workouts: [], sports_workouts: [], revision: 1 }; } };
+    const f = fixture(api);
+    if (hasPlan) await f.calendarCache.load(api, '2026-10-01', '2026-10-31');
+    await f.flush();
+    if (hasPlan) {
+      assert.equal(calendars, 2);
+      assert.equal(f.calendarCache.peek('2026-10-01', '2026-10-31')?.fresh, true, 'visiting Plans preserves an unchanged month');
+    }
+    const returnToPlans = async () => { f.focus(false); await f.flush(); f.focus(true); await f.flush(); };
+    f.advance(59_999); await returnToPlans();
+    f.appState('background'); f.appState('active'); await f.flush();
+    assert.equal(jobs, 1); assert.equal(calendars, hasPlan ? 2 : 0);
+    f.advance(1); await returnToPlans(); assert.equal(jobs, 2);
+    await f.value.refresh(); await f.flush(); assert.equal(jobs, 3);
+    f.focus(false); await f.flush(); f.calendarCache.invalidate(); f.focus(true); await f.flush();
+    assert.equal(jobs, 4); assert.equal(calendars, hasPlan ? 5 : 0);
+    assert.equal(f.timerCount, 0);
+  }
+});
+
 test('planning reads history after job completion rather than leaving a stale empty history', async () => {
   const jobs = deferred<PlanningJob[]>(); let reads = 0;
   const f = fixture({ getPlanningJobs: () => jobs.promise, getPlanningHistory: async () => { reads++; return history([change(1)]); } });
@@ -130,7 +157,7 @@ test('returning to planning keeps loaded data visible while revalidating it', as
   const f = fixture({ getPlanningJobs: () => ++reads === 1 ? Promise.resolve([job]) : pending.promise,
     getPlanningHistory: async () => history([change(reads)]) });
   await f.flush(); f.focus(false); await f.flush(); f.focus(true); await f.flush();
-  assert.equal(f.value.loaded, true); assert.equal(f.value.loading, true);
+  assert.equal(f.value.loaded, true); assert.equal(f.value.loading, false);
   assert.equal(f.value.jobs[0].id, job.id); assert.equal(f.value.changes[0].revision, 1);
   pending.resolve([]); await f.flush();
   assert.equal(f.value.jobs.length, 0); assert.equal(f.value.changes[0].revision, 2);
@@ -149,12 +176,16 @@ test('poll recovery restores pagination when the first history read failed', asy
   f.focus(false); await f.flush();
 });
 
-test('returning during an outstanding read queues a fresh read instead of displaying old data indefinitely', async () => {
-  const old = deferred<PlanningHistory>(); let reads = 0;
-  const f = fixture({ getPlanningJobs: async () => [], getPlanningHistory: () => ++reads === 1 ? old.promise : Promise.resolve(history([change(2)])) });
-  await f.flush(); f.appState('background'); f.appState('active');
-  old.resolve(history([change(1)])); await f.flush();
-  assert.equal(reads, 2); assert.equal(f.value.changes[0].revision, 2); assert.equal(f.value.loading, false);
+test('resuming or editing during an outstanding read queues a fresh read', async () => {
+  for (const event of ['resume', 'edit']) {
+    const old = deferred<PlanningHistory>(); let reads = 0;
+    const f = fixture({ getPlanningJobs: async () => [], getPlanningHistory: () => ++reads === 1 ? old.promise : Promise.resolve(history([change(2)])) });
+    await f.flush();
+    if (event === 'resume') { f.appState('background'); f.appState('active'); }
+    else f.calendarCache.invalidate();
+    old.resolve(history([change(1)])); await f.flush();
+    assert.equal(reads, 2); assert.equal(f.value.changes[0].revision, 2); assert.equal(f.value.loading, false);
+  }
 });
 
 test('late planning responses cannot cross accounts or restore signed-out data', async () => {

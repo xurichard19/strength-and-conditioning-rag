@@ -76,7 +76,6 @@ type AppContextValue = {
   updateProfile: (update: Partial<Profile>) => void;
   acceptProposal: () => void;
   declineProposal: () => void;
-  shortenToday: () => void;
   updateSet: (sessionId: string, exerciseId: string, setId: string, update: { weight?: number | null; reps?: number | null; done?: boolean }) => void;
   addSet: (sessionId: string, exerciseId: string) => void;
   removeSet: (sessionId: string, exerciseId: string) => void;
@@ -395,6 +394,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await api.saveAnswers(answers);
       const saved = await api.completeOnboarding();
       if (epoch.current !== generation) return false;
+      calendarCache.invalidate();
       setProfile({ ...nextProfile, onboardingComplete: Boolean(saved.completed_at) });
       setOnboardingAnswers(saved.answers);
       setNotice(null);
@@ -432,28 +432,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const declineProposal = () => setProposal(null);
-
-  const shortenToday = () => {
-    setSessions((current) => current.map((session) => {
-      const isToday = session.id === 's-today' || session.date === new Date().toISOString().slice(0, 10);
-      if (!isToday) return session;
-      const exercises = session.exercises
-        .filter((item) => item.role !== 'accessory')
-        .map((item) => ({
-          ...item,
-          sets: item.kind === 'time' ? item.sets : item.sets.slice(0, Math.max(1, item.sets.length - 1)),
-          targetSeconds: item.kind === 'time' && item.targetSeconds ? Math.min(item.targetSeconds, 600) : item.targetSeconds,
-        }));
-      return {
-        ...session,
-        minutes: 25,
-        truncated: true,
-        repairedNote: 'Shortened to fit 25 minutes',
-        exercises,
-      };
-    }));
-    setNotice('Today now fits 25 minutes. The main lift stays at the same weight.');
-  };
 
   const updateSet = (
     sessionId: string,
@@ -644,7 +622,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     chatLoading, hasOlderMessages, refreshChat, finishOnboarding,
     conversations, conversationsLoading, conversationsError, hasOlderConversations, refreshConversations, openConversation,
     chatTitle, activeConversationId, renameConversation, deleteConversation,
-    setThemeMode, updateProfile, acceptProposal, declineProposal, shortenToday,
+    setThemeMode, updateProfile, acceptProposal, declineProposal,
     updateSet, addSet, removeSet, skipExercise, setEffort, finishSession,
     signIn, signInWithGoogle, signUp, requestPasswordReset, updatePassword,
     signOut, refreshLiveData, refreshPreview, calendarCache, invalidateCalendar, sendChat,

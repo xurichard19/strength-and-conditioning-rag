@@ -192,9 +192,9 @@ function PlansContent({ userId }: { userId: string }) {
         <AppText tone="secondary">Complete onboarding to set up your training plan.</AppText>
       </Card> : null}
       {jobs.map(job => <JobCard key={job.id} job={job} />)}
-      {jobsLoaded && !jobs.length ? <View style={styles.row}><View style={[styles.dot, { backgroundColor: colors.tintText }]} />
-        <AppText tone="secondary" style={styles.caption}>No plan updates in progress.</AppText>
-      </View> : null}
+      {jobsLoaded && !jobs.length ? <AppText tone="secondary" style={[styles.caption, { textAlign: 'center' }]}>
+        No plan updates in progress.
+      </AppText> : null}
       {timeline ? <>
         <View style={styles.row}>
           {['All updates', 'Adjustments'].map((label, index) => <Pressable key={label} accessibilityRole="button"
@@ -269,7 +269,6 @@ const styles = StyleSheet.create({
   timelineRow: { flexDirection: 'row', gap: 14 },
   rail: { width: 10, alignItems: 'center' },
   timelineDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
-  dot: { width: 5, height: 5, borderRadius: 3 },
   line: { width: StyleSheet.hairlineWidth, flex: 1, marginTop: 8 },
   detailScroll: { flexShrink: 1 },
   detailContent: { gap: 20, paddingVertical: 16, paddingBottom: 28 },

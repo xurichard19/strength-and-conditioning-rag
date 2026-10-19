@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Check, Clock3, MoveRight, ShieldCheck, Sparkles } from 'lucide-react-native';
+import { Check, MoveRight, ShieldCheck, Sparkles } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 
 import {
@@ -11,13 +11,12 @@ import {
   Screen,
   SecondaryButton,
   SectionTitle,
-  ShieldLine,
 } from '@/components/ui';
 import { milestones } from '@/data/mock';
 import { useApp } from '@/state/app-context';
 
 export default function TodayScreen() {
-  const { colors, proposal, sessions, block, acceptProposal, declineProposal, shortenToday, refreshPreview } = useApp();
+  const { colors, proposal, sessions, block, acceptProposal, declineProposal, refreshPreview } = useApp();
   const session = sessions.find((item) => item.id === 's-today') ?? sessions.find((item) => item.status === 'planned' && item.modality !== 'rest');
 
   if (!sessions.length) return <Screen title="Today" onRefresh={refreshPreview}><Card><AppText weight="bold">No workouts yet</AppText><AppText tone="secondary">Planning is not connected in this build. Your account, onboarding answers, and chat are live.</AppText></Card><PrimaryButton onPress={() => router.push('/chat')}>Open chat</PrimaryButton></Screen>;
@@ -86,11 +85,7 @@ export default function TodayScreen() {
             ))}
           </View>
           <PrimaryButton onPress={() => router.push(`/workout/${session.id}`)}>Start session</PrimaryButton>
-          <View style={styles.buttonRow}>
-            <SecondaryButton onPress={shortenToday} icon={Clock3} style={styles.halfButton}>25 min</SecondaryButton>
-            <SecondaryButton onPress={() => router.push('/(tabs)/week')} icon={MoveRight} style={styles.halfButton}>Move</SecondaryButton>
-          </View>
-          <ShieldLine>Same weights. Less volume if time gets tight.</ShieldLine>
+          <SecondaryButton onPress={() => router.push('/(tabs)/week')} icon={MoveRight} style={styles.moveButton}>Move</SecondaryButton>
         </Card>
       ) : (
         <Card><AppText tone="secondary">Nothing is planned today. Your next session is waiting in Week.</AppText></Card>
@@ -119,8 +114,7 @@ const styles = StyleSheet.create({
   changeRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9 },
   changeDot: { width: 5, height: 5, borderRadius: 3 },
   changeLabel: { flex: 1, fontSize: 14 },
-  buttonRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
-  halfButton: { flex: 1 },
+  moveButton: { marginTop: 10 },
   sessionCard: { padding: 20 },
   sessionHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   sessionCopy: { flex: 1 },

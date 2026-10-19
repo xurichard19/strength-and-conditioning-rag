@@ -275,7 +275,7 @@ export default function PhonePreview() {
               <button type="button" role="tab" id={`${id}-tab-${index}`} aria-controls={`${id}-panel`} aria-selected={index === activeIndex} tabIndex={index === activeIndex ? 0 : -1}
                 className={`phone-preview-nav-item${index === activeIndex ? ' phone-preview-nav-current' : ''}`} key={label}
                 ref={(node) => { tabRefs.current[index] = node }} onClick={() => setActiveIndex(index)} onKeyDown={(event) => handleTabKey(event, index)}>
-                <Icon size={20} strokeWidth={1.7} aria-hidden="true" /><span>{label}</span>
+                <Icon size={20} strokeWidth={2.2} aria-hidden="true" /><span>{label}</span>
               </button>
             ))}
           </div>

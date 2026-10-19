@@ -11,13 +11,15 @@ import { useApp } from '@/state/app-context';
 type State = {
   userId?: string; jobs: PlanningJob[]; changes: PlanningChange[]; jobsLoaded: boolean; loaded: boolean;
   loading: boolean; loadingMore: boolean; hasMore: boolean; error: string | null;
+  fetchedAt: number; cacheVersion: number;
   schedule: PlanningSchedule | null; calendar: CalendarSnapshot | null; overviewLoaded: boolean; overviewError: string | null; checkedAt: number;
 };
 const empty: State = { jobs: [], changes: [], jobsLoaded: false, loaded: false, loading: false, loadingMore: false,
-  hasMore: false, error: null, schedule: null, calendar: null, overviewLoaded: false, overviewError: null, checkedAt: 0 };
-type Action = 'refresh' | 'more' | 'poll';
+  hasMore: false, error: null, fetchedAt: -Infinity, cacheVersion: -1,
+  schedule: null, calendar: null, overviewLoaded: false, overviewError: null, checkedAt: 0 };
+type Action = 'focus' | 'refresh' | 'more' | 'poll';
 
-/** Retain the last view on focus/resume; poll unfinished jobs only while visible. */
+/** Reuse fresh views for a minute; edits, manual refresh and active jobs bypass the TTL. */
 export function usePlanningManager() {
   const { authSession, calendarCache } = useApp();
   const userId = authSession?.user.id;
@@ -44,7 +46,7 @@ export function usePlanningManager() {
       try {
         const history = await api.getPlanningHistory(action === 'more' ? snapshot.changes.at(-1)?.revision : undefined);
         if (!visible) return;
-        const changes = action === 'refresh' ? history.changes : [...new Map([
+        const changes = action === 'refresh' || action === 'focus' ? history.changes : [...new Map([
           ...snapshot.changes, ...history.changes,
         ].map(change => [change.id, change])).values()].sort((a, b) => b.revision - a.revision);
         snapshot = { ...snapshot, changes, loaded: true,
@@ -67,11 +69,11 @@ export function usePlanningManager() {
         publish();
         if (!schedule?.horizon_end) {
           snapshot = { ...snapshot, calendar: null };
-        } else if (force || changed || !snapshot.calendar) {
+        } else {
           const end = schedule.horizon_end;
           const start = shiftDays(end, 1 - Math.min(schedule.horizon_days, 31));
-          if (changed) calendarCache.invalidate();
-          const calendar = await calendarCache.load(api, start, end, force && !changed);
+          const cached = calendarCache.peek(start, end);
+          const calendar = await calendarCache.load(api, start, end, force || Boolean(cached && cached.data.revision !== schedule.revision));
           if (!visible) return;
           if (!calendar) throw new Error('Your plan changed while loading. Refresh to try again.');
           snapshot = { ...snapshot, calendar };
@@ -86,10 +88,15 @@ export function usePlanningManager() {
 
     async function load(action: Action) {
       if (!visible || !foreground || pending || (action === 'more' && !snapshot.hasMore)) return;
+      if (action === 'focus' && snapshot.loaded && snapshot.overviewLoaded && !snapshot.error && !snapshot.overviewError
+          && !snapshot.jobs.some(job => job.status === 'pending' || job.status === 'running')
+          && snapshot.cacheVersion === calendarCache.version && Date.now() - snapshot.fetchedAt < 60_000) return;
       clearTimeout(timer);
       pending = true;
       refreshOnResume = false;
-      snapshot = { ...snapshot, loading: action === 'refresh', loadingMore: action === 'more', error: null };
+      const cacheVersion = calendarCache.version;
+      snapshot = { ...snapshot, loading: action === 'refresh' || !snapshot.loaded, loadingMore: action === 'more', error: null,
+        ...(action !== 'more' ? { fetchedAt: -Infinity } : {}) };
       publish();
       try {
         // Read history and coverage after jobs so a completed job's publication cannot be missed.
@@ -99,6 +106,7 @@ export function usePlanningManager() {
         snapshot = { ...snapshot, jobs, jobsLoaded: true };
         publish();
         await Promise.all([loadHistory(action), action !== 'more' && loadOverview(action === 'refresh')]);
+        if (action !== 'more' && !snapshot.error && snapshot.overviewLoaded) snapshot = { ...snapshot, fetchedAt: Date.now(), cacheVersion };
       } catch (error) {
         snapshot = { ...snapshot, error: errorMessage(error, 'Could not load your plans.') };
       } finally {
@@ -106,7 +114,7 @@ export function usePlanningManager() {
         if (visible) {
           snapshot = { ...snapshot, loading: false, loadingMore: false };
           publish();
-          if (foreground && refreshOnResume) void load('refresh');
+          if (foreground && (refreshOnResume || cacheVersion !== calendarCache.version)) void load('poll');
           else if (foreground && snapshot.jobs.some(job => job.status === 'pending' || job.status === 'running')) {
             timer = setTimeout(() => void load('poll'), 10_000);
           }
@@ -116,13 +124,13 @@ export function usePlanningManager() {
 
     actions.current = { userId, load };
     publish();
-    void load('refresh');
+    void load('focus');
     const listener = AppState.addEventListener('change', status => {
       foreground = status === 'active';
       clearTimeout(timer);
       if (foreground) {
         if (pending) refreshOnResume = true;
-        else void load('refresh');
+        else void load('focus');
       }
     });
     return () => {

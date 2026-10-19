@@ -11,6 +11,7 @@ const slots: TestValue[] = []; let cursor = 0; let onFocus!: () => () => void; l
 const effects: (() => void)[] = [];
 const modules: TestModule = {
   react: {
+    createContext: value => ({ defaultValue: value }), useContext: context => context.defaultValue,
     useState: initial => {
       const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial;
       return [slots[index], (value: TestValue) => { slots[index] = value; }];

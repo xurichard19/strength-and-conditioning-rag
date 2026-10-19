@@ -668,10 +668,12 @@ test('provider finishes onboarding only after API save and never calls planning'
   const f = providerFixture(); await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
   assert.equal(f.value.accountReady, true);
   assert.equal(f.value.sessions.length, 0);
+  const version = f.value.calendarCache.version;
   assert.equal(await f.value.finishOnboarding(profile, { pain: 'ankle' }), true);
   await f.flush();
   assert.deepEqual(f.calls, ['profile', ['answers', { pain: 'ankle' }], 'complete']);
   assert.equal(f.value.profile.onboardingComplete, true);
+  assert.equal(f.value.calendarCache.version, version + 1, 'onboarding exposes its newly queued planning job on the next visit');
 });
 
 test('an older account read cannot overwrite newly completed onboarding', async () => {
@@ -1314,13 +1316,14 @@ function refreshScreenFixture(onRefresh?: () => Promise<void>, state = { refresh
   const slots: TestValue[] = []; let cursor = 0;
   const { Screen } = load('components/ui.tsx', {
     react: {
+      createContext: value => ({ defaultValue: value }), useContext: () => true,
       useState: initial => {
         const index = cursor++;
         if (!(index in slots)) slots[index] = initial;
         return [slots[index], (value: TestValue) => { slots[index] = value; }];
       },
       useRef: initial => { const index = cursor++; return slots[index] ??= { current: initial }; },
-      useCallback: callback => callback,
+      useEffect: callback => { callback(); },
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     'expo-router': { useFocusEffect: callback => { callback(); } }, 'lucide-react-native': {},
@@ -1331,7 +1334,7 @@ function refreshScreenFixture(onRefresh?: () => Promise<void>, state = { refresh
       useSharedValue: initial => { let value = initial; return { get: () => value, set: (next: TestValue) => { value = next; } }; },
     },
     'react-native': { ScrollView: 'scroll', RefreshControl: 'refresh', StyleSheet: { create: value => value } },
-    'react-native-safe-area-context': {},
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     '@/design/tokens': { fonts: {}, radius: {}, shadow: {} },
     '@/lib/errors': { errorMessage: (error, fallback) => error.message || fallback },
     '@/state/app-context': { useApp: () => ({ colors: {}, previewMode: false }) },
@@ -1352,7 +1355,7 @@ test('pull-to-refresh stays spinning until completion and blocks duplicate pulls
   assert.equal(screen.scroll().refreshControl.props.refreshing, false);
   const pending = screen.scroll().refreshControl.props.onRefresh();
   assert.equal(screen.scroll().refreshControl.props.refreshing, true);
-  assert.equal(screen.scroll().style.opacity, 0.55);
+  assert.equal(screen.scroll().style, undefined, 'refresh keeps cached content fully readable');
   assert.equal(screen.scroll().accessibilityState.busy, true);
   assert.match(screen.output(), /Cached content/);
   await screen.scroll().refreshControl.props.onRefresh();
@@ -1375,11 +1378,12 @@ test('pull-to-refresh stops on failure, shows the error, and allows retry', asyn
   assert.equal(refreshScreenFixture().scroll().refreshControl, undefined);
 });
 
-test('cache invalidation refresh dims existing content without needing a pull gesture', () => {
+test('background refresh keeps cached content readable without a pull spinner', () => {
   const state = { refreshing: true };
   const screen = refreshScreenFixture(async () => {}, state);
-  assert.equal(screen.scroll().refreshControl.props.refreshing, true);
-  assert.equal(screen.scroll().style.opacity, 0.55);
+  assert.equal(screen.scroll().refreshControl.props.refreshing, false);
+  assert.equal(screen.scroll().style, undefined);
+  assert.equal(screen.scroll().accessibilityState.busy, true);
   assert.match(screen.output(), /Cached content/);
   state.refreshing = false;
   assert.equal(screen.scroll().refreshControl.props.refreshing, false);

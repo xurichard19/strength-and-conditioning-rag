@@ -380,6 +380,22 @@ test('overlapping concurrent calendar reads share a covering request and filter 
   assert.equal(calls, 1);
 });
 
+test('overlapping reads keep unchanged ranges fresh but invalidate changed workouts and sports at the same revision', async () => {
+  for (const kind of ['workouts', 'sports_workouts'] as const) {
+    let clock = 0; const cache = createCalendarCache({ now: () => clock });
+    const original = { ...empty(), workouts: [workout('lift', '2026-01-20')], sports_workouts: [sports('boxing', '2026-01-21')] };
+    await cache.load({ getCalendarRange: async () => original }, '2026-01-01', '2026-01-31');
+    clock = 30_000;
+    await cache.load({ getCalendarRange: async () => original }, '2026-01-18', '2026-02-07');
+    assert.equal(cache.peek('2026-01-01', '2026-01-31')?.fresh, true);
+    clock = 60_000;
+    assert.equal(cache.peek('2026-01-01', '2026-01-31')?.fresh, false, 'overlap does not extend the original TTL');
+    assert.equal(cache.peek('2026-01-18', '2026-02-07')?.fresh, true);
+    await cache.load({ getCalendarRange: async () => ({ ...original, [kind]: [] }) }, '2026-01-01', '2026-01-31');
+    assert.equal(cache.peek('2026-01-18', '2026-02-07')?.fresh, false, 'deleting an entry invalidates overlapping coverage');
+  }
+});
+
 test('sports invalidation fences old reads, invalidates overlapping months and weeks, and preserves unrelated ranges', async () => {
   const cache = createCalendarCache();
   const api = { getCalendarRange: async () => empty() };
