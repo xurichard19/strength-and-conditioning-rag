@@ -393,14 +393,29 @@ class HandlerTests(unittest.TestCase):
         self.assertEqual(result.sports_workouts[0].sport, 'basketball')
         self.assertIn('status=neq.cancelled', str(self.http.call_args.args[0].url))
 
-    def test_calendar_snapshot_matches_revision_and_preserves_unconfigured_state(self):
-        for revision_rows, expected in (([{'revision': 3}], 3), ([], None)):
-            with self.subTest(revision=expected):
-                self.http.side_effect = [httpx.Response(200, json=rows)
-                    for rows in (revision_rows, [workout_row()], [], [], revision_rows)]
-                result = calendar.get_calendar_snapshot(USER, DAY, DAY, 'user-jwt')
-                self.assertEqual(result.revision, expected)
-                self.assertEqual(result.workouts[0].id, WORKOUT)
+    def test_calendar_snapshot_uses_one_caller_scoped_rpc(self):
+        for revision, rows in ((3, [workout_row()]), (None, [])):
+            with self.subTest(revision=revision):
+                self.http.reset_mock()
+                self.response(dict(revision=revision, workouts=rows, sports_workouts=[sports_row()]))
+                result = calendar.get_calendar_snapshot(USER, DAY, DAY + dt.timedelta(days=30), 'user-jwt')
+                self.assertEqual(result.revision, revision)
+                self.assertEqual([row.id for row in result.workouts], [WORKOUT] if rows else [])
+                self.assertEqual(result.sports_workouts[0].sport, 'running')
+                self.http.assert_called_once()
+                request = self.http.call_args.args[0]
+                self.assertEqual(request.method, 'POST')
+                self.assertEqual(request.url.path, '/rest/v1/rpc/get_calendar_snapshot')
+                self.assertEqual(request.headers.get('Authorization'), 'Bearer user-jwt')
+                self.assertEqual(request.headers.get('Apikey'), 'public-key')
+                self.assertEqual(json.loads(request.content), dict(p_user_id=str(USER),
+                    p_start_date=str(DAY), p_end_date=str(DAY + dt.timedelta(days=30))))
+
+    def test_calendar_snapshot_rejects_invalid_inputs_before_network(self):
+        for user, days in ((USER, -1), (USER, 31), ('not-a-uuid', 0)):
+            with self.subTest(user=user, days=days), self.assertRaises(ValueError):
+                calendar.get_calendar_snapshot(user, DAY, DAY + dt.timedelta(days=days), 'user-jwt')
+        self.http.assert_not_called()
 
     def test_workout_snapshot_rejects_a_concurrent_revision_change(self):
         self.http.side_effect = [httpx.Response(200, json=rows)
