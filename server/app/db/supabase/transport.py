@@ -2,14 +2,12 @@
 
 import json
 import re
-from http.client import HTTPException as HTTPProtocolError
+import httpx
 from typing import Any
-from urllib.error import HTTPError
 from urllib.parse import urlencode
-from urllib.request import Request as UrlRequest
-from urllib.request import urlopen
 
 from app.config import get_database_settings
+from app.http import get_http_client
 
 
 class SupabaseDataError(Exception):
@@ -51,8 +49,8 @@ def _request(
     """
     send one supabase request without automatic write retries
 
-    synchronous call with a 10-second urlopen timeout, not an overall multi-query
-    handler deadline. use a worker thread when called from an async route. a user
+    pooled synchronous call with 10-second network timeouts and a 5-second pool
+    wait, not an overall handler deadline. use a worker thread from async routes. a user
     token uses the publishable api key; none selects the backend secret API key
     for apikey only. this does not authenticate the application
     caller or authorize a user id on their behalf.
@@ -98,31 +96,26 @@ def _request(
     if prefer:
         headers["Prefer"] = prefer
 
-    request = UrlRequest(
-        url,
-        data=json.dumps(body).encode("utf-8") if body is not None else None,
-        method=method,
-        headers=headers,
-    )
+    content = json.dumps(body).encode("utf-8") if body is not None else None
 
     try:
-        with urlopen(request, timeout=10) as response:
-            content = response.read()
-            return json.loads(content.decode("utf-8")) if content else None
-    except HTTPError as exc:
-        try:
-            error = json.loads(exc.read().decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError, OSError, HTTPProtocolError):
-            error = {}
-        if not isinstance(error, dict):
-            error = {}
-        code = error.get("code")
-        raise SupabaseDataError(
-            str(error.get("message", "supabase data api request failed")).lower(),
-            exc.code,
-            code if isinstance(code, str) else None,
-        ) from exc
-    except (json.JSONDecodeError, UnicodeDecodeError, OSError, HTTPProtocolError) as exc:
+        with get_http_client().stream(method, url, content=content, headers=headers) as response:
+            if response.is_success:
+                content = response.read()
+                return json.loads(content.decode("utf-8")) if content else None
+            try:
+                error = json.loads(response.read().decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError, OSError, httpx.RequestError):
+                error = {}
+            if not isinstance(error, dict):
+                error = {}
+            code = error.get("code")
+            raise SupabaseDataError(
+                str(error.get("message", "supabase data api request failed")).lower(),
+                response.status_code,
+                code if isinstance(code, str) else None,
+            )
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError, httpx.RequestError) as exc:
         raise SupabaseDataError("supabase data api is unavailable") from exc
 
 

@@ -7,12 +7,13 @@ from fastapi import FastAPI, HTTPException
 
 from app.contracts import ReplanJobRecord
 from app.db.supabase import replan_jobs
+from app.http import http_lifespan
 from app.jobs.cloud_tasks import ReplanTask, enqueue_replan, task_exists
 from app.jobs.settings import TaskSettings, get_task_settings
 
 
 logger = logging.getLogger(__name__)
-app = FastAPI(title="planning dispatcher")
+app = FastAPI(title="planning dispatcher", lifespan=http_lifespan)
 
 
 def dispatch_job(job: ReplanJobRecord, settings: TaskSettings) -> None:
