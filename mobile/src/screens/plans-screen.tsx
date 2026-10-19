@@ -177,7 +177,7 @@ function PlansContent({ userId }: { userId: string }) {
   const filtered = changes.filter(change => !adjustmentsOnly || change.kind === 'adjustment');
   return <>
     <Screen key={String(timeline)} title={timeline ? 'Plan history' : 'Your plan'} subtitle={timeline ? 'Every adjustment, in one place.' : 'Built around the way you train.'}
-      preview={false} onRefresh={refresh} refreshing={loading && loaded}>
+      preview={false} onRefresh={refresh} refreshing={loading}>
       {timeline ? <Pressable accessibilityRole="button" accessibilityLabel="Back to plan overview" onPress={() => setTimeline(false)} style={styles.back}>
         <ArrowLeft size={17} color={colors.tintText} /><AppText tone="tint" weight="medium" style={styles.body}>Your plan</AppText>
       </Pressable> : null}
@@ -186,7 +186,6 @@ function PlansContent({ userId }: { userId: string }) {
         {loaded || overviewLoaded ? <AppText tone="secondary" style={styles.caption}>Showing the last loaded data. It may be out of date.</AppText> : null}
         <SecondaryButton onPress={() => void refresh()} disabled={loading}>Retry</SecondaryButton>
       </Card> : null}
-      {!loaded && !error ? <ActivityIndicator accessibilityLabel="Loading plans" color={colors.tintText} /> : null}
       {schedule ? <PlanOverview schedule={schedule} calendar={calendar} checkedAt={checkedAt} compact={timeline} /> : overviewLoaded ? <Card style={styles.stack}>
         <AppText style={styles.heading}>Your plan starts here.</AppText>
         <AppText tone="secondary">Complete onboarding to set up your training plan.</AppText>

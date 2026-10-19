@@ -111,6 +111,12 @@ export function Screen({
     transform: [{ translateY: (1 - entrance.get()) * 12 }],
   }));
   const refreshingContent = refreshing || externalRefreshing;
+  const shade = useSharedValue(refreshingContent ? 0.45 : 0);
+  useEffect(() => {
+    shade.set(withTiming(refreshingContent ? 0.45 : 0, { duration: 180, reduceMotion: ReduceMotion.System }));
+    return () => cancelAnimation(shade);
+  }, [refreshingContent, shade]);
+  const loadingStyle = useAnimatedStyle(() => ({ opacity: shade.get() }));
   const refresh = async () => {
     if (!onRefresh || refreshPending.current) return;
     refreshPending.current = true;
@@ -151,6 +157,8 @@ export function Screen({
         ) : null}
         <Animated.View style={[styles.sections, entranceStyle]}>{children}</Animated.View>
       </ScrollView>
+      <Animated.View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants"
+        style={[styles.loadingShade, loadingStyle]} />
     </SafeAreaView>
   );
 }
@@ -300,6 +308,7 @@ export function DisclosureRow({
 const styles = StyleSheet.create({
   text: { fontSize: 15, lineHeight: 22, letterSpacing: -0.15 },
   screen: { flex: 1 },
+  loadingShade: { ...StyleSheet.absoluteFill, backgroundColor: '#000' },
   screenContent: { paddingHorizontal: 22, paddingBottom: 40, gap: 16 },
   sections: { gap: 14 },
   pageHeader: { minHeight: 122, paddingTop: 24, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 16 },

@@ -105,7 +105,8 @@ function fixture(state: TestModule = {}, detail = async () => preview) {
 
 test('loading, failures and empty state stay truthful and support retry and pull to refresh', async () => {
   const f = fixture({ jobsLoaded: false, loaded: false, overviewLoaded: false, loading: true }); await f.flush();
-  assert.match(f.labels(), /Loading plans/); assert.doesNotMatch(f.text(), /No plan updates|No plan history|Complete onboarding/);
+  assert.equal(f.screen().props.refreshing, true);
+  assert.doesNotMatch(f.labels(), /Loading plans/); assert.doesNotMatch(f.text(), /No plan updates|No plan history|Complete onboarding/);
   f.state.jobsLoaded = true; f.render(); assert.match(f.text(), /No plan updates in progress/);
   f.state.loading = false; f.state.error = 'Could not load your plans.'; f.render();
   assert.match(f.text(), /Could not load your plans/); assert.doesNotMatch(f.text(), /No plan history|Complete onboarding/);
