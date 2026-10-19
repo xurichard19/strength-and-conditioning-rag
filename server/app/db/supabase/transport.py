@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 
-from app.config import get_settings
+from app.config import get_database_settings
 
 
 class SupabaseDataError(Exception):
@@ -36,7 +36,7 @@ class SupabaseDataError(Exception):
         self.code = code
 
 
-settings = get_settings()
+settings = get_database_settings()
 
 
 def _request(

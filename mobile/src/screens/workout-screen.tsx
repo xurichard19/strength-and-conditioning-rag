@@ -61,7 +61,7 @@ export default function WorkoutScreen() {
             <TextInput accessibilityLabel="Session note" value={note} onChangeText={setNote} multiline placeholder="Anything worth remembering?" placeholderTextColor={colors.textTertiary} style={[styles.note, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} />
           </View>
           <PrimaryButton loading={finishing} onPress={finish}>Finish session</PrimaryButton>
-          <AppText tone="secondary" style={styles.finishHint}>You can finish with incomplete sets. Your log records the work you did.</AppText>
+          <AppText tone="secondary" style={styles.finishHint}>This is a training preview. Changes aren’t saved to your real plan.</AppText>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

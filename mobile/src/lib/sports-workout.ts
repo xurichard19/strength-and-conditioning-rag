@@ -23,7 +23,7 @@ export function validScheduledDate(value: unknown): value is string {
 }
 
 /** Keep date/time local and send only editable fields; the backend supplies ownership/status. */
-export function sportsWorkoutInput(date: string, sport: string, startTime: string, duration: string, intensity: string, notes: string): SportsWorkoutInput {
+export function sportsWorkoutInput(date: string, sport: string, startTime: string, duration: string, intensity: string, notes: string): Omit<SportsWorkoutInput, 'id'> {
   if (!validScheduledDate(date)) throw new Error('Select a valid day from the calendar.');
   for (const [value, options] of [[sport, sportOptions], [startTime, startTimeOptions], [duration, durationOptions], [intensity, intensityOptions]] as const) {
     if (!options.some(option => option.value === value)) throw new Error('Choose a valid value for each workout field.');

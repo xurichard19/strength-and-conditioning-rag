@@ -18,6 +18,6 @@
     "expo-env.d.ts"
   ],
   "exclude": [
-    "node_modules", "android", "ios", "tests", "eslint.config.ts"
+    "node_modules", "android", "ios", "eslint.config.ts"
   ]
 }

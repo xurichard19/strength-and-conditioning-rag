@@ -59,11 +59,10 @@ def get_replan_context(claim: ClaimedReplanJob, history_days: int = 30) -> Repla
     """
     load worker context through the horizon and reject input changes during the reads
 
-    backend-only context loader after claim_replan_job. verifies the schedule
-    matches claim.job.expected_revision, loads profile/onboarding, history ending
-    the day before effective_from, and the calendar through horizon_end, then checks
-    revision again. the broader calendar gives context beyond a short adjustment;
-    it does not authorize editing beyond claim.effective_through.
+    verifies the claim revision, loads profile/onboarding, thirty-day history before
+    claimed_on and the whole remaining calendar, then checks revision again.
+    sport reads include three neighboring days for recovery context. these broader
+    reads never authorize edits outside the claim's window.
 
     missing onboarding is allowed; missing profile raises a 404. missing/stale
     schedule or a revision change during reads raises a 409. discard that context
@@ -77,6 +76,9 @@ def get_replan_context(claim: ClaimedReplanJob, history_days: int = 30) -> Repla
     """
 
     user_id = claim.job.user_id
+    today = claim.job.claimed_on
+    if today is None:
+        raise ValueError("planning context requires a frozen claim date")
     schedule = get_planning_schedule(user_id, None)
     if schedule is None or schedule.revision != claim.job.expected_revision:
         raise SupabaseDataError("planning inputs changed; reload the job", status_code=409)
@@ -87,8 +89,12 @@ def get_replan_context(claim: ClaimedReplanJob, history_days: int = 30) -> Repla
         schedule=schedule,
         profile=profile,
         onboarding=get_onboarding_response(user_id, None),
-        recent_workouts=get_recent_workouts(user_id, claim.effective_from - timedelta(days=1), None, history_days),
-        calendar=get_calendar(user_id, claim.effective_from, claim.horizon_end, None),
+        recent_workouts=get_recent_workouts(user_id, today - timedelta(days=1), None, history_days),
+        calendar=CalendarRecords(
+            workouts=get_workouts_in_range(user_id, today, claim.horizon_end, None),
+            sports_workouts=get_sports_workouts_in_range(user_id,
+                today - timedelta(days=3), claim.horizon_end + timedelta(days=3), None),
+        ),
     )
     current = get_planning_schedule(user_id, None)
     if current is None or current.revision != schedule.revision:

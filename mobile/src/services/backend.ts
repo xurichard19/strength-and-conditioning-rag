@@ -8,11 +8,11 @@ export type Conversation = { id: string; title: string; created_at: string };
 export type SavedMessage = { id: string; role: 'user' | 'assistant'; content: string; created_at: string };
 export type ApiRequest = (path: string, options?: RequestInit) => Promise<Response>;
 export type SportsWorkoutInput = {
-  sport: string; scheduled_date: string; start_time: string; planned_duration_minutes: number;
+  id: string; sport: string; scheduled_date: string; start_time: string; planned_duration_minutes: number;
   intensity: 'easy' | 'moderate' | 'hard' | 'variable'; notes: string | null;
 };
 export type SportsWorkout = Omit<SportsWorkoutInput, 'start_time' | 'planned_duration_minutes' | 'intensity'> & {
-  id: string; user_id: string; status: 'planned' | 'completed' | 'cancelled';
+  user_id: string; status: 'planned' | 'completed' | 'cancelled';
   start_time: string | null; planned_duration_minutes: number | null; intensity: SportsWorkoutInput['intensity'] | null;
 };
 export type CalendarWorkout = {
@@ -62,8 +62,22 @@ export function profileFromApi(profile: ApiProfile, onboarding: Onboarding | nul
 
 /** HTTP shapes only. Auth is supplied by the mobile adapter; this module never calls planning. */
 export function createBackend(request: ApiRequest) {
-  async function json<T>(path: string, options?: RequestInit): Promise<T> {
-    return (await checked(await request(path, options))).json();
+  async function json<T>(path: string, options?: RequestInit, retryConflict = false): Promise<T> {
+    if (options?.method && options.method !== 'GET') return (await checked(await request(path, options))).json();
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Bound the whole read, including auth and response decoding, even if a transport ignores abort.
+    const deadline = new Promise<T>((_, reject) => {
+      timer = setTimeout(() => { reject(new Error('Request timed out. Please try again.')); controller.abort(); }, 15_000);
+    });
+    try {
+      return await Promise.race([deadline, (async () => {
+        const config = { ...options, signal: controller.signal };
+        let response = await request(path, config);
+        if (retryConflict && response.status === 409 && !controller.signal.aborted) response = await request(path, config);
+        return (await checked(response)).json() as Promise<T>;
+      })()]);
+    } finally { clearTimeout(timer); }
   }
   return {
     getProfile: () => json<ApiProfile>('/profile'),
@@ -79,12 +93,9 @@ export function createBackend(request: ApiRequest) {
     }),
     completeOnboarding: () => json<Onboarding>('/onboarding/complete', { method: 'POST' }),
     /** Inclusive local dates, at most 31 days. Retry one read-only revision conflict. */
-    getCalendarRange: async (startDate: string, endDate: string) => {
+    getCalendarRange: (startDate: string, endDate: string) => {
       const query = new URLSearchParams({ start_date: startDate, end_date: endDate });
-      const path = `/calendar?${query}`;
-      let response = await request(path);
-      if (response.status === 409) response = await request(path);
-      return (await checked(response)).json() as Promise<CalendarResponse>;
+      return json<CalendarResponse>(`/calendar?${query}`, undefined, true);
     },
     createSportsWorkout: (workout: SportsWorkoutInput) => json<SportsWorkout>('/sports-workouts', {
       method: 'POST', body: JSON.stringify(workout),
