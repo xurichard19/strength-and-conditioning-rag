@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'reac
 import { AppText, Card, Screen, SecondaryButton, SectionTitle } from '@/components/ui';
 import { CalendarDayActions } from '@/components/calendar-day-actions';
 import { SportsWorkoutDetails } from '@/components/sports-workout-details';
+import { WorkoutDetails } from '@/components/workout-details';
 import type { Palette } from '@/design/tokens';
 import { calendarLabel, calendarRange, calendarTime, monthDates, shiftDays, shiftMonth, weekDates, type CalendarEntry } from '@/lib/calendar';
 import { formatDay, isToday, todayIso } from '@/lib/dates';
@@ -116,7 +117,9 @@ function EntryBadge({ entry, size = 40 }: { entry: CalendarEntry; size?: number 
 function SelectedSession({ session, onOpen }: { session: CalendarEntry; onOpen: () => void }) {
   const { colors } = useApp();
   const detail = entryDetails(session);
-  const card = (
+  return <Pressable accessibilityRole="button" accessibilityLabel={`View ${session.title} workout`}
+    accessibilityHint={session.kind === 'sport' ? 'Opens session details' : 'Opens exercises, set targets, and notes'}
+    onPress={onOpen} style={({ pressed }) => pressed && styles.pressed}>
       <Card style={styles.selectedCard}>
         <View style={styles.sessionEyebrowRow}>
           <AppText tone="secondary" weight="medium" style={styles.sessionEyebrow}>{session.kind === 'sport' ? 'Sports session' : 'Workout'}</AppText>
@@ -125,27 +128,18 @@ function SelectedSession({ session, onOpen }: { session: CalendarEntry; onOpen: 
         </View>
         <View style={styles.selectedHeader}>
           <View style={styles.copy}>
-            <AppText style={styles.sessionTitle}>{session.title}</AppText>
+            <AppText numberOfLines={2} style={styles.sessionTitle}>{session.title}</AppText>
           </View>
           <EntryBadge entry={session} />
         </View>
         {detail ? <AppText tone="secondary" style={styles.detail}>{detail}</AppText> : null}
-        {session.notes ? <AppText tone="secondary" style={[styles.detail, styles.sessionNotes, { borderTopColor: colors.separator }]}>{session.notes}</AppText> : null}
-        {session.exercises?.map((exercise, index) => <View key={exercise.id} style={[styles.exercise, { borderTopColor: colors.separator }]}>
-          <AppText weight="medium" style={styles.exerciseTitle}>{index + 1}. {exercise.name}</AppText>
-          {exercise.prescriptions.length ? exercise.prescriptions.map((target, setIndex) =>
-            <AppText key={setIndex} tone="secondary" style={styles.detail}>{target}</AppText>)
-            : <AppText tone="secondary" style={styles.detail}>No set targets provided.</AppText>}
-          {exercise.notes ? <AppText tone="secondary" style={styles.detail}>{exercise.notes}</AppText> : null}
-        </View>)}
-        {session.kind === 'sport' ? <View style={[styles.detailsLink, { borderTopColor: colors.separator }]}>
-          <AppText tone="tint" weight="medium" style={styles.meta}>Session details</AppText>
+        {session.notes ? <AppText numberOfLines={2} tone="secondary" style={styles.detail}>{session.notes}</AppText> : null}
+        <View style={[styles.detailsLink, { borderTopColor: colors.separator }]}>
+          <AppText tone="tint" weight="medium" style={styles.meta}>{session.kind === 'sport' ? 'Session details' : 'Workout details'}</AppText>
           <ArrowUpRight color={colors.tintText} size={17} strokeWidth={1.6} />
-        </View> : null}
+        </View>
       </Card>
-  );
-  return session.kind === 'sport' ? <Pressable accessibilityRole="button" accessibilityLabel={`View ${session.title} workout`}
-    onPress={onOpen} style={({ pressed }) => pressed && styles.pressed}>{card}</Pressable> : card;
+    </Pressable>;
 }
 
 function DayAgenda({ sessions, ready, onOpen }: {
@@ -168,6 +162,7 @@ function SessionRow({ session, last, onSelect }: { session: CalendarEntry; last:
         <AppText tone="secondary" style={styles.meta}>{statusLabels[session.status]}</AppText>
       </View>
       {session.minutes ? <AppText tone="secondary" style={styles.meta}>{session.minutes}m</AppText> : null}
+      <ChevronRight color={colors.textTertiary} size={16} strokeWidth={1.6} />
     </Pressable>
   );
 }
@@ -177,13 +172,13 @@ export default function WeekScreen() {
   const [view, setView] = useState<'week' | 'month'>('week');
   const [selectedDate, setSelectedDate] = useState(todayIso());
   const [heldDate, setHeldDate] = useState<string | null>(null);
-  const [openedSport, setOpenedSport] = useState<{ id: string; userId: string } | null>(null);
+  const [openedSession, setOpenedSession] = useState<{ id: string; kind: CalendarEntry['kind']; userId: string } | null>(null);
   const [start, end] = calendarRange(selectedDate, view);
   const { data, loading, error, refresh } = useCalendarRange(start, end);
-  const selectedSport = openedSport?.userId === authSession?.user.id
-    ? data?.entries.find(entry => entry.kind === 'sport' && entry.id === openedSport?.id) : undefined;
-  const openSport = (session: CalendarEntry) => {
-    if (session.kind === 'sport' && authSession) setOpenedSport({ id: session.id, userId: authSession.user.id });
+  const selectedSession = openedSession?.userId === authSession?.user.id
+    ? data?.entries.find(entry => entry.kind === openedSession?.kind && entry.id === openedSession?.id) : undefined;
+  const openSession = (session: CalendarEntry) => {
+    if (authSession) setOpenedSession({ id: session.id, kind: session.kind, userId: authSession.user.id });
   };
   const hold = (date: string) => { setSelectedDate(date); setHeldDate(date); };
   const byDate = useMemo(() => {
@@ -234,18 +229,20 @@ export default function WeekScreen() {
           <Ellipsis color={colors.textSecondary} size={22} />
         </Pressable>
       </View>
-      <DayAgenda sessions={selected} ready={Boolean(data) && !loading && !error} onOpen={openSport} />
+      <DayAgenda sessions={selected} ready={Boolean(data) && !loading && !error} onOpen={openSession} />
 
       {view === 'week' && weekSessions.length > 0 ? <>
         <SectionTitle>At a glance</SectionTitle>
         <View style={[styles.listCard, { borderTopColor: colors.separator }]}>
           {weekSessions.map((session, index) => <SessionRow key={`${session.kind}:${session.id}`} session={session} last={index === weekSessions.length - 1}
-            onSelect={() => { setSelectedDate(session.date); openSport(session); }} />)}
+            onSelect={() => { setSelectedDate(session.date); openSession(session); }} />)}
         </View>
       </> : null}
       {heldDate ? <CalendarDayActions date={heldDate} onClose={() => setHeldDate(null)} /> : null}
-      {selectedSport && openedSport ? <SportsWorkoutDetails key={`${openedSport.userId}:${openedSport.id}`}
-        session={selectedSport} userId={openedSport.userId} onClose={() => setOpenedSport(null)} /> : null}
+      {selectedSession && openedSession ? selectedSession.kind === 'sport'
+        ? <SportsWorkoutDetails key={`${openedSession.userId}:${openedSession.id}`} session={selectedSession}
+          userId={openedSession.userId} onClose={() => setOpenedSession(null)} />
+        : <WorkoutDetails session={selectedSession} onClose={() => setOpenedSession(null)} /> : null}
     </Screen>
   );
 }
@@ -277,10 +274,7 @@ const styles = StyleSheet.create({
   statusDot: { width: 4, height: 4, borderRadius: 2 },
   selectedHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   copy: { flex: 1 },
-  sessionTitle: { fontSize: 28, lineHeight: 34, letterSpacing: -0.8 },
-  sessionNotes: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 14 },
-  exercise: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 14, gap: 6 },
-  exerciseTitle: { fontSize: 16, lineHeight: 23 },
+  sessionTitle: { fontSize: 24, lineHeight: 30, letterSpacing: -0.6 },
   detailsLink: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 13 },
   loading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   meta: { fontSize: 12, lineHeight: 17 },

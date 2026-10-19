@@ -294,21 +294,34 @@ class HandlerTests(unittest.TestCase):
         with self.assertRaisesRegex(SupabaseDataError, 'changed during context'):
             calendar.get_replan_context(claim)
 
-    def test_extension_context_keeps_overlap_and_sports_beyond_edit_window(self):
+    def test_worker_context_keeps_entire_horizon_beyond_edit_window(self):
         end = DAY + dt.timedelta(days=20)
-        claim = ClaimedReplanJob(job={**job_row(), 'kind': 'refresh', 'effective_from': None,
-            'effective_through': None, 'claimed_on': DAY, 'expected_revision': 1},
-            effective_from=DAY + dt.timedelta(days=14), effective_through=end, horizon_end=end)
         profile = dict(id=str(USER), timezone='UTC', created_at=NOW.isoformat(), updated_at=NOW.isoformat())
-        self.http.side_effect = [FakeResponse([schedule_row(1)]), FakeResponse([profile]),
-            FakeResponse([]), FakeResponse([]), FakeResponse([]), FakeResponse([]), FakeResponse([schedule_row(1)])]
-        calendar.get_replan_context(claim)
-        urls = [call.args[0].full_url for call in self.http.call_args_list]
-        self.assertIn('scheduled_date=lte.' + str(DAY - dt.timedelta(days=1)), urls[3])
-        self.assertIn('scheduled_date=gte.' + str(DAY), urls[4])
-        self.assertIn('scheduled_date=lte.' + str(end), urls[4])
-        self.assertIn('scheduled_date=gte.' + str(DAY - dt.timedelta(days=3)), urls[5])
-        self.assertIn('scheduled_date=lte.' + str(end + dt.timedelta(days=3)), urls[5])
+        future = {**workout_row(), 'id': str(TOKEN), 'scheduled_date': str(end)}
+        for kind, start, through in (
+            ('refresh', DAY + dt.timedelta(days=14), end),
+            ('adjustment', DAY + dt.timedelta(days=3), DAY + dt.timedelta(days=6)),
+        ):
+            with self.subTest(kind=kind):
+                claim = ClaimedReplanJob(job={**job_row(), 'kind': kind,
+                    'effective_from': start if kind == 'adjustment' else None,
+                    'effective_through': through if kind == 'adjustment' else None,
+                    'claimed_on': DAY, 'expected_revision': 1},
+                    effective_from=start, effective_through=through, horizon_end=end)
+                schedule = {**schedule_row(), 'horizon_end': str(end if kind == 'adjustment'
+                    else start - dt.timedelta(days=1))}
+                self.http.reset_mock()
+                self.http.side_effect = [FakeResponse([schedule]), FakeResponse([profile]),
+                    FakeResponse([]), FakeResponse([]), FakeResponse([workout_row(), future]),
+                    FakeResponse([]), FakeResponse([]), FakeResponse([schedule])]
+                context = calendar.get_replan_context(claim)
+                self.assertEqual([row.scheduled_date for row in context.calendar.workouts], [DAY, end])
+                urls = [call.args[0].full_url for call in self.http.call_args_list]
+                self.assertIn('scheduled_date=lte.' + str(DAY - dt.timedelta(days=1)), urls[3])
+                self.assertIn('scheduled_date=gte.' + str(DAY), urls[4])
+                self.assertIn('scheduled_date=lte.' + str(end), urls[4])
+                self.assertIn('scheduled_date=gte.' + str(DAY - dt.timedelta(days=3)), urls[6])
+                self.assertIn('scheduled_date=lte.' + str(end + dt.timedelta(days=3)), urls[6])
 
     def test_table_valued_rpc_rejects_wrong_cardinality(self):
         for payload in ([], [job_row(), job_row()], job_row()):

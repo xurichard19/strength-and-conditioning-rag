@@ -74,12 +74,6 @@ class ChatWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.evaluator.await_count, 1)
         self.assertIn('training', str(self.generator.call_args.args[0]))
 
-    async def test_training_only_request_does_not_search(self):
-        self.router.return_value = route('none', 'training')
-        await self.run_chat()
-        self.user_context.assert_awaited_once()
-        self.search.assert_not_awaited()
-
     async def test_profile_only_request_loads_context_without_research(self):
         self.router.return_value = route('none', 'profile')
         await self.run_chat()
@@ -125,7 +119,6 @@ class ChatWorkflowTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(cancelled.wait(), 1)
         self.evaluator.assert_not_awaited()
         self.generator.assert_not_awaited()
-        self.evaluator.assert_not_awaited()
 
     async def test_modes_change_message_count_but_use_the_same_calendar_window(self):
         self.router.return_value = route('none', 'training')
@@ -135,6 +128,7 @@ class ChatWorkflowTests(unittest.IsolatedAsyncioTestCase):
                 await self.run_chat(mode)
                 self.history.assert_awaited_once_with(CONTEXT, limit=messages)
                 self.user_context.assert_awaited_once_with(CONTEXT, self.router.return_value, TODAY)
+                self.search.assert_not_awaited()
 
     async def test_router_gets_the_users_local_day_and_history_without_profile_identity(self):
         self.profile.return_value.timezone = 'America/New_York'

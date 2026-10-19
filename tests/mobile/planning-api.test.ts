@@ -16,7 +16,7 @@ const preview: PlanningChangePreview = { change: history.changes[0], before: [],
   superseded_at: null, exercises: [{ id: 'exercise', name: 'Squat' }],
 }], revision: 3 };
 
-test('planning reads use the supplied authenticated transport without issuing writes', async () => {
+test('planning reads use authenticated GETs and encode preview ids as one path segment', async () => {
   const calls: string[] = [];
   const request: ApiRequest = async (path, options) => {
     calls.push(path);
@@ -29,24 +29,17 @@ test('planning reads use the supplied authenticated transport without issuing wr
   const api = createBackend(request);
   assert.deepEqual(await api.getPlanningJobs(), [job]);
   assert.deepEqual(await api.getPlanningHistory(), history);
-  assert.deepEqual(await api.getPlanningChange('change'), preview);
-  assert.deepEqual(calls, ['/planning/jobs?limit=20', '/planning/changes?limit=20', '/planning/changes/change']);
+  assert.deepEqual(await api.getPlanningChange('a/b?c#d'), preview);
+  assert.deepEqual(calls, ['/planning/jobs?limit=20', '/planning/changes?limit=20', '/planning/changes/a%2Fb%3Fc%23d']);
 });
 
-test('planning history serializes the supplied revision cursor, including zero', async () => {
+test('planning history preserves revision cursors, zero, and empty pages', async () => {
   const calls: string[] = [];
-  const api = createBackend(async path => { calls.push(path); return response(history); });
-  await api.getPlanningHistory(3);
-  await api.getPlanningHistory(0);
+  const empty = { changes: [], revision: null };
+  const api = createBackend(async path => { calls.push(path); return response(calls.length === 1 ? history : empty); });
+  assert.deepEqual(await api.getPlanningHistory(3), history);
+  assert.deepEqual(await api.getPlanningHistory(0), empty);
   assert.deepEqual(calls, ['/planning/changes?limit=20&before_revision=3', '/planning/changes?limit=20&before_revision=0']);
-});
-
-test('planning preview encodes ids as one path segment', async () => {
-  const api = createBackend(async path => {
-    assert.equal(path, '/planning/changes/a%2Fb%3Fc%23d');
-    return response(preview);
-  });
-  await api.getPlanningChange('a/b?c#d');
 });
 
 test('planning reads surface API failures without retrying or falling back to empty data', async () => {
@@ -56,9 +49,4 @@ test('planning reads surface API failures without retrying or falling back to em
   await assert.rejects(api.getPlanningHistory(), /Sign in again\./);
   await assert.rejects(api.getPlanningChange('missing'), /Sign in again\./);
   assert.equal(calls, 3);
-});
-
-test('planning history preserves empty pages and a missing current revision', async () => {
-  const api = createBackend(async () => response({ changes: [], revision: null }));
-  assert.deepEqual(await api.getPlanningHistory(), { changes: [], revision: null });
 });

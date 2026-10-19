@@ -4,7 +4,7 @@ import json
 from time import monotonic
 from types import SimpleNamespace
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 from uuid import UUID
 
 from langchain_core.messages import AIMessage
@@ -14,9 +14,13 @@ from app.ai.services.search import SearchResponse
 from app.ai.workflows.plan import graph
 from app.ai.workflows.plan.nodes.evaluate import evaluate_node
 from app.ai.workflows.plan.nodes.generate import generate_node
+from app.ai.workflows.plan.nodes.search import search_node
+from app.ai.workflows.plan.nodes.validate import validate_node
 from app.ai.workflows.plan.state import EvidenceReview, SearchQuery
 from app.contracts import OnboardingResponseRecord, PlanningProposal, Source, SportsWorkoutRecord
-from tests.backend.test_planning_validation import DAY, END, NOW, OWNER, WORKOUT_ID, inputs, prescription, proposal, record
+from tests.backend.test_planning_validation import (
+    DAY, END, NOW, OWNER, WORKOUT_ID, inputs, invalid_prescriptions, prescription, proposal, record,
+)
 
 
 QUERY = SearchQuery(query="strength training around soccer recovery", providers="research")
@@ -57,7 +61,7 @@ class PlanWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result.day_decisions), 21)
         self.assertEqual(len(result.workouts), 1)
         self.assertEqual(result.before_ids, [])
-        self.search.assert_awaited_once_with(QUERY.query, providers="research", top_k=5)
+        self.search.assert_awaited_once_with(QUERY.query, providers="research", top_k=10)
         self.evaluator.assert_awaited_once()
         self.generator.assert_awaited_once()
         packet = json.loads(self.generator.call_args.args[0][1].content)
@@ -68,7 +72,7 @@ class PlanWorkflowTests(unittest.IsolatedAsyncioTestCase):
     async def test_first_search_uses_research_even_when_preparer_selects_web(self):
         self.preparer.return_value = QUERY.model_copy(update={"providers": "web"})
         await self.run_plan()
-        self.search.assert_awaited_once_with(QUERY.query, providers="research", top_k=5)
+        self.search.assert_awaited_once_with(QUERY.query, providers="research", top_k=10)
 
     async def test_failed_structured_decision_never_starts_research_or_generation(self):
         self.preparer.side_effect = LengthFinishReasonError(completion=SimpleNamespace(usage=None))
@@ -144,21 +148,36 @@ class PlanWorkflowTests(unittest.IsolatedAsyncioTestCase):
             text = str(mock.call_args.args[0])
             for secret in (str(OWNER), str(self.claim.job.lease_token), "private@example.invalid", "created_by_change_id"):
                 self.assertNotIn(secret, text)
-            if mock is not self.evaluator:
-                self.assertIn("actual_reps", text)
+            self.assertIn("actual_reps", text)
 
-    async def test_evidence_review_gets_question_and_sources_without_calendar_details(self):
-        self.context.calendar.workouts = [record(prescription(DAY - timedelta(days=1)))]
+    async def test_model_nodes_share_athlete_context_and_workouts_through_horizon(self):
+        later_workout = record(prescription(END), UUID(int=8))
+        self.claim, self.context = inputs(workouts=[record(), later_workout])
+        self.claim.effective_through = DAY + timedelta(days=2)
+        self.context.onboarding = OnboardingResponseRecord(user_id=OWNER,
+            answers={"trainingDays": ["Mon", "Thu"], "equipment": "dumbbells"},
+            created_at=NOW, updated_at=NOW)
+        candidate = proposal(active_days=[DAY])
+        candidate.day_decisions = candidate.day_decisions[:3]
+        self.generator.return_value = response(candidate)
         await self.run_plan()
         messages = self.evaluator.call_args.args[0]
-        self.assertEqual(len(messages), 2)
-        packet = json.loads(messages[1].content)
+        self.assertEqual(len(messages), 3)
+        shared = messages[1].content
+        self.assertEqual(shared, self.preparer.call_args.args[0][1].content)
+        self.assertEqual(shared, self.generator.call_args.args[0][1].content)
+        context = json.loads(shared)
+        self.assertEqual(context["onboarding"], self.context.onboarding.answers)
+        self.assertEqual([item["scheduled_date"] for item in context["calendar"]["workouts"]],
+            [str(DAY), str(END)])
+        self.assertEqual(context["editable_workout_ids"], [str(WORKOUT_ID)])
+        self.assertEqual(context["task"]["effective_through"], str(self.claim.effective_through))
+        self.assertEqual(context["task"]["horizon_end"], str(END))
+        packet = json.loads(messages[2].content)
         self.assertEqual(packet["research_question"], QUERY.query)
         self.assertEqual(packet["attempted_queries"], [QUERY.model_dump()])
         self.assertIn(SOURCE.content, packet["evidence"])
-        for private_detail in (str(WORKOUT_ID), "planned_reps", "editable_workout_ids", "calendar"):
-            self.assertNotIn(private_detail, messages[1].content)
-        self.assertIn("planned_reps", self.generator.call_args.args[0][1].content)
+        self.assertIn("planned_reps", shared)
 
     async def test_stale_foreign_and_missing_claim_date_fail_before_model_calls(self):
         original = self.context.model_copy(deep=True)
@@ -195,6 +214,8 @@ class PlanWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.search.await_count, 2)
         self.assertEqual(self.search.call_args.kwargs["providers"], "web")
         self.assertEqual(self.evaluator.await_count, 2)
+        for call in self.evaluator.await_args_list:
+            self.assertEqual(call.args[0][1].content, self.preparer.call_args.args[0][1].content)
         self.generator.assert_awaited_once()
         packet = json.loads(self.generator.call_args.args[0][-1].content)
         self.assertEqual(packet["evidence"].count(SOURCE.content), 1)
@@ -203,21 +224,36 @@ class PlanWorkflowTests(unittest.IsolatedAsyncioTestCase):
         next_query = SearchQuery(query="soccer concurrent training professional guideline", providers="research")
         self.evaluator.side_effect = [review(False, next_query), review()]
         await self.run_plan()
-        self.assertEqual(self.search.await_count, 2)
-        self.search.assert_awaited_with(next_query.query, providers="both", top_k=5)
+        self.assertEqual(self.search.await_count, 3)
+        self.search.assert_has_awaits([call(next_query.query, providers="research", top_k=10),
+            call(next_query.query, providers="web", top_k=5)], any_order=True)
         self.generator.assert_awaited_once()
+
+    async def test_provider_limits_keep_prior_evidence_and_partial_failure_warnings(self):
+        query = QUERY.model_copy(update={"providers": "both"})
+        source = SOURCE.model_copy(update={"document_id": "another-study", "content": "Prioritize technical work."})
+        self.search.side_effect = [SearchResponse(results=[SOURCE, source]), SearchResponse(warnings=["web unavailable"])]
+        with patch.dict("app.ai.workflows.plan.nodes.search.RESULTS_PER_PROVIDER", research=8, web=3):
+            result = await search_node({"research_deadline": monotonic() + 60, "search": query,
+                "sources": [SOURCE], "searches": [QUERY], "warnings": ["earlier warning"]})
+        self.search.assert_has_awaits([call(query.query, providers="research", top_k=8),
+            call(query.query, providers="web", top_k=3)], any_order=True)
+        self.assertEqual(result["sources"], [SOURCE, source])
+        self.assertEqual(result["warnings"], ["earlier warning", "web unavailable"])
+        self.assertEqual(result["searches"], [QUERY, query])
 
     async def test_insufficient_after_one_retry_never_generates(self):
         self.evaluator.return_value = review(False, SearchQuery(query="different recovery evidence", providers="research"))
         with self.assertRaisesRegex(RuntimeError, "insufficient"):
             await self.run_plan()
-        self.assertEqual(self.search.await_count, 2)
+        self.assertEqual(self.search.await_count, 3)
+        self.assertEqual(self.evaluator.await_count, 2)
         self.generator.assert_not_awaited()
 
     async def test_repeated_query_casing_and_punctuation_do_not_allow_retry(self):
         self.evaluator.return_value = review(False, QUERY.model_copy(update={"query": QUERY.query.upper() + "?!"}))
         state = {"research_deadline": monotonic() + 60, "sources": [SOURCE], "warnings": [],
-            "searches": [QUERY.model_copy(update={"providers": "both"})], "retries_left": 1}
+            "searches": [QUERY.model_copy(update={"providers": "both"})], "context_packet": "{}", "retries_left": 1}
         with self.assertRaisesRegex(RuntimeError, "no new research"):
             await evaluate_node(state)
         self.search.assert_not_awaited()
@@ -253,10 +289,52 @@ class PlanWorkflowTests(unittest.IsolatedAsyncioTestCase):
                     self.generator.call_args_list[1].args[0][1].content)
 
     async def test_repeated_invalid_output_fails_after_one_repair(self):
-        self.generator.return_value = response(proposal([prescription()]))
-        with self.assertRaisesRegex(ValueError, "repair budget"):
-            await self.run_plan()
+        for candidate in (proposal([prescription()]),
+                proposal(invalid_prescriptions(), active_days=[DAY, DAY + timedelta(days=1)])):
+            with self.subTest(candidate=candidate):
+                self.generator.reset_mock()
+                self.generator.return_value = response(candidate)
+                with self.assertRaisesRegex(ValueError, "repair budget"):
+                    await self.run_plan()
+                self.assertEqual(self.generator.await_count, 2)
+
+    async def test_one_repair_receives_all_prescription_errors_and_original_context(self):
+        candidate = proposal(invalid_prescriptions(), active_days=[DAY, DAY + timedelta(days=1)])
+        original = candidate.model_dump(mode="json")
+        good = self.generator.return_value
+        self.generator.side_effect = [response(candidate), good]
+        result = await self.run_plan()
+        self.assertEqual(result, good["parsed"])
         self.assertEqual(self.generator.await_count, 2)
+        first, repair = (call.args[0] for call in self.generator.call_args_list)
+        self.assertEqual(first[1].content, repair[1].content)
+        feedback = json.loads(repair[-1].content)
+        self.assertEqual(feedback["previous_proposal"], original)
+        self.assertEqual(candidate.model_dump(mode="json"), original)
+        self.assertEqual(feedback["evidence"], json.loads(first[-1].content)["evidence"])
+        self.assertGreater(len(feedback["validation_issue"]), 500)
+        self.assertIn("repetitions per side", feedback["validation_issue"])
+        self.assertIn("repetitions, distance or duration", feedback["validation_issue"])
+        for location in ("workouts[0].exercises[0].weight_unit", "workouts[0].exercises[1].sets[0]",
+                "workouts[1].exercises[0].sets[0]", "workouts[1].exercises[0].sets[1]"):
+            self.assertIn(location, feedback["validation_issue"])
+
+    async def test_validation_does_not_repair_without_enough_generation_time(self):
+        candidate = proposal(invalid_prescriptions(), active_days=[DAY, DAY + timedelta(days=1)])
+        runtime = SimpleNamespace(context=SimpleNamespace(claim=self.claim, data=self.context))
+        with self.assertRaisesRegex(ValueError, "repair budget"):
+            await validate_node({"proposal": candidate, "repairs_left": 1, "deadline": monotonic() + 1}, runtime)
+        self.generator.assert_not_awaited()
+
+    async def test_repair_feedback_has_explicit_character_limit_and_omission_marker(self):
+        runtime = SimpleNamespace(context=SimpleNamespace(claim=self.claim, data=self.context))
+        result = await validate_node({"proposal": None, "validation_error": "invalid field; " * 400,
+            "repairs_left": 1, "deadline": monotonic() + 120}, runtime)
+        self.assertLessEqual(len(result["validation_error"]), 4000)
+        self.assertTrue(result["validation_error"].endswith(
+            "additional validation feedback omitted; check the complete proposal"))
+        self.assertTrue(result["retry_generation"])
+        self.assertEqual(result["repairs_left"], 0)
 
     async def test_truncated_output_is_never_published(self):
         self.generator.return_value = response(proposal(), "length")

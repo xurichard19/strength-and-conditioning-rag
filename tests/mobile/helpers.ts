@@ -33,3 +33,10 @@ export function load<T = TestModule>(file: string, modules: Stubs = {}, globals:
 export const plain = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 export const jsx = (type: TestValue, props: TestModule): TestNode => ({ type, props });
 export const deferred = <T = void>() => Promise.withResolvers<T>();
+
+/** Walk rendered children without invoking component functions. */
+export function nodes(node: TestValue): TestNode[] {
+  if (!node || typeof node !== 'object') return [];
+  if (Array.isArray(node)) return node.flatMap(nodes);
+  return [node, ...nodes(node.props.children)];
+}

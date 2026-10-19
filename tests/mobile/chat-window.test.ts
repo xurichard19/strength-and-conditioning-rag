@@ -1,12 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { jsx, load, type Stubs, type TestModule, type TestNode, type TestValue } from './helpers.ts';
-
-function nodes(value: TestValue): TestNode[] {
-  if (!value || typeof value !== 'object') return [];
-  if (Array.isArray(value)) return value.flatMap(nodes);
-  return [value, ...nodes(value.props.children)];
-}
+import { jsx, load, nodes, type Stubs, type TestModule, type TestValue } from './helpers.ts';
 
 function fixture(height = 844) {
   const slots: TestValue[] = []; let cursor = 0; let back = true;

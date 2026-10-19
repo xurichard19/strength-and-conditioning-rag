@@ -7,7 +7,7 @@ from app.contracts import (
     PlannedWorkout, PlanningDayDecision, PlanningProposal, PlanningScheduleRecord, ProfileRecord,
     ReplanContext, ReplanJobRecord, SportsWorkoutRecord, WorkoutRecord,
 )
-from app.services.planning import validate_proposal, workout_has_results
+from app.services.planning import MAX_PRESCRIPTION_ERRORS, validate_proposal, workout_has_results
 
 
 OWNER = UUID(int=1)
@@ -51,6 +51,16 @@ def proposal(workouts=None, before=None, active_days=()):
     return PlanningProposal(before_ids=before or [], workouts=workouts or [],
         day_decisions=[PlanningDayDecision(scheduled_date=DAY + timedelta(days=index),
             rest=DAY + timedelta(days=index) not in active_days) for index in range((END - DAY).days + 1)])
+
+
+def invalid_prescriptions():
+    workouts = [prescription(), prescription(DAY + timedelta(days=1))]
+    workouts[0].exercises[0].weight_unit = None
+    workouts[0].exercises.append(PlannedExercise(name="side plank", reps_per_side=True,
+        sets=[PlannedExerciseSet(planned_duration_seconds=30) for _ in range(2)]))
+    workouts[1].exercises[0].sets[0].planned_reps = None
+    workouts[1].exercises[0].sets.append(PlannedExerciseSet())
+    return workouts
 
 
 class PlanningValidationTests(unittest.TestCase):
@@ -269,6 +279,44 @@ class PlanningValidationTests(unittest.TestCase):
             sets=[PlannedExerciseSet(planned_duration_seconds=30)])]
         with self.assertRaisesRegex(ValueError, "repetitions per side"):
             validate_proposal(*inputs(), proposal([planned], active_days=[DAY]))
+
+    def test_prescription_error_limit_reports_omissions_without_unbounded_feedback(self):
+        planned = prescription()
+        planned.exercises[0].weight_unit = None
+        planned.exercises[0].sets = [PlannedExerciseSet() for _ in range(MAX_PRESCRIPTION_ERRORS + 10)]
+        with self.assertRaises(ValueError) as caught:
+            validate_proposal(*inputs(), proposal([planned], active_days=[DAY]))
+        feedback = str(caught.exception)
+        self.assertIn("additional prescription errors omitted", feedback)
+        self.assertEqual(feedback.count("workouts[0].exercises[0].sets["), MAX_PRESCRIPTION_ERRORS)
+        self.assertNotIn(f"sets[{MAX_PRESCRIPTION_ERRORS}]", feedback)
+        self.assertLessEqual(len(feedback), 4000)
+
+    def test_permission_fences_precede_prescription_feedback(self):
+        for invalid, expected in (("owner", "claimed athlete"), ("revision", "revision"),
+                ("protected", "editable current"), ("date", "allowed window")):
+            with self.subTest(invalid=invalid):
+                claim, context = inputs(workouts=[record()])
+                submitted = proposal(invalid_prescriptions(), active_days=[DAY, DAY + timedelta(days=1)])
+                if invalid == "owner":
+                    context.profile.id = UUID(int=99)
+                elif invalid == "revision":
+                    context.schedule.revision += 1
+                elif invalid == "protected":
+                    context.calendar.workouts[0].exercises[0].sets[0].actual_reps = 0
+                    submitted.before_ids = [WORKOUT_ID]
+                else:
+                    submitted.workouts[-1].scheduled_date = END + timedelta(days=1)
+                with self.assertRaisesRegex(ValueError, expected) as caught:
+                    validate_proposal(claim, context, submitted)
+                self.assertNotIn("weight_unit", str(caught.exception))
+
+    def test_separate_left_and_right_timed_exercises_need_no_repetition_targets(self):
+        planned = prescription()
+        planned.exercises = [PlannedExercise(name=f"side plank - {side}",
+            sets=[PlannedExerciseSet(planned_duration_seconds=30)]) for side in ("left", "right")]
+        submitted = proposal([planned], active_days=[DAY])
+        self.assertEqual(validate_proposal(*inputs(), submitted), submitted)
 
 
 if __name__ == "__main__":

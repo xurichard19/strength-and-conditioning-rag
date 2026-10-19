@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from app.api.routers import onboarding, profile
 from app.auth.supabase import AuthUser, require_user
-from app.contracts import ProfileRecord
+from app.contracts import ProfileRecord, ProfileUpdate
 from app.db.supabase import SupabaseDataError
 
 
@@ -40,11 +40,14 @@ class ProfileRouteTests(unittest.TestCase):
 
     @patch("app.api.routers.profile.profiles.update_profile", return_value=PROFILE)
     def test_patch_normalizes_name_and_preserves_omitted_fields(self, handler):
-        response = self.client.patch("/profile", json={"display_name": "  Ada  "})
-        self.assertEqual(response.status_code, 200)
-        owner, values, token = handler.call_args.args
-        self.assertEqual((owner, token), (USER.id, USER.access_token))
-        self.assertEqual(values.model_dump(exclude_unset=True), {"display_name": "Ada"})
+        for name, expected in (("  Ada  ", "Ada"), (None, None)):
+            with self.subTest(name=name):
+                response = self.client.patch("/profile", json={"display_name": name})
+                self.assertEqual(response.status_code, 200)
+                owner, values, token = handler.call_args.args
+                self.assertEqual((owner, token), (USER.id, USER.access_token))
+                self.assertIs(type(values), ProfileUpdate)
+                self.assertEqual(values.model_dump(exclude_unset=True), {"display_name": expected})
 
     @patch("app.api.routers.profile.profiles.update_profile", return_value=PROFILE)
     def test_patch_allows_clearing_name_and_valid_timezone(self, handler):
@@ -88,16 +91,6 @@ class ProfileRouteTests(unittest.TestCase):
             handler.side_effect = exc
         response = self.client.get("/profile")
         self.assertEqual(response.status_code, 502)
-
-    def test_routes_require_authentication(self):
-        with api_client(authenticated=False) as client:
-            for method, path, body in (("get", "/profile", None), ("patch", "/profile", {"display_name": "Ada"}),
-                                       ("get", "/onboarding", None), ("put", "/onboarding", {"answers": {}}),
-                                       ("post", "/onboarding/complete", None)):
-                with self.subTest(path=path, method=method):
-                    response = client.request(method, path, json=body)
-                    self.assertEqual(response.status_code, 401)
-                    self.assertEqual(response.headers["www-authenticate"], "Bearer")
 
     def test_old_profile_mutation_routes_are_removed(self):
         self.assertEqual(self.client.post("/profile").status_code, 405)

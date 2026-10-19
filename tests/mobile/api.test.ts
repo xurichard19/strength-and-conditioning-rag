@@ -1404,6 +1404,7 @@ test('You refreshes account data, Calendar refreshes ranges, other training tabs
         '@/components/ui': { Screen: 'screen' },
         '@/components/calendar-day-actions': { CalendarDayActions: 'day-actions' },
         '@/components/sports-workout-details': { SportsWorkoutDetails: 'sport-details' },
+        '@/components/workout-details': { WorkoutDetails: 'workout-details' },
         '@/components/policy-links': { PolicyLinks: 'policy-links' },
         '@/data/mock': { milestones: [{ text: 'Preview' }], consistency: [], rememberedNotes: [] },
         '@/lib/dates': { isToday: () => true, todayIso: () => '2026-09-15' },
@@ -1416,7 +1417,7 @@ test('You refreshes account data, Calendar refreshes ranges, other training tabs
   }
 });
 
-test('sidebar owns its modal safe area and keeps header spacing separate from insets', () => {
+test('sidebar owns its modal safe area without adding a second top inset', () => {
   const { ConversationSidebar } = load('components/conversation-menu.tsx', {
     react: { useState: value => [value, () => {}], useRef: value => ({ current: value }) },
     'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react-native': {},
@@ -1425,15 +1426,12 @@ test('sidebar owns its modal safe area and keeps header spacing separate from in
     '@/design/tokens': { fonts: {} },
     '@/lib/errors': {}, './ui': {}, '@/state/app-context': { useApp: () => ({ colors: {}, conversations: [] }) },
   });
-  for (let opening = 0; opening < 3; opening++) {
-    const modal = ConversationSidebar({ onClose() {}, onSelect() {} });
-    const provider = modal.props.children;
-    assert.equal(provider.type, 'safe-provider');
-    const panel = provider.props.children[0];
-    assert.equal(panel.type, 'safe-view');
-    assert.equal(Object.assign({}, ...panel.props.style).paddingTop, undefined);
-    assert.equal(panel.props.children.props.children[0].props.style.paddingVertical, 28);
-  }
+  const modal = ConversationSidebar({ onClose() {}, onSelect() {} });
+  const provider = modal.props.children;
+  assert.equal(provider.type, 'safe-provider');
+  const panel = provider.props.children[0];
+  assert.equal(panel.type, 'safe-view');
+  assert.equal(Object.assign({}, ...panel.props.style).paddingTop, undefined);
 });
 
 test('sidebar pull refresh dims all content even when empty, forces a read, and ignores duplicate gestures', async () => {

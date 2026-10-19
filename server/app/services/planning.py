@@ -1,5 +1,5 @@
 from collections import defaultdict
-from itertools import chain
+from itertools import chain, islice
 from math import isfinite
 
 from app.contracts import (
@@ -12,6 +12,7 @@ SET_FIELDS = tuple(PlannedExerciseSet.model_fields)
 EXERCISE_FIELDS = tuple(field for field in PlannedExercise.model_fields if field != "sets")
 RESULT_FIELDS = ("actual_reps", "actual_weight", "actual_distance", "actual_duration_seconds",
     "actual_rpe", "result_notes", "completed_at")
+MAX_PRESCRIPTION_ERRORS = 20
 
 
 def workout_has_results(workout: WorkoutRecord) -> bool:
@@ -32,24 +33,32 @@ def _workout_key(workout: PlannedWorkout | WorkoutRecord) -> tuple:
         for exercise in exercises))
 
 
-def _validate_prescription(workout: PlannedWorkout) -> None:
-    """require meaningful exercises, usable set targets and matching units"""
-    if not workout.name.strip() or not workout.exercises:
-        raise ValueError("new workouts require a name and exercises; use a rest decision for rest")
-    for exercise in workout.exercises:
-        if not exercise.name.strip() or not exercise.sets:
-            raise ValueError("exercises require a name and sets")
-        for target, unit in (("planned_weight", exercise.weight_unit), ("planned_distance", exercise.distance_unit)):
-            if any(getattr(item, target) is not None for item in exercise.sets) != (unit is not None):
-                raise ValueError("weight and distance targets require matching units")
-        for item in exercise.sets:
+def _prescription_errors(workout: PlannedWorkout, path: str):
+    """yield actionable, indexed issues without copying athlete text into feedback"""
+    if not workout.name.strip():
+        yield f"{path}.name: require a nonblank workout name"
+    if not workout.exercises:
+        yield f"{path}.exercises: require exercises; use a rest decision for rest"
+    for index, exercise in enumerate(workout.exercises):
+        exercise_path = f"{path}.exercises[{index}]"
+        if not exercise.name.strip():
+            yield f"{exercise_path}.name: require a nonblank exercise name"
+        if not exercise.sets:
+            yield f"{exercise_path}.sets: require at least one set"
+        for target, unit in (("planned_weight", "weight_unit"), ("planned_distance", "distance_unit")):
+            if any(getattr(item, target) is not None for item in exercise.sets) != (getattr(exercise, unit) is not None):
+                yield f"{exercise_path}.{unit}: set a matching unit when {target} is present; otherwise use null"
+        for index, item in enumerate(exercise.sets):
+            set_path = f"{exercise_path}.sets[{index}]"
             if not any((item.planned_reps, item.planned_distance, item.planned_duration_seconds)):
-                raise ValueError("each set requires repetitions, distance or duration")
+                yield f"{set_path}: require repetitions, distance or duration"
             if exercise.reps_per_side and item.planned_reps is None:
-                raise ValueError("repetitions per side require a repetition target on each set")
-            if any(value is not None and not isfinite(value) for value in
-                   (item.planned_weight, item.planned_distance, item.planned_rpe)):
-                raise ValueError("prescription targets must be finite")
+                yield (f"{set_path}.planned_reps: repetitions per side require reps; "
+                    "for timed holds use separate left/right exercises with reps_per_side=false")
+            for field in ("planned_weight", "planned_distance", "planned_rpe"):
+                value = getattr(item, field)
+                if value is not None and not isfinite(value):
+                    yield f"{set_path}.{field}: prescription targets must be finite"
 
 
 def validate_proposal(claim: ClaimedReplanJob, context: ReplanContext, proposal: PlanningProposal) -> PlanningProposal:
@@ -96,11 +105,18 @@ def validate_proposal(claim: ClaimedReplanJob, context: ReplanContext, proposal:
                 or workout_has_results(workout)):
             raise ValueError("replacement ids must reference editable current workouts in the allowed window")
         replaceable[_workout_key(workout)].append(workout_id)
-    additions = []
     for workout in proposal.workouts:
         if not claim.effective_from <= workout.scheduled_date <= claim.effective_through:
             raise ValueError("new workouts must stay within the allowed window")
-        _validate_prescription(workout)
+    errors = list(islice(chain.from_iterable(_prescription_errors(workout, f"workouts[{index}]")
+        for index, workout in enumerate(proposal.workouts)), MAX_PRESCRIPTION_ERRORS + 1))
+    if errors:
+        feedback = errors[:MAX_PRESCRIPTION_ERRORS]
+        if len(errors) > MAX_PRESCRIPTION_ERRORS:
+            feedback.append("additional prescription errors omitted; check all remaining exercises and sets")
+        raise ValueError("\n".join(feedback))
+    additions = []
+    for workout in proposal.workouts:
         matching = replaceable.get(_workout_key(workout))
         if matching:
             before.remove(matching.pop())

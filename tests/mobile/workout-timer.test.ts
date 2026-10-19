@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { load, jsx, type TestValue, type TestNode } from './helpers.ts';
+import { load, jsx, nodes, type TestValue } from './helpers.ts';
 
 function fixture(initialState = 'active') {
   const slots: TestValue[] = []; let cursor = 0; let now = 1_000; let timerId = 0;
@@ -39,11 +39,6 @@ function fixture(initialState = 'active') {
     },
     clearInterval: (id: number) => intervals.delete(id),
   });
-  const nodes = (node: TestValue): TestNode[] => {
-    if (!node || typeof node !== 'object') return [];
-    if (Array.isArray(node)) return node.flatMap(nodes);
-    return [node, ...nodes(node.props.children)];
-  };
   const Timer = nodes(WorkoutScreen()).find(node => node.type?.name === 'WorkoutTimer')!.type;
   slots.length = 0;
   const display = () => { cursor = 0; return nodes(Timer()).find(node => node.type === 'text')!.props.children; };

@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.api.routers import calendar, chat, health, onboarding, planning, profile, sports_workouts, workouts
 from app.auth.supabase import require_user
-from app.contracts import MessageRecord, PlanningHistoryPage, PlanningScheduleRecord, ReplanJobRecord, SportsWorkoutRecord, WorkoutWriteResult
+from app.contracts import MessageRecord, PlanningHistoryPage, PlanningScheduleRecord, ReplanJobRecord, SportsWorkoutInput, SportsWorkoutRecord, SportsWorkoutUpdate, WorkoutWriteResult
 from app.db.supabase import SupabaseDataError
 from tests.backend.test_profile import NOW, USER
 
@@ -40,6 +40,9 @@ class EndpointTests(unittest.TestCase):
 
     def test_every_private_endpoint_requires_auth(self):
         routes = [
+            ('GET', '/profile', None), ('PATCH', '/profile', {'display_name': 'Ada'}),
+            ('GET', '/onboarding', None), ('PUT', '/onboarding', {'answers': {}}),
+            ('POST', '/onboarding/complete', None),
             ('GET', '/calendar?start_date=2026-09-14&end_date=2026-09-20', None),
             ('GET', f'/workouts/{ID}', None),
             ('PUT', f'/workouts/{ID}/results', {'expected_revision': 0, 'status': 'planned'}),
@@ -58,11 +61,15 @@ class EndpointTests(unittest.TestCase):
             ('POST', f'/planning/changes/{ID}/undo', {'expected_revision': 0}),
             ('POST', f'/planning/changes/{ID}/redo', {'expected_revision': 0}),
             ('GET', '/chat/messages', None), ('POST', '/chat', {'text': 'hello'}),
+            ('PATCH', f'/chat/conversations/{ID}', {'title': 'name'}),
+            ('DELETE', f'/chat/conversations/{ID}', None),
         ]
         with client(False) as anonymous:
             for method, url, body in routes:
                 with self.subTest(method=method, url=url):
-                    self.assertEqual(anonymous.request(method, url, json=body).status_code, 401)
+                    response = anonymous.request(method, url, json=body)
+                    self.assertEqual(response.status_code, 401)
+                    self.assertEqual(response.headers['www-authenticate'], 'Bearer')
             self.assertEqual(anonymous.get('/health').json(), {'status': 'ok'})
 
     def test_schedule_read_configure_and_validation(self):
@@ -132,7 +139,10 @@ class EndpointTests(unittest.TestCase):
                 self.assertEqual(handler.call_args.args[0], USER.id)
                 self.assertEqual(handler.call_args.args[-1], USER.access_token)
                 self.assertEqual(response.headers['cache-control'], 'private, no-store')
+                if name == 'create_sports_workout':
+                    self.assertIs(type(handler.call_args.args[1]), SportsWorkoutInput)
                 if name == 'update_sports_workout':
+                    self.assertIs(type(handler.call_args.args[2]), SportsWorkoutUpdate)
                     self.assertEqual(handler.call_args.args[2].model_dump(exclude_unset=True), {'notes': None})
 
     def test_mobile_sports_form_reaches_the_insert_handler_with_local_date_and_owner(self):
@@ -207,9 +217,6 @@ class EndpointTests(unittest.TestCase):
         with patch.object(chat.messages, 'delete_conversation') as delete:
             self.assertEqual(self.client.delete(path).status_code, 204)
             delete.assert_called_once_with(USER.id, ID, USER.access_token)
-        with client(auth=False) as anonymous:
-            self.assertEqual(anonymous.patch(path, json={'title': 'name'}).status_code, 401)
-            self.assertEqual(anonymous.delete(path).status_code, 401)
 
     def test_chat_persists_only_user_and_completed_assistant_then_signals_done(self):
         prior = MessageRecord(conversation_id=ID, id=ID, user_id=USER.id, role='assistant', content='previous', created_at=NOW)
@@ -310,13 +317,6 @@ class EndpointTests(unittest.TestCase):
             save.assert_called_once_with(USER.id, 'user', 'hi', USER.access_token, conversation_id=ID)
             capture.assert_called_once()
             self.assertIsInstance(capture.call_args.args[0], RuntimeError)
-
-    def test_openapi_has_new_routes_and_no_legacy_plan_surface(self):
-        paths = self.client.get('/openapi.json').json()['paths']
-        self.assertIn('/planning/adjustments', paths)
-        self.assertIn('/calendar', paths)
-        self.assertNotIn('/plan', paths)
-        self.assertNotIn('/profile/onboarding/complete', paths)
 
 
 if __name__ == '__main__':

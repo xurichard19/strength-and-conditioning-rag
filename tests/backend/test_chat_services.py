@@ -20,28 +20,21 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.enterContext(patch.dict('os.environ', {'LANGSMITH_TRACING': 'false', 'LANGCHAIN_TRACING_V2': 'false'}))
 
-    async def test_history_uses_owned_exclusive_cursor_and_keeps_roles_and_order(self):
-        rows = [MessageRecord(conversation_id=ID, id=ID, user_id=ID, role=role, content=role, created_at=CONTEXT.message_created_at)
-            for role in ['user', 'assistant']]
-        with patch.object(conversations, 'get_recent_messages', return_value=rows) as read:
-            history = await conversations.load_history(CONTEXT)
-        read.assert_called_once_with(CONTEXT.user_id, CONTEXT.access_token, 10, conversation_id=ID,
-            before_created_at=CONTEXT.message_created_at, before_id=ID)
-        self.assertEqual([message.type for message in history], ['human', 'ai'])
-        self.assertEqual([message.content for message in history], ['user', 'assistant'])
-        self.assertNotIn(CONTEXT.access_token, repr(CONTEXT))
-
-    async def test_history_preserves_full_contents_and_order_with_mode_row_limits(self):
-        rows = [SimpleNamespace(role='user' if index % 2 == 0 else 'assistant',
-            content=f'message {index}: ' + 'x' * 10000) for index in range(10)]
-        for limit in [5, 10]:
-            with self.subTest(limit=limit), patch.object(conversations, 'get_recent_messages', return_value=rows[:limit]) as read:
-                history = await conversations.load_history(CONTEXT, limit=limit)
-                self.assertEqual(read.call_args.args[2], limit)
+    async def test_history_preserves_owned_cursor_roles_full_contents_and_mode_limits(self):
+        rows = [MessageRecord(conversation_id=ID, id=ID, user_id=ID,
+            role='user' if index % 2 == 0 else 'assistant', content=f'message {index}: ' + 'x' * 10000,
+            created_at=CONTEXT.message_created_at) for index in range(10)]
+        for options in ({}, {'limit': 5}, {'limit': 10}):
+            limit = options.get('limit', 10)
+            with self.subTest(options=options), patch.object(conversations, 'get_recent_messages', return_value=rows[:limit]) as read:
+                history = await conversations.load_history(CONTEXT, **options)
+                read.assert_called_once_with(CONTEXT.user_id, CONTEXT.access_token, limit, conversation_id=ID,
+                    before_created_at=CONTEXT.message_created_at, before_id=ID)
                 self.assertEqual(len(history), limit)
                 self.assertEqual([message.content for message in history], [row.content for row in rows[:limit]])
                 self.assertEqual([message.type for message in history],
                     ['human' if row.role == 'user' else 'ai' for row in rows[:limit]])
+        self.assertNotIn(CONTEXT.access_token, repr(CONTEXT))
 
     async def test_concurrent_cold_requests_initialize_only_one_collection(self):
         collection = object()
@@ -130,13 +123,13 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(asyncio.CancelledError):
                 await search.search_sources('test', providers='web')
 
-    def test_dedup_preserves_all_distinct_passages_without_an_extra_count_cap(self):
+    def test_dedup_normalizes_duplicates_but_preserves_distinct_passages_and_shared_prefixes(self):
         one = Source(source_type='research', doi='10.1/a', document_id='a', content='First finding')
         duplicate = Source(source_type='web', url='https://example.org', content='first   finding')
         two = Source(source_type='research', doi='10.1/a', document_id='b', content='Second finding')
         merged = search.merge_sources([one], [duplicate, two])
         self.assertEqual(merged, [one, two])
-        many = [Source(source_type='research', document_id=str(i), content=str(i) + 'x' * 4000) for i in range(50)]
+        many = [Source(source_type='research', document_id=str(i), content='x' * 4000 + str(i)) for i in range(50)]
         self.assertEqual(search.merge_sources([], many), many)
 
     async def test_search_accepts_long_queries_and_forwards_provider_result_count(self):
@@ -144,12 +137,6 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(search, 'search_research_docs', new=AsyncMock(return_value=[])) as read:
             await search.search_sources(query, providers='research', top_k=10)
         read.assert_awaited_once_with(query, 10)
-
-    def test_dedup_compares_complete_passages_not_just_a_shared_prefix(self):
-        prefix = 'same text ' * 150
-        one = Source(source_type='research', document_id='a', content=prefix + 'first conclusion')
-        two = Source(source_type='research', document_id='b', content=prefix + 'different conclusion')
-        self.assertEqual(search.merge_sources([one], [two]), [one, two])
 
     async def test_optional_hybrid_search_keeps_rrf_weights_identifiers_and_original_text(self):
         sparse = SimpleNamespace(embed_query=Mock(return_value=[SparseVector(indices=[1], values=[.3])]))
