@@ -20,7 +20,7 @@ function selectedDayLabel(date: string) {
 }
 
 function entryDetails(entry: CalendarEntry) {
-  if (entry.kind === 'workout') return `${entry.exerciseCount} exercises`;
+  if (entry.kind === 'workout') return `${entry.exercises?.length ?? 0} ${entry.exercises?.length === 1 ? 'exercise' : 'exercises'}`;
   return [calendarTime(entry.startTime), entry.minutes ? `${entry.minutes} min` : null,
     entry.intensity ? entry.intensity.charAt(0).toUpperCase() + entry.intensity.slice(1) : null].filter(Boolean).join(' · ');
 }
@@ -131,6 +131,13 @@ function SelectedSession({ session, onOpen }: { session: CalendarEntry; onOpen: 
         </View>
         {detail ? <AppText tone="secondary" style={styles.detail}>{detail}</AppText> : null}
         {session.notes ? <AppText tone="secondary" style={[styles.detail, styles.sessionNotes, { borderTopColor: colors.separator }]}>{session.notes}</AppText> : null}
+        {session.exercises?.map((exercise, index) => <View key={exercise.id} style={[styles.exercise, { borderTopColor: colors.separator }]}>
+          <AppText weight="medium" style={styles.exerciseTitle}>{index + 1}. {exercise.name}</AppText>
+          {exercise.prescriptions.length ? exercise.prescriptions.map((target, setIndex) =>
+            <AppText key={setIndex} tone="secondary" style={styles.detail}>{target}</AppText>)
+            : <AppText tone="secondary" style={styles.detail}>No set targets provided.</AppText>}
+          {exercise.notes ? <AppText tone="secondary" style={styles.detail}>{exercise.notes}</AppText> : null}
+        </View>)}
         {session.kind === 'sport' ? <View style={[styles.detailsLink, { borderTopColor: colors.separator }]}>
           <AppText tone="tint" weight="medium" style={styles.meta}>Session details</AppText>
           <ArrowUpRight color={colors.tintText} size={17} strokeWidth={1.6} />
@@ -196,7 +203,7 @@ export default function WeekScreen() {
   const step = (direction: number) => setSelectedDate(view === 'month' ? shiftMonth(selectedDate, direction) : shiftDays(selectedDate, direction * 7));
 
   return (
-    <Screen title="Calendar" subtitle="Your training, in view." context={`training calendar for ${selectedDate}`} onRefresh={refresh} refreshing={loading && Boolean(data)} preview={false}>
+    <Screen title="Calendar" subtitle="Your training, in view." onRefresh={refresh} refreshing={loading && Boolean(data)} preview={false}>
       <View style={styles.toolbar}>
         <View accessibilityRole="tablist" accessibilityLabel="Calendar view" style={[styles.viewSwitch, { borderColor: colors.separator }]}>
           {(['week', 'month'] as const).map((option) => <Pressable key={option} accessibilityRole="tab"
@@ -272,6 +279,8 @@ const styles = StyleSheet.create({
   copy: { flex: 1 },
   sessionTitle: { fontSize: 28, lineHeight: 34, letterSpacing: -0.8 },
   sessionNotes: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 14 },
+  exercise: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 14, gap: 6 },
+  exerciseTitle: { fontSize: 16, lineHeight: 23 },
   detailsLink: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 13 },
   loading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   meta: { fontSize: 12, lineHeight: 17 },

@@ -631,6 +631,39 @@ function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => 
   };
 }
 
+test('chat drafts persist across provider renders without publishing each keystroke', async () => {
+  const f = providerFixture(); await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  const published = f.value;
+  const draft = f.value.chatDraft;
+  draft.current = 'How should I train tomorrow?';
+  await f.flush();
+  assert.equal(f.value, published);
+  f.value.setChatMode('deep'); await f.flush();
+  assert.equal(f.value.chatDraft, draft);
+  assert.equal(f.value.chatDraft.current, 'How should I train tomorrow?');
+});
+
+test('chat drafts clear when explicitly starting or selecting a conversation', async () => {
+  const f = providerFixture(); await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  for (const id of [undefined, 'conversation-a', 'conversation-a']) {
+    f.value.chatDraft.current = 'Unsent question';
+    f.value.openConversation(id); await f.flush();
+    assert.equal(f.value.chatDraft.current, '');
+  }
+});
+
+test('chat drafts survive token refresh but never cross account boundaries', async () => {
+  const f = providerFixture(); await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  f.value.chatDraft.current = 'Private question';
+  f.auth('TOKEN_REFRESHED', { user: { id: 'user-a' }, access_token: 'refreshed-token' }); await f.flush();
+  assert.equal(f.value.chatDraft.current, 'Private question');
+  f.auth('SIGNED_IN', { user: { id: 'user-b' }, access_token: 'other-token' }); await f.flush();
+  assert.equal(f.value.chatDraft.current, '');
+  f.value.chatDraft.current = 'Another question';
+  await f.value.signOut(); await f.flush();
+  assert.equal(f.value.chatDraft.current, '');
+});
+
 test('provider finishes onboarding only after API save and never calls planning', async () => {
   const f = providerFixture(); await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
   assert.equal(f.value.accountReady, true);

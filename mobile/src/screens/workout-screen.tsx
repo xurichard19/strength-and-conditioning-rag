@@ -147,7 +147,7 @@ function ExerciseUtilities({ exercise, onSkip }: Pick<ExerciseCardProps, 'exerci
   const { colors } = useApp();
   return (
     <View style={[styles.utilityRow, { borderTopColor: colors.separator }]}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Swap ${exercise.name}`} onPress={() => router.push({ pathname: '/(tabs)/chat', params: { context: `swapping ${exercise.name}` } })} style={styles.utility}><MessageCircle color={colors.textSecondary} size={16} /><AppText tone="secondary" weight="medium" style={styles.utilityText}>Swap</AppText></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Swap ${exercise.name}`} onPress={() => router.push({ pathname: '/chat', params: { context: `swapping ${exercise.name}` } })} style={styles.utility}><MessageCircle color={colors.textSecondary} size={16} /><AppText tone="secondary" weight="medium" style={styles.utilityText}>Swap</AppText></Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel={`Skip ${exercise.name}`} onPress={onSkip} style={styles.utility}><SkipForward color={colors.textSecondary} size={16} /><AppText tone="secondary" weight="medium" style={styles.utilityText}>Skip</AppText></Pressable>
     </View>
   );

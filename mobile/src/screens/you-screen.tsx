@@ -12,7 +12,7 @@ export default function YouScreen() {
   const { colors, profile, block, setThemeMode, refreshLiveData } = useApp();
   const themes: { label: string; value: ThemeMode }[] = [{ label: 'System', value: 'system' }, { label: 'Light', value: 'light' }, { label: 'Dark', value: 'dark' }];
   return (
-    <Screen title={profile.displayName.trim() || 'You'} subtitle="Your training, on your terms." context="my plan and preferences" onRefresh={refreshLiveData}>
+    <Screen title={profile.displayName.trim() || 'You'} subtitle="Your training, on your terms." onRefresh={refreshLiveData}>
       <SectionTitle>Your plan</SectionTitle>
       <Card>
         <AppText style={styles.planTitle}>{profile.goal}</AppText>

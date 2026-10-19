@@ -10,6 +10,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import ChatLauncher from '@/components/chat-launcher';
 import { AppText, PrimaryButton, SecondaryButton } from '@/components/ui';
 
 import { AppProvider, useApp } from '@/state/app-context';
@@ -46,17 +47,21 @@ function Navigation() {
   return (
     <ThemeProvider value={theme}>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="auth" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="reset-password" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="session/[id]" />
-        <Stack.Screen name="sports-workout" />
-        <Stack.Screen name="workout/[id]" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="account" options={{ presentation: 'modal' }} />
-      </Stack>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="auth" options={{ gestureEnabled: false }} />
+          <Stack.Screen name="reset-password" options={{ gestureEnabled: false }} />
+          <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
+          <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
+          <Stack.Screen name="session/[id]" />
+          <Stack.Screen name="sports-workout" />
+          <Stack.Screen name="workout/[id]" options={{ gestureEnabled: false }} />
+          <Stack.Screen name="account" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="chat" options={{ presentation: 'transparentModal', animation: 'fade', gestureEnabled: false, contentStyle: { backgroundColor: 'transparent' } }} />
+        </Stack>
+        <ChatLauncher />
+      </View>
     </ThemeProvider>
   );
 }

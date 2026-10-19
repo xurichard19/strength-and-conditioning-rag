@@ -6,13 +6,13 @@ const messages: ChatMessage[] = [
   { id: 'human', role: 'user', text: 'My question' },
   { id: 'ai', role: 'assistant', text: '# Heading\nPlain **bold** and *italic* with `code`\n- Bullet\n1. Numbered\n> Quote\n```\nCode block\n```', basis: 'Research' },
 ];
-const app = { colors: {}, chatMessages: messages, chatTitle: 'My question', authSession: { user: { id: 'owner' } } as { user: { id: string } } | null, activeConversationId: 'thread' as string | null };
+const app = { colors: {}, chatDraft: { current: '' }, chatMessages: messages, chatTitle: 'My question', authSession: { user: { id: 'owner' } } as { user: { id: string } } | null, activeConversationId: 'thread' as string | null };
 const slots: TestValue[] = []; let cursor = 0; let onFocus!: () => () => void; let dismissals = 0;
 const effects: (() => void)[] = [];
 const modules: TestModule = {
   react: {
     useState: initial => {
-      const index = cursor++; if (!(index in slots)) slots[index] = initial;
+      const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial;
       return [slots[index], (value: TestValue) => { slots[index] = value; }];
     },
     useRef: initial => { const index = cursor++; return slots[index] ??= { current: initial }; },
@@ -43,9 +43,10 @@ modules['./message-text-selection'] = selection;
 modules['@/components/message-text-selection'] = selection;
 modules['@/components/markdown-text'] = load('components/markdown-text.tsx');
 const ChatScreen = load('screens/chat-screen.tsx').default;
-const render = () => { cursor = 0; effects.length = 0; return ChatScreen(); };
+const render = (props: TestModule = {}) => { cursor = 0; effects.length = 0; return ChatScreen(props); };
 function reset(platform = 'ios') {
   slots.length = 0; dismissals = 0;
+  app.chatDraft.current = '';
   modules['react-native'].Platform.OS = platform;
   app.chatMessages = messages; app.authSession = { user: { id: 'owner' } }; app.activeConversationId = 'thread';
 }
@@ -79,6 +80,39 @@ function scrollToOffset(scroll: TestNode, y: number) {
     contentOffset: { y }, contentSize: { height: 2000 }, layoutMeasurement: { height: 600 },
   } });
 }
+
+test('unsent draft survives compact/full resize and closing/reopening the chat screen', () => {
+  reset();
+  const composer = () => nodes(render()).find(node => node.props.accessibilityLabel === 'Message Arcel')!;
+  composer().props.onChangeText('Keep this question');
+  assert.equal(app.chatDraft.current, 'Keep this question');
+  for (const compact of [true, false, true]) {
+    assert.equal(nodes(render({ compact })).find(node => node.props.accessibilityLabel === 'Message Arcel')?.props.value, 'Keep this question');
+  }
+  slots.length = 0;
+  render(); onFocus();
+  assert.equal(composer().props.value, 'Keep this question');
+});
+
+test('deleting or switching a conversation also clears the mounted composer draft', () => {
+  reset();
+  const composer = () => nodes(render()).find(node => node.props.accessibilityLabel === 'Message Arcel')!;
+  composer().props.onChangeText('Old conversation draft');
+  app.chatDraft.current = ''; app.activeConversationId = null;
+  render(); effects.forEach(effect => effect());
+  assert.equal(composer().props.value, '');
+});
+
+test('compact chat exposes expansion and full chat restores history and conversation options', () => {
+  reset();
+  const compact = nodes(render({ compact: true, onExpand: () => {}, onClose: () => {} }));
+  assert.ok(compact.some(node => node.props.accessibilityLabel === 'Expand chat'));
+  assert.ok(compact.some(node => node.props.accessibilityLabel === 'Close chat'));
+  assert.equal(compact.some(node => node.props.accessibilityLabel === 'Open conversations'), false);
+  const full = nodes(render({ compact: false, onClose: () => {} }));
+  assert.ok(full.some(node => node.props.accessibilityLabel === 'Open conversations'));
+  assert.ok(full.some(node => node.props.accessibilityLabel === 'Conversation options'));
+});
 
 test('chat follows content layout without animating every token and resets an empty welcome to the top', () => {
   reset();

@@ -1,10 +1,9 @@
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import {
   ChevronRight,
   Dumbbell,
   Moon,
   ShieldCheck,
-  Sparkles,
   Timer,
   type LucideIcon,
 } from 'lucide-react-native';
@@ -77,7 +76,6 @@ export function AppText({
 export function Screen({
   title,
   subtitle,
-  context,
   children,
   contentContainerStyle,
   scrollProps,
@@ -87,7 +85,6 @@ export function Screen({
 }: {
   title: string;
   subtitle?: string;
-  context?: string;
   children: ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
   scrollProps?: ScrollViewProps;
@@ -136,15 +133,6 @@ export function Screen({
             <AppText style={styles.largeTitle}>{title}</AppText>
             {subtitle ? <AppText tone="secondary" style={styles.subtitle}>{subtitle}</AppText> : null}
           </View>
-          {context ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Ask Arcel"
-              onPress={() => router.push({ pathname: '/(tabs)/chat', params: { context } })}
-              style={({ pressed }) => [styles.askButton, { backgroundColor: colors.card, borderColor: colors.separator }, pressed && styles.pressed]}>
-              <Sparkles color={colors.tintText} size={20} strokeWidth={1.6} />
-            </Pressable>
-          ) : null}
         </Animated.View>
         {(preview ?? previewMode) ? (
           <View style={styles.previewPill}>
@@ -312,7 +300,6 @@ const styles = StyleSheet.create({
   brandLabel: { fontSize: 10, lineHeight: 15, letterSpacing: 2.3, marginBottom: 10 },
   largeTitle: { fontSize: 38, lineHeight: 43, letterSpacing: -1.6 },
   subtitle: { marginTop: 8, fontSize: 13, lineHeight: 19 },
-  askButton: { width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.4 },
   previewPill: { alignSelf: 'flex-start', minHeight: 22, flexDirection: 'row', alignItems: 'center', gap: 7 },

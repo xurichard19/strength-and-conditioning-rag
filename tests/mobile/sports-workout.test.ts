@@ -194,7 +194,7 @@ test('day menu opens Chat without prompting and carries the chosen date into the
   const menu = CalendarDayActions({ date: '2027-01-02', onClose: () => closes++ });
   const buttons = children(menu).filter(node => node.type === 'button');
   buttons[0].props.onPress(); buttons[1].props.onPress();
-  assert.deepEqual(plain(routes), ['/(tabs)/chat', { pathname: '/sports-workout', params: { date: '2027-01-02' } }]);
+  assert.deepEqual(plain(routes), ['/chat', { pathname: '/sports-workout', params: { date: '2027-01-02' } }]);
   assert.equal(closes, 2);
 });
 

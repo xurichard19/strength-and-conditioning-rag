@@ -87,7 +87,7 @@ function OnboardingFlow() {
     const submission = onboardingSubmission(profile, draft, note);
     try {
       const saved = await finishOnboarding(submission.profile, submission.answers);
-      if (saved) router.replace(editing ? '/(tabs)/you' : '/(tabs)/chat');
+      if (saved) router.replace(editing ? '/(tabs)/you' : '/(tabs)/today');
     } finally {
       saveInFlight.current = false;
       setSaving(false);
