@@ -148,7 +148,7 @@ jobs:
           action=create
           if scheduler_state=$(gcloud scheduler jobs describe planning-dispatch --location="$GCP_REGION" --project="$GCP_PROJECT_ID" --format='value(state)'); then
             action=update
-            if [[ "$scheduler_state" != "PAUSED" ]]; then
+            if [[ "$scheduler_state" == "ENABLED" ]]; then
               gcloud scheduler jobs pause planning-dispatch --location="$GCP_REGION" --project="$GCP_PROJECT_ID"
             fi
           fi
@@ -179,13 +179,25 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$PLANNING_ENABLED" == "true" ]]; then
+            delays=(5 10 20 40 60)
+            for attempt in {0..5}; do
+              scheduler_state=$(gcloud scheduler jobs describe planning-dispatch --location="$GCP_REGION" --project="$GCP_PROJECT_ID" --format='value(state)')
+              if [[ "$scheduler_state" == "ENABLED" ]]; then break; fi
+              if ! resume_error=$(gcloud scheduler jobs resume planning-dispatch --location="$GCP_REGION" --project="$GCP_PROJECT_ID" --format=none 2>&1); then
+                printf '%s\n' "$resume_error" >&2
+                if [[ ! "$resume_error" =~ ABORTED|UNAVAILABLE|DEADLINE_EXCEEDED|INTERNAL ]]; then exit 1; fi
+              fi
+              scheduler_state=$(gcloud scheduler jobs describe planning-dispatch --location="$GCP_REGION" --project="$GCP_PROJECT_ID" --format='value(state)')
+              if [[ "$scheduler_state" == "ENABLED" ]]; then break; fi
+              if [[ "$attempt" == 5 ]]; then
+                echo "::error::planning schedule did not become enabled after six attempts"
+                exit 1
+              fi
+              sleep "${delays[$attempt]}"
+            done
             queue_state=$(gcloud tasks queues describe planning --location="$GCP_REGION" --project="$GCP_PROJECT_ID" --format='value(state)')
             if [[ "$queue_state" != "RUNNING" ]]; then
               gcloud tasks queues resume planning --location="$GCP_REGION" --project="$GCP_PROJECT_ID"
-            fi
-            scheduler_state=$(gcloud scheduler jobs describe planning-dispatch --location="$GCP_REGION" --project="$GCP_PROJECT_ID" --format='value(state)')
-            if [[ "$scheduler_state" != "ENABLED" ]]; then
-              gcloud scheduler jobs resume planning-dispatch --location="$GCP_REGION" --project="$GCP_PROJECT_ID"
             fi
           fi
           echo "Planning processing enabled: $PLANNING_ENABLED (repository variable PLANNING_ENABLED)." >> "$GITHUB_STEP_SUMMARY"
