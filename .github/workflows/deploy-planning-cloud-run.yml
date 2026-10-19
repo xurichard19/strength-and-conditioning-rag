@@ -52,7 +52,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gcloud services enable cloudtasks.googleapis.com cloudscheduler.googleapis.com --project="$GCP_PROJECT_ID"
+          gcloud services enable iam.googleapis.com cloudtasks.googleapis.com cloudscheduler.googleapis.com --project="$GCP_PROJECT_ID"
           for name in planning-worker planning-dispatcher planning-task-invoker planning-scheduler; do
             if ! gcloud iam service-accounts describe "$name@${GCP_PROJECT_ID}.iam.gserviceaccount.com" --project="$GCP_PROJECT_ID" --format='value(email)' >/dev/null 2>&1; then
               gcloud iam service-accounts create "$name" --display-name="$name" --project="$GCP_PROJECT_ID"
@@ -108,7 +108,7 @@ jobs:
             SUPABASE_SECRET_KEY=${{ secrets.SUPABASE_SECRET_KEY }}
           flags: >-
             --service-account=planning-worker@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com
-            --command=python --args=-m,uvicorn,app.jobs.replan_worker:app,--host,0.0.0.0,--port,8000
+            --command=python "--args=-m,uvicorn,app.jobs.replan_worker:app,--host,0.0.0.0,--port,8000"
             --port=8000 --cpu=1 --memory=2Gi --concurrency=1 --min-instances=0 --max-instances=4
             --timeout=300 --cpu-throttling --no-allow-unauthenticated --invoker-iam-check
 
@@ -130,7 +130,7 @@ jobs:
             PLANNING_INVOKER_EMAIL=planning-task-invoker@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com
           flags: >-
             --service-account=planning-dispatcher@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com
-            --command=python --args=-m,uvicorn,app.jobs.scheduler:app,--host,0.0.0.0,--port,8000
+            --command=python "--args=-m,uvicorn,app.jobs.scheduler:app,--host,0.0.0.0,--port,8000"
             --port=8000 --cpu=1 --memory=512Mi --concurrency=1 --min-instances=0 --max-instances=1
             --timeout=120 --cpu-throttling --no-allow-unauthenticated --invoker-iam-check
 
