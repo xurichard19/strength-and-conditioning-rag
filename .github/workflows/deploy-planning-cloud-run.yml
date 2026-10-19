@@ -52,7 +52,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gcloud services enable cloudtasks.googleapis.com cloudscheduler.googleapis.com --project="$GCP_PROJECT_ID"
+          gcloud services enable iam.googleapis.com cloudtasks.googleapis.com cloudscheduler.googleapis.com --project="$GCP_PROJECT_ID"
           for name in planning-worker planning-dispatcher planning-task-invoker planning-scheduler; do
             if ! gcloud iam service-accounts describe "$name@${GCP_PROJECT_ID}.iam.gserviceaccount.com" --project="$GCP_PROJECT_ID" --format='value(email)' >/dev/null 2>&1; then
               gcloud iam service-accounts create "$name" --display-name="$name" --project="$GCP_PROJECT_ID"
