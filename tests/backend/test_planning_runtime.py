@@ -2,9 +2,10 @@ import asyncio
 from datetime import datetime, timezone
 from threading import get_ident
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import UUID
 
+import httpx
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from google.api_core.exceptions import DeadlineExceeded
@@ -16,7 +17,6 @@ from app.jobs import replan_worker, scheduler
 from app.jobs.cloud_tasks import ReplanTask
 from app.jobs.settings import TaskSettings
 from tests.backend.test_endpoints import DAY, JOB
-from tests.backend.test_supabase_data import FakeResponse
 
 
 TOKEN = UUID(int=42)
@@ -243,15 +243,17 @@ class RuntimeBoundaryTests(unittest.TestCase):
             TaskSettings(enabled=True, queue="", worker_url="", invoker_email="")
 
     def test_new_rpc_wrappers_use_backend_credentials_and_expected_shapes(self):
-        with patch("app.db.supabase.transport.urlopen") as http:
-            http.return_value = FakeResponse([JOB.model_dump(mode="json")])
+        http = Mock()
+        with httpx.Client(transport=httpx.MockTransport(http)) as client, \
+                patch("app.db.supabase.transport.get_http_client", return_value=client):
+            http.return_value = httpx.Response(200, json=[JOB.model_dump(mode="json")])
             self.assertEqual(replan_jobs.list_replan_deliveries()[0].delivery_token, TOKEN)
-            http.return_value = FakeResponse({"status": "terminal"})
+            http.return_value = httpx.Response(200, json={"status": "terminal"})
             self.assertEqual(replan_jobs.claim_replan_delivery(JOB.id, TOKEN).status, "terminal")
-            http.return_value = FakeResponse(JOB.model_dump(mode="json"))
+            http.return_value = httpx.Response(200, json=JOB.model_dump(mode="json"))
             self.assertEqual(replan_jobs.recover_replan_delivery(JOB.id, TOKEN).id, JOB.id)
-            http.return_value = FakeResponse(None)
+            http.return_value = httpx.Response(200, json=None)
             self.assertIsNone(replan_jobs.recover_replan_delivery(JOB.id, TOKEN))
             self.assertIsNone(replan_jobs.mark_replan_dispatched(JOB.id, TOKEN))
             for call in http.call_args_list:
-                self.assertIsNone(call.args[0].get_header("Authorization"))
+                self.assertIsNone(call.args[0].headers.get("Authorization"))

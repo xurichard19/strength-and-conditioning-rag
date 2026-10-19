@@ -22,7 +22,7 @@ export function ChatModeSelector() {
     <Pressable accessibilityRole="button" accessibilityLabel={`Chat mode: ${mode.name}`} hitSlop={4}
       accessibilityHint="Choose Quick chat or Deep research for your next message."
       aria-expanded={open} onPress={() => { Keyboard.dismiss(); setOpen(true); }}
-      style={({ pressed }) => [styles.toggle, { backgroundColor: colors.fill, borderColor: colors.separator }, pressed && { opacity: 0.7 }]}>
+      style={({ pressed }) => [styles.toggle, { backgroundColor: colors.fill, borderColor: colors.controlBorder }, pressed && { opacity: 0.7 }]}>
       <mode.Icon color={colors.tintText} size={15} strokeWidth={1.7} />
       <AppText tone="secondary" weight="medium" style={styles.toggleLabel}>{mode.name}</AppText>
       <ChevronDown color={colors.textSecondary} size={11} />

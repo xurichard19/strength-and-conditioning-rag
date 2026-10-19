@@ -201,7 +201,7 @@ export function SecondaryButton({
       accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading) }}
       disabled={disabled || loading}
       {...props}
-      style={({ pressed }) => [styles.secondaryButton, { backgroundColor: colors.fill, borderColor: colors.separator }, pressed && styles.pressed, (disabled || loading) && styles.disabled, style]}>
+      style={({ pressed }) => [styles.secondaryButton, { backgroundColor: colors.fill, borderColor: colors.controlBorder }, pressed && styles.pressed, (disabled || loading) && styles.disabled, style]}>
       {loading ? <ActivityIndicator color={colors.text} /> : <>{Icon ? <Icon size={18} color={colors.text} strokeWidth={1.8} /> : null}<AppText weight="medium" style={styles.buttonText}>{children}</AppText></>}
     </Pressable>
   );
@@ -215,7 +215,7 @@ export function OutlineButton({ children, style, disabled, ...props }: Pressable
       accessibilityState={{ disabled: Boolean(disabled) }}
       disabled={disabled}
       {...props}
-      style={({ pressed }) => [styles.outlineButton, { backgroundColor: colors.card, borderColor: colors.separator }, pressed && styles.pressed, style, disabled && styles.disabled]}>
+      style={({ pressed }) => [styles.outlineButton, { backgroundColor: colors.card, borderColor: colors.controlBorder }, pressed && styles.pressed, style, disabled && styles.disabled]}>
       <AppText weight="medium" style={styles.buttonText}>{children}</AppText>
     </Pressable>
   );
@@ -230,7 +230,7 @@ export function ChoiceChip({ label, selected, onPress, style }: { label: string;
       onPress={onPress}
       style={({ pressed }) => [
         styles.choiceChip,
-        { backgroundColor: selected ? colors.strong : colors.card, borderColor: selected ? colors.strong : colors.separator },
+        { backgroundColor: selected ? colors.strong : colors.card, borderColor: selected ? colors.strong : colors.controlBorder },
         pressed && styles.pressed,
         style,
       ]}>

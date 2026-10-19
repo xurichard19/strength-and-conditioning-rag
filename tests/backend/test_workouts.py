@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.api.routers import calendar, workouts
 from app.auth.supabase import require_user
-from app.contracts import CalendarSnapshot, WorkoutRecord, WorkoutSnapshot
+from app.contracts import CalendarSnapshot, ExerciseSetResult, WorkoutRecord, WorkoutSnapshot
 from app.db.supabase import SupabaseDataError
 from tests.backend.test_profile import USER, NOW
 
@@ -69,6 +69,7 @@ class WorkoutRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"revision": 5})
         self.assertEqual(handler.call_args.args[:4], (USER.id, ID, 4, "in_progress"))
+        self.assertIs(type(handler.call_args.args[4][0]), ExerciseSetResult)
         self.assertIsNone(handler.call_args.args[4][0].actual_weight)
 
     @patch("app.api.routers.workouts.workouts.record_workout_results")

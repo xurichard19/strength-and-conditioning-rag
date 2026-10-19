@@ -60,7 +60,7 @@ function EmailField({ value, submitOnEnter, onChange, onSubmit }: { value: strin
   return (
     <View>
       <AppText weight="medium" style={styles.label}>Email</AppText>
-      <View style={[styles.inputShell, { backgroundColor: colors.card, borderColor: colors.separator }]}>
+      <View style={[styles.inputShell, { backgroundColor: colors.card, borderColor: colors.controlBorder }]}>
         <Mail color={colors.textTertiary} size={18} />
         <TextInput accessibilityLabel="Email" autoCapitalize="none" autoComplete="email" keyboardType="email-address" value={value} onChangeText={onChange} onSubmitEditing={() => { if (submitOnEnter) onSubmit(); }} placeholder="you@example.com" placeholderTextColor={colors.textTertiary} style={[styles.input, { color: colors.text }]} />
       </View>
@@ -75,7 +75,7 @@ function PasswordField({ mode, value, visible, canSubmit, onChange, onToggle, on
   return (
     <View>
       <AppText weight="medium" style={styles.label}>Password</AppText>
-      <View style={[styles.inputShell, { backgroundColor: colors.card, borderColor: colors.separator }]}>
+      <View style={[styles.inputShell, { backgroundColor: colors.card, borderColor: colors.controlBorder }]}>
         <LockKeyhole color={colors.textTertiary} size={18} />
         <TextInput accessibilityLabel="Password" autoCapitalize="none" autoComplete={creating ? 'new-password' : 'current-password'} secureTextEntry={!visible} value={value} onChangeText={onChange} onSubmitEditing={() => { if (canSubmit) onSubmit(); }} placeholder={creating ? 'At least 6 characters' : 'Your password'} placeholderTextColor={colors.textTertiary} style={[styles.input, { color: colors.text }]} />
         <Pressable accessibilityRole="button" accessibilityLabel={visible ? 'Hide password' : 'Show password'} onPress={onToggle} style={styles.eyeButton}>{visible ? <EyeOff color={colors.textSecondary} size={18} /> : <Eye color={colors.textSecondary} size={18} />}</Pressable>
@@ -103,7 +103,7 @@ function GoogleButton({ disabled, onPress }: { disabled: boolean; onPress: () =>
   return (
     <>
       <View style={styles.dividerRow}><View style={[styles.divider, { backgroundColor: colors.separator }]} /><AppText tone="secondary" style={styles.dividerText}>or</AppText><View style={[styles.divider, { backgroundColor: colors.separator }]} /></View>
-      <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.googleButton, { backgroundColor: colors.card, borderColor: colors.separator }, pressed && styles.googlePressed, disabled && styles.googleDisabled]}>
+      <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.googleButton, { backgroundColor: colors.card, borderColor: colors.controlBorder }, pressed && styles.googlePressed, disabled && styles.googleDisabled]}>
         <View style={styles.googleMark}><AppText weight="bold" style={styles.googleLetter}>G</AppText></View>
         <AppText weight="medium">Continue with Google</AppText>
       </Pressable>

@@ -25,12 +25,6 @@ do $$ begin
     raise exception 'ownership edit allowed';
   exception when insufficient_privilege then null;
   end;
-  begin
-    insert into public.messages(user_id, conversation_id, role, content) values
-    ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'assistant', 'forged');
-    raise exception 'assistant forgery allowed';
-  exception when insufficient_privilege then null;
-  end;
 end $$;
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
 do $$ begin

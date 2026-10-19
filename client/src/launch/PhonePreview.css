@@ -2,15 +2,15 @@
 .phone-preview {
   /* Mirror the app palette without making the public site depend on the Expo build. */
   --phone-bg: #0c1013;
-  --phone-card: #141a1e;
-  --phone-text: #f3f2ed;
-  --phone-secondary: #b1bbc4;
-  --phone-muted: #8d9ba6;
-  --phone-accent: #c4b2eb;
-  --phone-sport: #c4b2eb;
-  --phone-strength: #a8c8e6;
-  --phone-fill: #1c242a;
-  --phone-border: #303c45;
+  --phone-card: #19242c;
+  --phone-text: #f6f7f4;
+  --phone-secondary: #c0cdd6;
+  --phone-muted: #a7bac8;
+  --phone-accent: #cfb6f5;
+  --phone-sport: #cfb6f5;
+  --phone-strength: #99cff5;
+  --phone-fill: #243440;
+  --phone-border: #465d6e;
   --phone-inverse: #182126;
   container-type: inline-size;
   position: relative;

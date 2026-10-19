@@ -372,7 +372,7 @@
   font-size: var(--text-small);
   text-decoration: underline !important;
   text-underline-offset: 5px;
-  text-decoration-color: var(--color-line) !important;
+  text-decoration-color: currentColor !important;
 }
 
 .landing-context-visual, .landing-session-visual {

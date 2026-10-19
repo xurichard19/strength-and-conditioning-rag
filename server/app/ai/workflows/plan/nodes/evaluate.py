@@ -19,7 +19,7 @@ async def evaluate_node(state: PlanState) -> dict:
     """
     require adequate evidence and retry only novel query/provider pairs within budget
 
-    - **state**: focused research question, evidence, attempted searches and remaining budget
+    - **state**: shared athlete/calendar context, research question, evidence and remaining budget
     - **returns**: generation permission or one search retry; insufficient evidence
       raises rather than authorizing a prescription when the budget runs out
     """
@@ -29,6 +29,7 @@ async def evaluate_node(state: PlanState) -> dict:
     async with asyncio.timeout(min(DECISION_TIMEOUT_SECONDS, remaining)):
         review = EvidenceReview.model_validate(await decision_model(EvidenceReview).ainvoke([
             SystemMessage(content=EVALUATE_PROMPT),
+            HumanMessage(content=state["context_packet"]),
             HumanMessage(content=json.dumps({"research_question": state["searches"][0].query,
                 "evidence": format_sources_for_prompt(state["sources"]),
                 "warnings": state["warnings"],

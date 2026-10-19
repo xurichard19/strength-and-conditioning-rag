@@ -15,7 +15,7 @@ class WorkflowContext:
 
 
 PLAN_TIMEOUT_SECONDS = 180
-RESULTS_PER_PROVIDER = 5
+RESULTS_PER_PROVIDER = {"research": 10, "web": 5}
 MAX_CONTEXT_CHARS = 120_000
 
 
@@ -48,7 +48,7 @@ class PlanState(TypedDict):
     research_deadline: float
     retries_left: int
     repairs_left: int
-    context_packet: NotRequired[str]
+    context_packet: NotRequired[str]  # shared athlete inputs, results and calendar through the horizon
     search: NotRequired[SearchQuery]
     searches: list[SearchQuery]
     sources: list[Source]

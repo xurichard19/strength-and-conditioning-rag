@@ -112,6 +112,11 @@ test('compact chat exposes expansion and full chat restores history and conversa
   const full = nodes(render({ compact: false, onClose: () => {} }));
   assert.ok(full.some(node => node.props.accessibilityLabel === 'Open conversations'));
   assert.ok(full.some(node => node.props.accessibilityLabel === 'Conversation options'));
+  for (const tree of [compact, full]) {
+    assert.ok(tree.some(node => node.type === 'mode-selector'));
+    assert.ok(tree.some(node => node.props.accessibilityLabel === 'Message Arcel'));
+    assert.ok(tree.some(node => node.props.accessibilityLabel === 'Send message'));
+  }
 });
 
 test('chat follows content layout without animating every token and resets an empty welcome to the top', () => {
@@ -181,15 +186,6 @@ test('opening a different conversation follows its latest message but a first se
   const scroll = renderScroll();
   scroll.props.onContentSizeChange(390, 2300);
   assert.equal(calls.length, 0);
-});
-
-test('mode selector sits inside the message box immediately before Send without stretching', () => {
-  reset();
-  const box = nodes(render()).find(node => node.props.children?.[1]?.type === 'mode-selector')!;
-  assert.ok(box);
-  assert.equal(box.props.style[0].alignItems, 'flex-end');
-  assert.equal(box.props.children[0].props.accessibilityLabel, 'Message Arcel');
-  assert.equal(box.props.children[2].props.accessibilityLabel, 'Send message');
 });
 
 test('chat shows stages only until response text arrives, never beside streaming or saved text', () => {

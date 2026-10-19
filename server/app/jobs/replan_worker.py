@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException
 
 from app.contracts import ClaimedReplanJob, ReplanResult
 from app.db.supabase import calendar, replan_jobs
+from app.http import http_lifespan
 from app.jobs.cloud_tasks import ReplanTask
 
 
@@ -62,7 +63,7 @@ async def execute(job: ReplanTask, generate_plan: PlanHandler) -> dict:
 
 def create_app(generate_plan: PlanHandler | None = None) -> FastAPI:
     """build a private worker; without a plan handler reject delivery before claiming any job"""
-    worker = FastAPI(title="planning worker")
+    worker = FastAPI(title="planning worker", lifespan=http_lifespan)
 
     @worker.get("/health")
     def health():

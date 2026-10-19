@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { load, plain, deferred, jsx, type TestValue, type TestModule, type TestNode, type Stubs } from './helpers.ts';
+import { load, plain, deferred, jsx, nodes, type TestValue, type TestModule, type Stubs } from './helpers.ts';
 import type { CalendarResponse, CalendarWorkout, SportsWorkout } from '../../mobile/src/services/backend';
 const calendar = load<typeof import('../../mobile/src/lib/calendar')>('lib/calendar.ts');
 const { createCalendarCache } = load<typeof import('../../mobile/src/state/calendar-cache')>('state/calendar-cache.ts', {
@@ -62,6 +62,7 @@ test('local date arithmetic stays on the intended days across DST and extreme ti
 
 function fixture(sessions: TestModule[] = [], state: TestModule = {}, today = '2026-01-31') {
   const slots: TestValue[] = []; let cursor = 0; const routes: TestValue[] = []; const ranges: [string, string][] = [];
+  let owner: string | null = 'owner';
   const refresh = async () => {};
   const colors = load('design/tokens.ts').palettes.dark;
   const { default: Screen } = load('screens/week-screen.tsx', {
@@ -80,9 +81,10 @@ function fixture(sessions: TestModule[] = [], state: TestModule = {}, today = '2
     '@/components/ui': { AppText: 'text', Card: 'card', Screen: 'screen', SectionTitle: 'heading', SecondaryButton: 'retry' },
     '@/components/calendar-day-actions': { CalendarDayActions: 'day-actions' },
     '@/components/sports-workout-details': { SportsWorkoutDetails: 'sport-details' },
+    '@/components/workout-details': { WorkoutDetails: 'workout-details' },
     '@/lib/calendar': calendar,
     '@/lib/dates': { todayIso: () => today, isToday: date => date === today, formatDay: date => calendar.calendarLabel(date, { weekday: 'short' }) },
-    '@/state/app-context': { useApp: () => ({ sessions, colors, authSession: { user: { id: 'owner' } }, block: { week: 3, of: 8, name: 'Strength' }, refreshPreview: refresh }) },
+    '@/state/app-context': { useApp: () => ({ sessions, colors, authSession: owner ? { user: { id: owner } } : null, block: { week: 3, of: 8, name: 'Strength' }, refreshPreview: refresh }) },
     '@/state/use-calendar-range': { useCalendarRange: (start, end) => {
       ranges.push([start, end]);
       return { data: { entries: sessions.filter(row => row.date >= start && row.date <= end), revision: null }, loading: false, error: null, refresh, ...state };
@@ -95,15 +97,12 @@ function fixture(sessions: TestModule[] = [], state: TestModule = {}, today = '2
     return { ...node, props: { ...node.props, children: expand(node.props.children) } };
   };
   const render = () => { cursor = 0; return expand(Screen()); };
-  const nodes = (node: TestValue): TestNode[] => {
-    if (!node || typeof node !== 'object') return [];
-    if (Array.isArray(node)) return node.flatMap(nodes);
-    return [node, ...nodes(node.props.children)];
-  };
   const find = (label: string) => nodes(render()).find(node => node.props.accessibilityLabel === label);
   return { render, refresh, routes, ranges, find,
     menu: () => nodes(render()).find(node => node.type === 'day-actions'),
-    details: () => nodes(render()).find(node => node.type === 'sport-details'),
+    details: () => nodes(render()).find(node => node.type === 'sport-details' || node.type === 'workout-details'),
+    setOwner: (value: string | null) => { owner = value; },
+    setEntries: (value: TestModule[]) => { sessions = value; },
     click: (label: string) => { const node = find(label); assert.ok(node, `missing control: ${label}`); node.props.onPress(); },
     text: () => JSON.stringify(render()),
     days: () => nodes(render()).filter(node => /^\w+, \w+ \d+, \d{4}(?:, today)?\./.test(node.props.accessibilityLabel ?? '')),
@@ -140,22 +139,46 @@ test('week/month switching preserves selection, month navigation and Today work 
   assert.match(screen.text(), /December 2025/);
 });
 
-test('sports cards open cached details in week/month without navigating to mock workouts', () => {
-  const session = { id: 'sport', kind: 'sport', date: '2026-01-31', title: 'Boxing', status: 'planned', notes: 'All notes' };
-  const screen = fixture([session, { ...session, id: 'generated', kind: 'workout', title: 'Strength' }]);
+test('both workout kinds open cached details from week/month cards and the overview', () => {
+  const sport = { id: 'shared-id', kind: 'sport', date: '2026-01-31', title: 'Boxing', status: 'planned', notes: 'All notes' };
+  const sessions = [sport, { ...sport, kind: 'workout', title: 'Strength', exercises: [] }];
+  const screen = fixture(sessions);
   assert.equal(screen.details(), undefined);
   for (const view of ['Week view', 'Month view']) {
     screen.click(view);
-    screen.click('View Boxing workout');
-    assert.equal(screen.details()!.props.session, session);
-    assert.equal(screen.details()!.props.userId, 'owner');
-    screen.details()!.props.onClose();
-    assert.equal(screen.details(), undefined);
-    assert.equal(screen.find('View Strength workout'), undefined);
+    for (const session of sessions) {
+      screen.click(`View ${session.title} workout`);
+      assert.equal(screen.details()!.props.session, session);
+      assert.equal(screen.details()!.type, session.kind === 'sport' ? 'sport-details' : 'workout-details');
+      if (session.kind === 'sport') assert.equal(screen.details()!.props.userId, 'owner');
+      screen.details()!.props.onClose();
+      assert.equal(screen.details(), undefined);
+    }
   }
-  screen.click('Week view'); screen.click('Sat: Boxing');
-  assert.equal(screen.details()!.props.session, session);
+  screen.click('Week view');
+  for (const session of sessions) {
+    screen.click(`Sat: ${session.title}`);
+    assert.equal(screen.details()!.props.session, session);
+    screen.details()!.props.onClose();
+  }
   assert.equal(screen.routes.length, 0);
+});
+
+test('open details use current cached data and disappear on account, range, or entry changes', () => {
+  const session = { id: 'lift', kind: 'workout', date: '2026-01-31', title: 'Strength', status: 'planned', notes: null, exercises: [] };
+  const screen = fixture([session]);
+  screen.click('View Strength workout');
+  const updated = { ...session, notes: 'Updated plan' };
+  screen.setEntries([updated]);
+  assert.equal(screen.details()!.props.session, updated);
+  screen.setOwner('another-owner');
+  assert.equal(screen.details(), undefined);
+  screen.setOwner(null);
+  assert.equal(screen.details(), undefined);
+  screen.setOwner('owner'); screen.click('View Strength workout'); screen.click('Next week');
+  assert.equal(screen.details(), undefined);
+  screen.click('Previous week'); screen.click('View Strength workout'); screen.setEntries([]);
+  assert.equal(screen.details(), undefined);
 });
 
 test('sports start times display midnight/noon and saved minutes without timezone conversion', () => {
@@ -293,23 +316,41 @@ test('calendar prescriptions preserve units, per-side reps, variable sets and ex
   assert.deepEqual(plain(result[4].prescriptions), []);
 });
 
-test('selected workout shows every exercise and prescription in both calendar views without another request', () => {
+test('workout cards stay compact while details retain every cached exercise and prescription', () => {
   const response = { ...empty(), workouts: [workout('lift', '2026-01-31', { notes: 'Warm up first', exercises: [
     { id: 'squat', name: 'Goblet squat', sets: [{ planned_reps: 8 }, { planned_reps: 8 }] },
     { id: 'row', name: 'Dumbbell row', notes: 'Keep torso still', sets: [{ planned_reps: 10 }] },
     { id: 'plank', name: 'Side plank', sets: [{ planned_duration_seconds: 30 }] },
     { id: 'mobility', name: 'Mobility', sets: [] },
   ] })] };
-  const screen = fixture(calendar.calendarSnapshot(response).entries);
+  const session = calendar.calendarSnapshot(response).entries[0];
+  const screen = fixture([session]);
   for (const view of ['Week view', 'Month view']) {
     screen.click(view);
-    const text = screen.text();
-    for (const name of ['Goblet squat', 'Dumbbell row', 'Side plank', 'Mobility', 'Warm up first', 'Keep torso still',
-      '4 exercises', 'Sets 1–2 · 8 reps', 'Set 1 · 10 reps', 'Set 1 · 30s', 'No set targets provided.']) {
-      assert.ok(text.includes(name), `missing ${name} in ${view}`);
-    }
+    assert.match(screen.text(), /4 exercises/);
+    assert.doesNotMatch(screen.text(), /Goblet squat|Keep torso still|Sets 1–2/);
+    screen.click('View lift workout');
+    assert.equal(screen.details()!.props.session, session);
+    screen.details()!.props.onClose();
   }
   assert.deepEqual(screen.routes, []);
+
+  const { WorkoutDetails } = load('components/workout-details.tsx', {
+    'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react-native': {},
+    'react-native': { View: 'view', ScrollView: 'scroll', StyleSheet: { create: value => value } },
+    './action-sheet': { ActionSheet: 'sheet' }, './ui': { AppText: 'text' },
+    '@/lib/calendar': calendar, '@/state/app-context': { useApp: () => ({ colors: load('design/tokens.ts').palettes.dark }) },
+  });
+  let closes = 0;
+  const details = WorkoutDetails({ session, onClose: () => closes++ });
+  const text = JSON.stringify(details);
+  for (const value of ['lift', 'Saturday, January 31, 2026', 'Planned', 'Goblet squat', 'Dumbbell row', 'Side plank', 'Mobility',
+    'Warm up first', 'Keep torso still', 'Sets 1–2 · 8 reps', 'Set 1 · 10 reps', 'Set 1 · 30s', 'No set targets provided.']) {
+    assert.ok(text.includes(value), `missing ${value} in details`);
+  }
+  details.props.onClose(); assert.equal(closes, 1);
+  const emptyDetails = JSON.stringify(WorkoutDetails({ session: { ...session, notes: null, exercises: [] }, onClose() {} }));
+  assert.match(emptyDetails, /No exercises provided/); assert.doesNotMatch(emptyDetails, /undefined|NaN/);
 });
 
 test('calendar caches empty ranges until TTL, and containing months satisfy weeks without new calls', async () => {

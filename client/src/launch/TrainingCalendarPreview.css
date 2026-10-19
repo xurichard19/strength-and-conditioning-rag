@@ -26,7 +26,7 @@
   gap: var(--space-2);
   min-width: 0;
   padding: var(--space-2) var(--space-1);
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-control);
   border-radius: 4px;
   background: var(--color-canvas);
   color: var(--color-muted);
@@ -43,7 +43,7 @@
   height: 19px;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-control);
   border-radius: 50%;
   font-size: 0.625rem;
   font-variant-numeric: tabular-nums;
@@ -61,7 +61,7 @@
 }
 
 .training-preview-control[aria-pressed='true'] .training-preview-control-number {
-  border-color: color-mix(in srgb, var(--color-accent-ink) 35%, var(--color-accent));
+  border-color: var(--color-accent-ink);
 }
 
 .training-preview-control:focus-visible {

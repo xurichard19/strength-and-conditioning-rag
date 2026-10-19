@@ -72,7 +72,7 @@ function SportsWorkoutForm({ date, userId }: { date: string; userId: string }) {
     <AppText weight="medium" style={styles.notesTitle}>Notes <AppText tone="secondary">(optional)</AppText></AppText>
     <TextInput accessibilityLabel="Workout notes" placeholder="Anything useful to know about this session…" placeholderTextColor={colors.textTertiary}
       value={notes} onChangeText={setNotes} editable={!busy} multiline maxLength={4000} textAlignVertical="top"
-      style={[styles.notes, { backgroundColor: colors.card, color: colors.text, borderColor: colors.separator }]} />
+      style={[styles.notes, { backgroundColor: colors.card, color: colors.text, borderColor: colors.controlBorder }]} />
     {error ? <View accessibilityLiveRegion="polite" style={styles.error}>
       <AppText style={{ color: colors.danger }}>{error}</AppText>
       <AppText tone="secondary" style={styles.caption}>Try again with the same details. If you changed them, check your calendar first.</AppText>

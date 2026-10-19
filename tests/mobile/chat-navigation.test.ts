@@ -1,17 +1,12 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { test } from 'node:test';
-import { jsx, load, plain, type Stubs, type TestNode, type TestValue } from './helpers.ts';
+import { jsx, load, nodes, plain, type Stubs } from './helpers.ts';
 
 const react: Stubs = { useEffect: () => {}, useState: value => [value, () => {}], useRef: value => ({ current: value }), useCallback: fn => fn };
 const native: Stubs = { View: 'view', StyleSheet: { create: value => value }, Keyboard: {}, Platform: { OS: 'ios' } };
 const runtime = { jsx, jsxs: jsx };
 const app = { colors: {}, profile: { onboardingComplete: true }, hydrated: true, accountReady: true, authSession: {} };
-function nodes(value: TestValue): TestNode[] {
-  if (!value || typeof value !== 'object') return [];
-  if (Array.isArray(value)) return value.flatMap(nodes);
-  return [value, ...nodes(value.props.children)];
-}
 
 test('bottom tabs retain Plans and remove Chat', () => {
   const { default: Tabs } = load('app/(tabs)/_layout.tsx', {

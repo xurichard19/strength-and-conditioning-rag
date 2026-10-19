@@ -52,9 +52,9 @@ function AccountForm() {
     <View style={styles.form}>
       <AppText weight="medium" style={styles.sectionTitle}>Connect when the backend is ready</AppText>
       <AppText weight="medium" style={styles.label}>Email</AppText>
-      <TextInput accessibilityLabel="Email" autoCapitalize="none" autoComplete="email" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="Email" placeholderTextColor={colors.textTertiary} style={[styles.input, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} />
+      <TextInput accessibilityLabel="Email" autoCapitalize="none" autoComplete="email" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="Email" placeholderTextColor={colors.textTertiary} style={[styles.input, { color: colors.text, backgroundColor: colors.card, borderColor: colors.controlBorder }]} />
       <AppText weight="medium" style={styles.label}>Password</AppText>
-      <TextInput accessibilityLabel="Password" autoCapitalize="none" autoComplete="password" secureTextEntry value={password} onChangeText={setPassword} placeholder="Password" placeholderTextColor={colors.textTertiary} style={[styles.input, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} />
+      <TextInput accessibilityLabel="Password" autoCapitalize="none" autoComplete="password" secureTextEntry value={password} onChangeText={setPassword} placeholder="Password" placeholderTextColor={colors.textTertiary} style={[styles.input, { color: colors.text, backgroundColor: colors.card, borderColor: colors.controlBorder }]} />
       {message ? <AppText tone="secondary" style={styles.message}>{message}</AppText> : null}
       <PrimaryButton disabled={disabled} loading={busy === 'in'} onPress={() => void authenticate('in')}>Sign in</PrimaryButton>
       <SecondaryButton disabled={disabled} loading={busy === 'up'} onPress={() => void authenticate('up')}>Create account</SecondaryButton>

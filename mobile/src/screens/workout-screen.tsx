@@ -58,7 +58,7 @@ export default function WorkoutScreen() {
           ))}
           <View style={styles.noteSection}>
             <AppText weight="medium">Session note</AppText>
-            <TextInput accessibilityLabel="Session note" value={note} onChangeText={setNote} multiline placeholder="Anything worth remembering?" placeholderTextColor={colors.textTertiary} style={[styles.note, { color: colors.text, backgroundColor: colors.card, borderColor: colors.separator }]} />
+            <TextInput accessibilityLabel="Session note" value={note} onChangeText={setNote} multiline placeholder="Anything worth remembering?" placeholderTextColor={colors.textTertiary} style={[styles.note, { color: colors.text, backgroundColor: colors.card, borderColor: colors.controlBorder }]} />
           </View>
           <PrimaryButton loading={finishing} onPress={finish}>Finish session</PrimaryButton>
           <AppText tone="secondary" style={styles.finishHint}>This is a training preview. Changes aren’t saved to your real plan.</AppText>
@@ -184,7 +184,7 @@ function ExerciseCard(props: ExerciseCardProps) {
 
 function NumberInput({ label, value, onChange }: { label: string; value: number | null; onChange: (value: number | null) => void }) {
   const { colors } = useApp();
-  return <TextInput accessibilityLabel={label} keyboardType="decimal-pad" value={value == null ? '' : String(value)} onChangeText={(text) => { const parsed = Number(text.replace(',', '.')); onChange(text === '' || Number.isNaN(parsed) ? null : parsed); }} selectTextOnFocus style={[styles.numberInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.separator }]} />;
+  return <TextInput accessibilityLabel={label} keyboardType="decimal-pad" value={value == null ? '' : String(value)} onChangeText={(text) => { const parsed = Number(text.replace(',', '.')); onChange(text === '' || Number.isNaN(parsed) ? null : parsed); }} selectTextOnFocus style={[styles.numberInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.controlBorder }]} />;
 }
 
 const styles = StyleSheet.create({

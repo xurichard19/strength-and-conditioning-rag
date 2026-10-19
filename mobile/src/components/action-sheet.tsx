@@ -15,7 +15,7 @@ export function ActionSheet({ title, onClose, children, headerAction }: {
     <SafeAreaProvider style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
       <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={onClose} style={StyleSheet.absoluteFill} />
       <SafeAreaView edges={['bottom']} style={[styles.panel, { backgroundColor: colors.card, borderColor: colors.separator }]} accessibilityViewIsModal>
-        <View style={[styles.handle, { backgroundColor: colors.fillStrong }]} />
+        <View style={[styles.handle, { backgroundColor: colors.controlBorder }]} />
         <View style={[styles.header, { borderBottomColor: colors.separator }]}>
           <AppText weight="medium" style={styles.title}>{title}</AppText>
           {headerAction}

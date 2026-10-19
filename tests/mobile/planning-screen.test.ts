@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { deferred, jsx, load, type Stubs, type TestModule, type TestNode, type TestValue } from './helpers.ts';
+import { deferred, jsx, load, nodes, type Stubs, type TestModule, type TestNode, type TestValue } from './helpers.ts';
 import type { PlanningChange, PlanningChangePreview, PlanningJob } from '../../mobile/src/services/backend';
 
 const change: PlanningChange = { id: 'change-1', user_id: 'owner', revision: 3, kind: 'adjustment', status: 'applied',
@@ -47,11 +47,6 @@ function fixture(state: TestModule = {}, detail = async () => preview) {
     if (Array.isArray(node)) return node.map(expand);
     if (typeof node.type === 'function') return expand(node.type(node.props));
     return { ...node, props: { ...node.props, children: expand(node.props.children) } };
-  };
-  const nodes = (node: TestValue): TestNode[] => {
-    if (!node || typeof node !== 'object') return [];
-    if (Array.isArray(node)) return node.flatMap(nodes);
-    return [node, ...nodes(node.props.children)];
   };
   const render = () => { cursor = 0; dirty = false; tree = expand(Screen()); return tree; };
   async function flush() {
