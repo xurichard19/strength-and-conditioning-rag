@@ -1,17 +1,19 @@
 import datetime as dt
+from io import BytesIO
 import json
 import re
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import HTTPError
 from uuid import UUID
 
 from pydantic import SecretStr, ValidationError
 
 from app.contracts import (
     ClaimedReplanJob, ExerciseSetResult, PlannedExercise, PlannedExerciseSet,
-    PlannedWorkout, PlannedWorkoutPlan, PlanningChangeRecord, PlanningChangeWorkoutRecord,
-    ProfileUpdate, SportsWorkoutUpdate, WorkoutRecord,
+    PlannedWorkout, PlanningChangeRecord, PlanningChangeWorkoutRecord,
+    ProfileUpdate, SportsWorkoutInput, SportsWorkoutUpdate, WorkoutRecord,
 )
 from app.db.supabase import calendar, messages, onboarding_responses, planning_changes
 from app.db.supabase import planning_schedules, profiles, replan_jobs, sports_workouts, workouts
@@ -44,13 +46,23 @@ def schedule_row(revision=1):
         revision=revision, next_refresh_at=NOW.isoformat(), created_at=NOW.isoformat(), updated_at=NOW.isoformat())
 
 
+def sports_row():
+    return dict(id=str(WORKOUT), user_id=str(USER), sport='running', scheduled_date=str(DAY),
+        start_time='12:30:00', planned_duration_minutes=45, intensity='easy', notes='recovery',
+        created_at=NOW.isoformat(), updated_at=NOW.isoformat())
+
+
+def duplicate_sport_error():
+    return HTTPError('https://test.invalid', 409, 'conflict', None,
+        BytesIO(b'{"message":"private duplicate details","code":"23505"}'))
+
+
 class HandlerTests(unittest.TestCase):
     def test_planning_contracts_reject_unknown_fields(self):
         for model, payload in (
             (PlannedExerciseSet, {'reps': 5}),
             (PlannedExercise, {'name': 'squat', 'rationale': 'old field'}),
             (PlannedWorkout, {'name': 'strength', 'scheduled_date': DAY, 'exercises': [], 'intent': 'old field'}),
-            (PlannedWorkoutPlan, {'workouts': [], 'legacy': True}),
         ):
             with self.subTest(model=model):
                 with self.assertRaises(ValidationError):
@@ -175,6 +187,73 @@ class HandlerTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             SportsWorkoutUpdate(sport=None)
 
+    def test_sports_creation_sends_client_id_in_one_insert(self):
+        values = SportsWorkoutInput(id=WORKOUT, sport='running', scheduled_date=DAY)
+        self.response([{**values.model_dump(mode='json'), 'user_id': str(USER),
+            'created_at': NOW.isoformat(), 'updated_at': NOW.isoformat()}])
+        result = sports_workouts.create_sports_workout(USER, values, 'user-jwt')
+        request = self.http.call_args.args[0]
+        self.assertEqual(request.get_method(), 'POST')
+        self.assertEqual(json.loads(request.data), {'user_id': str(USER), **values.model_dump(mode='json')})
+        self.assertEqual(request.get_header('Authorization'), 'Bearer user-jwt')
+        self.assertEqual(request.get_header('Prefer'), 'return=representation')
+        self.assertEqual(result.id, WORKOUT)
+        self.http.assert_called_once()
+
+    def test_sports_creation_reuses_id_after_lost_response_and_preserves_current_status(self):
+        row = sports_row()
+        values = SportsWorkoutInput.model_validate({key: row[key] for key in SportsWorkoutInput.model_fields})
+        values.start_time = dt.time(12, 30)
+        self.http.side_effect = [TimeoutError('response lost'), duplicate_sport_error(),
+            FakeResponse([{**row, 'status': 'completed', 'completed_at': NOW.isoformat()}])]
+        with self.assertRaises(SupabaseDataError):
+            sports_workouts.create_sports_workout(USER, values, 'user-jwt')
+        saved = sports_workouts.create_sports_workout(USER, values, 'user-jwt')
+        requests = [call.args[0] for call in self.http.call_args_list]
+        self.assertEqual([request.get_method() for request in requests], ['POST', 'POST', 'GET'])
+        self.assertEqual(requests[0].data, requests[1].data)
+        self.assertEqual(saved.id, WORKOUT)
+        self.assertEqual(saved.status, 'completed')
+        self.assertEqual(saved.completed_at, NOW)
+        self.assertIn('id=eq.' + str(WORKOUT), requests[-1].full_url)
+        self.assertIn('user_id=eq.' + str(USER), requests[-1].full_url)
+        self.assertEqual(requests[-1].get_header('Authorization'), 'Bearer user-jwt')
+
+    def test_sports_creation_conflicts_when_any_creation_field_changed(self):
+        row = sports_row()
+        original = {key: row[key] for key in SportsWorkoutInput.model_fields}
+        changed = {'sport': 'soccer', 'scheduled_date': str(DAY + dt.timedelta(days=1)),
+            'start_time': None, 'planned_duration_minutes': 30, 'intensity': 'hard', 'notes': None}
+        for key, value in changed.items():
+            with self.subTest(field=key):
+                self.http.reset_mock()
+                self.http.side_effect = [duplicate_sport_error(), FakeResponse([row])]
+                with self.assertRaises(SupabaseDataError) as caught:
+                    sports_workouts.create_sports_workout(USER,
+                        SportsWorkoutInput.model_validate({**original, key: value}), 'user-jwt')
+                self.assertEqual(caught.exception.status_code, 409)
+                self.assertEqual([call.args[0].get_method() for call in self.http.call_args_list], ['POST', 'GET'])
+
+    def test_sports_creation_collision_with_inaccessible_owner_does_not_overwrite(self):
+        self.http.side_effect = [duplicate_sport_error(), FakeResponse([])]
+        with self.assertRaises(SupabaseDataError) as caught:
+            sports_workouts.create_sports_workout(USER,
+                SportsWorkoutInput(id=WORKOUT, sport='running', scheduled_date=DAY), 'user-jwt')
+        self.assertEqual(caught.exception.status_code, 409)
+        requests = [call.args[0] for call in self.http.call_args_list]
+        self.assertEqual([request.get_method() for request in requests], ['POST', 'GET'])
+        self.assertIn('user_id=eq.' + str(USER), requests[-1].full_url)
+        self.assertIn('id=eq.' + str(WORKOUT), requests[-1].full_url)
+
+    def test_sports_creation_only_recovers_postgres_unique_violations(self):
+        self.http.side_effect = HTTPError('https://test.invalid', 409, 'conflict', None,
+            BytesIO(b'{"message":"other conflict","code":"PT409"}'))
+        with self.assertRaises(SupabaseDataError) as caught:
+            sports_workouts.create_sports_workout(USER,
+                SportsWorkoutInput(id=WORKOUT, sport='running', scheduled_date=DAY), 'user-jwt')
+        self.assertEqual(caught.exception.code, 'PT409')
+        self.http.assert_called_once()
+
     def test_profile_update_cannot_change_owner_and_validates_timezone(self):
         with self.assertRaises(ValidationError):
             ProfileUpdate(user_id=str(USER))
@@ -246,28 +325,44 @@ class HandlerTests(unittest.TestCase):
         self.assertEqual(result.answers, {'goal': 'hybrid'})
         self.assertEqual(payload, {'user_id': str(USER), 'answers': {'goal': 'hybrid'}})
 
-    def test_completion_conditionally_sets_only_timestamp(self):
+    def test_completion_uses_one_backend_rpc_with_only_verified_owner(self):
         row = dict(user_id=str(USER), answers={'goal': 'hybrid'}, completed_at=NOW.isoformat(),
             created_at=NOW.isoformat(), updated_at=NOW.isoformat())
-        self.response([row])
-        result = onboarding_responses.complete_onboarding_response(USER, 'user-jwt')
+        self.response(row)
+        result = onboarding_responses.complete_onboarding_response(USER)
         request = self.http.call_args.args[0]
-        self.assertEqual(set(json.loads(request.data)), {'completed_at'})
-        self.assertIn('completed_at=is.null', request.full_url)
-        self.assertIn('user_id=eq.' + str(USER), request.full_url)
+        self.assertEqual(request.get_method(), 'POST')
+        self.assertEqual(request.full_url, 'https://test.invalid/rest/v1/rpc/complete_onboarding')
+        self.assertEqual(json.loads(request.data), {'p_user_id': str(USER)})
+        self.assertIsNone(request.get_header('Authorization'))
+        self.assertEqual(request.get_header('Apikey'), 'sb_secret_test-key')
+        self.assertEqual(result.answers, {'goal': 'hybrid'})
         self.assertEqual(result.completed_at, NOW)
+        self.http.assert_called_once()
 
-    def test_repeated_or_concurrent_completion_reads_existing_timestamp(self):
-        row = dict(user_id=str(USER), answers={}, completed_at=NOW.isoformat(),
-            created_at=NOW.isoformat(), updated_at=NOW.isoformat())
-        self.http.side_effect = [FakeResponse([]), FakeResponse([row])]
-        result = onboarding_responses.complete_onboarding_response(USER, 'user-jwt')
-        self.assertEqual(result.completed_at, NOW)
-        self.assertEqual(self.http.call_args.args[0].get_method(), 'GET')
+    def test_completion_rejects_nonobject_or_malformed_rpc_responses(self):
+        for payload in ([], [{}], 'invalid', False, 0, {}):
+            with self.subTest(payload=payload):
+                self.response(payload)
+                with self.assertRaises((SupabaseDataError, ValidationError)):
+                    onboarding_responses.complete_onboarding_response(USER)
 
     def test_completion_missing_response_returns_none(self):
-        self.response([])
-        self.assertIsNone(onboarding_responses.complete_onboarding_response(USER, 'user-jwt'))
+        self.response(None)
+        self.assertIsNone(onboarding_responses.complete_onboarding_response(USER))
+        self.http.assert_called_once()
+
+    def test_completion_without_backend_key_fails_before_network(self):
+        self.settings.supabase_secret_key = None
+        with self.assertRaisesRegex(SupabaseDataError, 'secret key'):
+            onboarding_responses.complete_onboarding_response(USER)
+        self.http.assert_not_called()
+
+    def test_completion_transport_failure_is_not_retried(self):
+        self.http.side_effect = TimeoutError('private transport error')
+        with self.assertRaises(SupabaseDataError):
+            onboarding_responses.complete_onboarding_response(USER)
+        self.http.assert_called_once()
 
     def test_calendar_combines_current_workouts_and_sports(self):
         sport = dict(id=str(TOKEN), user_id=str(USER), sport='basketball', scheduled_date=str(DAY),

@@ -36,21 +36,19 @@ class VectorDB:
         return count > 0, count
 
 
-    def upsert_document(self):
-        #...
-        pass
-    
-
     def index_system_docs(self, batch_size: int | None = None) -> None:
         """ initialize system db """
         if batch_size is None:
             batch_size = self.settings.index_batch_size
 
-        system_db = self.reset_system_docs()
-
+        if batch_size < 1:
+            raise ValueError("batch size must be positive")
         docs = load_system_docs()
         docs = split_docs(docs)
+        if not docs or any(not doc.page_content.strip() for doc in docs):
+            raise ValueError("research corpus must contain nonempty document chunks")
 
+        system_db = self.reset_system_docs()
         for batch in tqdm(range(0, len(docs), batch_size), desc="submitting documents"):
             end = min(batch + batch_size, len(docs))
             system_db.add(

@@ -23,5 +23,5 @@ class TaskSettings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_task_settings() -> TaskSettings:
-    """keep dispatch opt-in until the database migration and plan handler are ready"""
+    """cache the deployed planning switch and task destination per process"""
     return TaskSettings()

@@ -239,7 +239,7 @@ test('range helper requests local calendar months within the backend limit, incl
 test('calendar GET uses inclusive range parameters, preserves empty responses, and retries only one 409', async () => {
   const paths: string[] = [];
   const api = createBackend(async (path, config) => {
-    assert.equal(config, undefined);
+    assert.equal(config?.signal?.aborted, false);
     paths.push(path);
     return new Response(JSON.stringify(paths.length === 1 ? { detail: 'changed' } : empty()), { status: paths.length === 1 ? 409 : 200 });
   });

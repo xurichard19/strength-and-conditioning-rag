@@ -111,6 +111,7 @@ class JobResponse(ResponseModel):
 # -------------------- sports --------------------
 
 class SportsCreateRequest(RequestModel):
+    id: UUID
     sport: str = Field(min_length=1)
     scheduled_date: datetime.date
     start_time: datetime.time | None = None

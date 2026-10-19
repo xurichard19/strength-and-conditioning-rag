@@ -20,7 +20,7 @@ export function load<T = TestModule>(file: string, modules: Stubs = {}, globals:
   vm.runInNewContext(code, { exports, require: (name: string) => {
     if (!(name in modules)) throw new Error(`unexpected import: ${name}`);
     return modules[name];
-  }, URL, URLSearchParams, Headers, TextDecoder, AbortController, console, ...globals, process: { env: {
+  }, URL, URLSearchParams, Headers, TextDecoder, AbortController, setTimeout, clearTimeout, console, ...globals, process: { env: {
     EXPO_PUBLIC_API_BASE_URL: 'https://api.test', EXPO_PUBLIC_SUPABASE_URL: 'https://db.test',
     EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
   } } });

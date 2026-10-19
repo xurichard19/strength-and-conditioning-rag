@@ -434,6 +434,69 @@ test('failed POST exposes the server error and is not retried', async () => {
   assert.equal(count, 1);
 });
 
+function readDeadlineFixture() {
+  const timers = new Map<number, () => void>(); let next = 0;
+  const api = load<typeof import('../src/services/backend')>('services/backend.ts', {}, {
+    setTimeout: (callback: () => void, delay: number) => {
+      assert.equal(delay, 15_000); const id = ++next; timers.set(id, callback); return id;
+    },
+    clearTimeout: (id: number) => timers.delete(id),
+  });
+  return { ...api, expire: () => [...timers.values()].forEach(callback => callback()),
+    get pendingTimers() { return timers.size; } };
+}
+
+test('ordinary reads time out even when the transport ignores abort and release their timer', async () => {
+  const f = readDeadlineFixture(); let signal: AbortSignal | null | undefined; let calls = 0;
+  const request = Promise.withResolvers<Response>();
+  const api = f.createBackend((_path, options) => { signal = options?.signal; calls++; return request.promise; });
+  const pending = api.getProfile();
+  assert.equal(f.pendingTimers, 1); f.expire();
+  await assert.rejects(pending, /Request timed out/);
+  assert.equal(signal?.aborted, true); assert.equal(f.pendingTimers, 0); assert.equal(calls, 1);
+  request.resolve(response({ id: 'late' }));
+});
+
+test('read deadlines cover response bodies and clear after success or API errors', async () => {
+  const f = readDeadlineFixture(); let signal: AbortSignal | null | undefined;
+  let body!: ReadableStreamDefaultController<Uint8Array>;
+  const api = f.createBackend(async (_path, options) => {
+    signal = options?.signal;
+    return new Response(new ReadableStream({ start(controller) { body = controller; } }));
+  });
+  const pending = api.getOnboarding(); await new Promise(resolve => setImmediate(resolve));
+  f.expire(); await assert.rejects(pending, /Request timed out/);
+  assert.equal(signal?.aborted, true); assert.equal(f.pendingTimers, 0);
+  body.enqueue(new TextEncoder().encode('null')); body.close();
+  assert.deepEqual(await f.createBackend(async () => response([])).getConversations(), []);
+  assert.equal(f.pendingTimers, 0);
+  await assert.rejects(f.createBackend(async () => response({ detail: 'offline' }, 503)).getProfile(), /offline/);
+  assert.equal(f.pendingTimers, 0);
+});
+
+test('calendar conflict retry shares one read deadline and does not retry after timeout', async () => {
+  const f = readDeadlineFixture(); const signals: (AbortSignal | null | undefined)[] = [];
+  const request = Promise.withResolvers<Response>();
+  const api = f.createBackend(async (_path, options) => {
+    signals.push(options?.signal);
+    return signals.length === 1 ? response({ detail: 'changed' }, 409) : request.promise;
+  });
+  const pending = api.getCalendarRange('2026-10-01', '2026-10-31');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(signals.length, 2); assert.equal(signals[0], signals[1]); assert.equal(f.pendingTimers, 1);
+  f.expire(); await assert.rejects(pending, /Request timed out/);
+  assert.equal(signals[1]?.aborted, true); assert.equal(f.pendingTimers, 0); assert.equal(signals.length, 2);
+  request.resolve(response({ workouts: [], sports_workouts: [], revision: 1 }));
+
+  const late = Promise.withResolvers<Response>(); let calls = 0;
+  const delayed = f.createBackend(() => { calls++; return late.promise; })
+    .getCalendarRange('2026-10-01', '2026-10-31');
+  f.expire(); await assert.rejects(delayed, /Request timed out/);
+  late.resolve(response({ detail: 'changed' }, 409));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls, 1); assert.equal(f.pendingTimers, 0);
+});
+
 test('signup delegates to Supabase only, with or without email confirmation', async () => {
   const f = authFixture();
   assert.equal((await f.api.signUp('a@test.invalid', 'password'))?.user.id, 'user-a');
@@ -938,6 +1001,30 @@ test('saved reply confirms the conversation even when the title lookup fails', a
   assert.notEqual(f.value.activeConversationId, null);
   assert.equal(f.value.chatError, null);
   assert.equal(f.value.chatBusy, false);
+});
+
+test('a saved reply unlocks follow-up when metadata reconciliation times out', async () => {
+  const clock = readDeadlineFixture(); let sends = 0;
+  const read = Promise.withResolvers<Response>();
+  const api = clock.createBackend(() => read.promise);
+  const f = providerFixture({
+    getConversation: api.getConversation,
+    streamChat: async (_text, _delta, _sources, _signal, _id, saved) => {
+      sends++; saved(savedMessage(`human-${sends}`, 'hello'));
+      saved({ ...savedMessage(`reply-${sends}`, 'Saved answer'), role: 'assistant' });
+      return `reply-${sends}`;
+    },
+  });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  const first = f.value.sendChat('hello'); await f.flush();
+  assert.equal(f.value.chatBusy, true); assert.equal(f.value.chatMessages.at(-1)?.pending, false);
+  clock.expire(); await first; await f.flush();
+  assert.equal(f.value.chatBusy, false); assert.equal(f.value.chatError, null);
+  assert.equal(f.value.chatMessages.at(-1)?.text, 'Saved answer');
+  const second = f.value.sendChat('follow up'); await f.flush();
+  assert.equal(sends, 2); clock.expire(); await second; await f.flush();
+  assert.equal(f.value.chatBusy, false); assert.equal(clock.pendingTimers, 0);
+  read.resolve(response(convo('late'))); f.unmount();
 });
 
 test('late conversation confirmation cannot activate a newly opened empty chat', async () => {

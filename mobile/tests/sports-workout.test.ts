@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { load, plain, jsx, type TestValue, type TestModule, type TestNode } from './helpers.ts';
 import type { SportsWorkoutInput, SportsWorkout } from '../src/services/backend';
@@ -40,12 +41,12 @@ test('form serialization preserves local dates/times, trims notes, and rejects m
 
 test('sports writes use the existing POST endpoint and never make calendar/planning calls or retry automatically', async () => {
   const calls: { path: string; config?: RequestInit }[] = [];
-  const input = options.sportsWorkoutInput('2026-09-20', 'tennis', '18:30', '90', 'hard', 'Practice');
+  const input = { id: randomUUID(), ...options.sportsWorkoutInput('2026-09-20', 'tennis', '18:30', '90', 'hard', 'Practice') };
   const api = createBackend(async (path, config) => {
     calls.push({ path, config });
-    return new Response(JSON.stringify({ ...input, id: 'sport-id', user_id: 'owner', status: 'planned' }), { status: 201 });
+    return new Response(JSON.stringify({ ...input, user_id: 'owner', status: 'planned' }), { status: 201 });
   });
-  assert.equal((await api.createSportsWorkout(input)).id, 'sport-id');
+  assert.equal((await api.createSportsWorkout(input)).id, input.id);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].path, '/sports-workouts');
   assert.equal(calls[0].config?.method, 'POST');
@@ -72,6 +73,7 @@ function formFixture(write: (input: SportsWorkoutInput) => Promise<unknown>, dat
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
     'react-native': { View: 'view', TextInput: 'input', ScrollView: 'scroll', Pressable: 'button', KeyboardAvoidingView: 'keyboard', Keyboard: { dismiss() {} }, Platform: { OS: 'ios' }, StyleSheet: { create: value => value } },
     'react-native-safe-area-context': { SafeAreaView: 'safe' },
+    'expo-crypto': { randomUUID },
     'expo-router': { router: { canGoBack: () => true, back() {} }, useLocalSearchParams: () => ({ date }) },
     'lucide-react-native': {}, '@/design/tokens': { fonts: {} },
     '@/components/ui': { AppText: 'text', Card: 'card', PrimaryButton: 'save' },
@@ -134,6 +136,50 @@ test('failed saves keep field values, show an error, and do not claim success', 
   assert.deepEqual(form.invalidations, [['owner', '2026-09-20', '2026-09-20']]);
   assert.equal(formFixture(async () => {}, '2026-02-30').save(), undefined);
   assert.equal(formFixture(async () => {}, '2026-09-20', null).save(), undefined);
+});
+
+test('retrying a lost save response reuses the exact ID and normalized payload', async () => {
+  const stored = new Map<string, SportsWorkoutInput>();
+  const form = formFixture(async input => {
+    if (stored.has(input.id)) return { ...stored.get(input.id), user_id: 'owner', status: 'planned' };
+    stored.set(input.id, input);
+    throw new Error('Connection dropped after saving.');
+  });
+  form.notes().onChangeText('  Practice  ');
+  form.save()!.onPress(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(form.save()!.loading, false);
+  assert.match(form.calls[0].input.id, /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/);
+  form.notes().onChangeText('Practice');
+  form.save()!.onPress(); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(plain(form.calls[1].input), plain(form.calls[0].input));
+  assert.equal(stored.size, 1); assert.equal(form.save(), undefined);
+  assert.match(JSON.stringify(form.render()), /Sports workout saved/);
+});
+
+test('editing after an uncertain save retains its ID so a conflict cannot create a duplicate', async () => {
+  let calls = 0;
+  const form = formFixture(async () => {
+    throw new Error(++calls === 1 ? 'Connection dropped.' : 'This workout was already saved with different details.');
+  });
+  form.save()!.onPress(); await new Promise(resolve => setImmediate(resolve));
+  form.field('Duration').onChange('90');
+  form.save()!.onPress(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(form.calls[1].input.id, form.calls[0].input.id);
+  assert.equal(form.calls[1].input.planned_duration_minutes, 90);
+  assert.match(JSON.stringify(form.render()), /already saved with different details/);
+  assert.match(JSON.stringify(form.render()), /check your calendar first/);
+  assert.equal(form.save()!.loading, false);
+});
+
+test('a fresh form represents a new workout even when all fields are identical', async () => {
+  const first = formFixture(async input => input); const next = formFixture(async input => input);
+  assert.equal(first.calls.length, 0); assert.equal(next.calls.length, 0);
+  first.save()!.onPress(); next.save()!.onPress();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.notEqual(first.calls[0].input.id, next.calls[0].input.id);
+  const { id: firstId, ...firstFields } = first.calls[0].input;
+  const { id: nextId, ...nextFields } = next.calls[0].input;
+  assert.ok(firstId && nextId); assert.deepEqual(plain(firstFields), plain(nextFields));
 });
 
 test('day menu opens Chat without prompting and carries the chosen date into the sports screen', () => {

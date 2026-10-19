@@ -62,7 +62,7 @@ class ApiSchemaTests(unittest.TestCase):
             self.assertEqual(api.patch('/profile', json={'display_name': None}).status_code, 200)
             self.assertIs(type(save_profile.call_args.args[1]), ProfileUpdate)
             self.assertEqual(save_profile.call_args.args[1].model_dump(exclude_unset=True), {'display_name': None})
-            self.assertEqual(api.post('/sports-workouts', json={'sport': 'running', 'scheduled_date': str(DAY)}).status_code, 201)
+            self.assertEqual(api.post('/sports-workouts', json={'id': str(ID), 'sport': 'running', 'scheduled_date': str(DAY)}).status_code, 201)
             self.assertIs(type(create.call_args.args[1]), SportsWorkoutInput)
             self.assertEqual(api.patch(f'/sports-workouts/{ID}', json={'notes': None}).status_code, 200)
             self.assertIs(type(update.call_args.args[2]), SportsWorkoutUpdate)

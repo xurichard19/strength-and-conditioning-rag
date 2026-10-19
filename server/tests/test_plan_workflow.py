@@ -109,6 +109,31 @@ class PlanWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(packet["calendar"]["sports_workouts"][0]["intensity"], "hard")
         self.assertEqual(packet["calendar"]["workouts"][1]["exercises"][0]["sets"][0]["actual_reps"], 0)
 
+    async def test_redone_onboarding_adjusts_only_remaining_coverage_with_latest_answers(self):
+        protected = record(prescription(DAY + timedelta(days=1)), UUID(int=8))
+        protected.exercises[0].sets[0].actual_reps = 5
+        self.claim, self.context = inputs(workouts=[record(), protected])
+        checkpoint = DAY + timedelta(days=13)
+        self.context.schedule.horizon_end = checkpoint
+        self.claim.horizon_end = self.claim.effective_through = checkpoint
+        self.claim.job.reason = "onboarding answers changed"
+        self.context.onboarding = OnboardingResponseRecord(user_id=OWNER,
+            answers={"equipment": "dumbbells", "sessionMinutes": 25}, completed_at=NOW,
+            created_at=NOW, updated_at=NOW)
+        replacement = prescription()
+        replacement.exercises[0].name = "Dumbbell goblet squat"
+        candidate = proposal([replacement], [WORKOUT_ID], [DAY, DAY + timedelta(days=1)])
+        candidate.day_decisions = candidate.day_decisions[:14]
+        self.generator.return_value = response(candidate)
+        result = await self.run_plan()
+        self.assertEqual(result.before_ids, [WORKOUT_ID])
+        self.assertEqual(result.day_decisions[-1].scheduled_date, checkpoint)
+        packet = json.loads(self.generator.call_args.args[0][1].content)
+        self.assertEqual(packet["task"]["kind"], "adjustment")
+        self.assertEqual(packet["task"]["horizon_end"], str(checkpoint))
+        self.assertEqual(packet["onboarding"], self.context.onboarding.answers)
+        self.assertEqual(packet["editable_workout_ids"], [str(WORKOUT_ID)])
+
     async def test_context_omits_identity_and_lease_but_keeps_recent_results(self):
         self.context.profile.email = "private@example.invalid"
         historical = record(prescription(DAY - timedelta(days=2)))

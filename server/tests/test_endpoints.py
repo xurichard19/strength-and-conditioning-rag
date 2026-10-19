@@ -44,7 +44,7 @@ class EndpointTests(unittest.TestCase):
             ('GET', f'/workouts/{ID}', None),
             ('PUT', f'/workouts/{ID}/results', {'expected_revision': 0, 'status': 'planned'}),
             ('GET', f'/sports-workouts/{ID}', None),
-            ('POST', '/sports-workouts', {'sport': 'running', 'scheduled_date': str(DAY)}),
+            ('POST', '/sports-workouts', {'id': str(ID), 'sport': 'running', 'scheduled_date': str(DAY)}),
             ('PATCH', f'/sports-workouts/{ID}', {'notes': 'easy'}),
             ('PUT', f'/sports-workouts/{ID}/status', {'status': 'cancelled'}),
             ('DELETE', f'/sports-workouts/{ID}', None),
@@ -121,7 +121,7 @@ class EndpointTests(unittest.TestCase):
 
     def test_sports_crud_uses_owner_handlers(self):
         cases = [('get_sports_workout', 'GET', f'/sports-workouts/{ID}', None, 200),
-                 ('create_sports_workout', 'POST', '/sports-workouts', {'sport': 'basketball', 'scheduled_date': str(DAY)}, 201),
+                 ('create_sports_workout', 'POST', '/sports-workouts', {'id': str(ID), 'sport': 'basketball', 'scheduled_date': str(DAY)}, 201),
                  ('update_sports_workout', 'PATCH', f'/sports-workouts/{ID}', {'notes': None}, 200),
                  ('set_sports_workout_status', 'PUT', f'/sports-workouts/{ID}/status', {'status': 'cancelled'}, 200),
                  ('delete_sports_workout', 'DELETE', f'/sports-workouts/{ID}', None, 200)]
@@ -136,7 +136,7 @@ class EndpointTests(unittest.TestCase):
                     self.assertEqual(handler.call_args.args[2].model_dump(exclude_unset=True), {'notes': None})
 
     def test_mobile_sports_form_reaches_the_insert_handler_with_local_date_and_owner(self):
-        body = dict(sport='boxing', scheduled_date='2026-09-20', start_time='23:30:00',
+        body = dict(id=str(ID), sport='boxing', scheduled_date='2026-09-20', start_time='23:30:00',
             planned_duration_minutes=180, intensity='variable', notes='Sparring')
         row = {**SPORT.model_dump(mode='json'), **body}
         with patch.object(sports_workouts.sports_workouts, 'insert_rows', return_value=[row]) as insert:
@@ -145,6 +145,30 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(response.json()['start_time'], '23:30:00')
         self.assertEqual(response.json()['scheduled_date'], '2026-09-20')
         insert.assert_called_once_with('sports_workouts', {'user_id': str(USER.id), **body}, USER.access_token)
+
+    def test_sports_creation_requires_client_uuid_and_forbids_owner_or_status(self):
+        base = {'sport': 'running', 'scheduled_date': str(DAY)}
+        with patch.object(sports_workouts.sports_workouts, 'create_sports_workout') as create:
+            for extra in ({}, {'id': 'invalid'}, {'id': None}, {'id': str(ID), 'user_id': USER.id},
+                          {'id': str(ID), 'status': 'completed'}):
+                with self.subTest(extra=extra):
+                    self.assertEqual(self.client.post('/sports-workouts', json={**base, **extra}).status_code, 422)
+            create.assert_not_called()
+
+    def test_sports_creation_replay_returns_same_record_and_conflicts_are_private(self):
+        body = {'id': str(ID), 'sport': 'basketball', 'scheduled_date': str(DAY)}
+        duplicate = SupabaseDataError('private duplicate details', 409, '23505')
+        with patch.object(sports_workouts.sports_workouts, 'insert_rows', side_effect=duplicate), \
+                patch.object(sports_workouts.sports_workouts, 'get_sports_workout', return_value=SPORT) as read:
+            response = self.client.post('/sports-workouts', json=body)
+            self.assertEqual(response.status_code, 201)
+            self.assertEqual(response.json()['id'], str(ID))
+            read.assert_called_once_with(USER.id, ID, USER.access_token)
+            read.return_value = None
+            conflict = self.client.post('/sports-workouts', json=body)
+        self.assertEqual(conflict.status_code, 409)
+        self.assertEqual(conflict.headers['cache-control'], 'private, no-store')
+        self.assertNotIn('private duplicate details', conflict.text)
 
     def test_sports_invalid_input_and_missing_record(self):
         with patch.object(sports_workouts.sports_workouts, 'update_sports_workout') as handler:

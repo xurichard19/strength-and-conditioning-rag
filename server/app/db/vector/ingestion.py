@@ -88,7 +88,7 @@ def load_system_docs_from_gcs(bucket: str, prefix: str) -> list[Document]:
             blob.download_to_filename(tmp_path)
             file_docs = load_single_doc(tmp_path)
             for doc in file_docs:
-                doc.metadata['source'] = Path(blob.name).name
+                doc.metadata['source'] = gcs_source
                 doc.metadata.setdefault('page', 1)
             
             docs.extend(file_docs)

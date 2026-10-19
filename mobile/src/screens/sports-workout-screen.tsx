@@ -1,4 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import { randomUUID } from 'expo-crypto';
 import { ArrowLeft, CheckCircle2 } from 'lucide-react-native';
 import { useRef, useState } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
@@ -19,7 +20,7 @@ function close() {
   else router.replace('/(tabs)/week');
 }
 
-/** Save only on explicit submission; invalidate calendar reads, without triggering AI replanning. */
+/** Keep one ID per form so retrying an uncertain save cannot create a duplicate workout. */
 function SportsWorkoutForm({ date, userId }: { date: string; userId: string }) {
   const { colors, invalidateCalendar } = useApp();
   const [sport, setSport] = useState('boxing');
@@ -31,6 +32,7 @@ function SportsWorkoutForm({ date, userId }: { date: string; userId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<SportsWorkout | null>(null);
   const submitting = useRef(false);
+  const submissionId = useRef<string | null>(null);
 
   const save = async () => {
     if (submitting.current || saved) return;
@@ -38,13 +40,14 @@ function SportsWorkoutForm({ date, userId }: { date: string; userId: string }) {
     setBusy(true); setError(null); Keyboard.dismiss();
     try {
       const input = sportsWorkoutInput(date, sport, startTime, duration, intensity, notes);
-      const result = await backendFor(userId).createSportsWorkout(input);
+      submissionId.current ??= randomUUID();
+      const result = await backendFor(userId).createSportsWorkout({ id: submissionId.current, ...input });
       setSaved(result);
     } catch (failure) {
       submitting.current = false;
       setError(errorMessage(failure, 'Could not save the sports workout.'));
     } finally {
-      // A lost response can still mean a committed write; refetch instead of guessing or retrying.
+      // A lost response may still mean a committed write; always refresh the calendar.
       invalidateCalendar(userId, date, date);
       setBusy(false);
     }
@@ -72,7 +75,7 @@ function SportsWorkoutForm({ date, userId }: { date: string; userId: string }) {
       style={[styles.notes, { backgroundColor: colors.card, color: colors.text, borderColor: colors.separator }]} />
     {error ? <View accessibilityLiveRegion="polite" style={styles.error}>
       <AppText style={{ color: colors.danger }}>{error}</AppText>
-      <AppText tone="secondary" style={styles.caption}>If the connection dropped while saving, the entry may already exist. Check before submitting again.</AppText>
+      <AppText tone="secondary" style={styles.caption}>Try again with the same details. If you changed them, check your calendar first.</AppText>
     </View> : null}
     <PrimaryButton loading={busy} onPress={() => void save()} style={styles.save}>Save sports workout</PrimaryButton>
   </>;

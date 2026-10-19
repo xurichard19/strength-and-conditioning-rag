@@ -76,13 +76,6 @@ class PlannedWorkout(BaseModel):
     notes: str | None = None
 
 
-class PlannedWorkoutPlan(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    workouts: list[PlannedWorkout]
-    notes: str | None = None
-
-
 # -------------------- profile records --------------------
 
 class ProfileRecord(BaseModel):
@@ -368,6 +361,7 @@ class SportsWorkoutRecord(BaseModel):
 class SportsWorkoutInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    id: UUID
     sport: str = Field(min_length=1)
     scheduled_date: datetime.date
     start_time: datetime.time | None = None
