@@ -8,6 +8,7 @@ The Expo/React Native mobile client connects to the containerized FastAPI backen
 
 #### Table of Contents
 
+- [Mobile App Demo](#mobile-app-demo)
 - [App Infrastructure](#app-infrastructure)
 - [Chat LangGraph Workflow](#chat-langgraph-workflow)
 - [Workout Programming LangGraph Workflow](#workout-programming-langgraph-workflow)
@@ -15,6 +16,10 @@ The Expo/React Native mobile client connects to the containerized FastAPI backen
 - [Local Development Services](#local-development-services)
 
 ---
+
+#### Mobile App Demo
+
+https://github.com/user-attachments/assets/b91a3d4c-24e4-497a-b0c3-b5eb1353975a
 
 #### App Infrastructure
 ```mermaid
