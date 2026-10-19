@@ -266,6 +266,17 @@ class HandlerTests(unittest.TestCase):
         self.assertIn('offset=1', urls[1])
         self.assertTrue(all('status=eq.planned' in url and 'superseded_at=is.null' in url for url in urls))
 
+    def test_workout_id_reads_stop_when_complete_and_keep_short_or_missing_pages(self):
+        first, second = workout_row(), {**workout_row(), 'id': str(TOKEN)}
+        for pages, expected in (([[first, second]], 2), ([[first], [second]], 2), ([[first], []], 1)):
+            with self.subTest(pages=len(pages), expected=expected):
+                self.http.reset_mock()
+                self.http.side_effect = [httpx.Response(200, json=rows) for rows in pages]
+                result = workouts.get_workouts_by_ids(USER, [WORKOUT, TOKEN, WORKOUT], 'user-jwt')
+                self.assertEqual(len(result), expected)
+                self.assertEqual(self.http.call_count, len(pages))
+                self.assertTrue(all(call.args[0].url.params['user_id'] == f'eq.{USER}' for call in self.http.call_args_list))
+
     def test_invalid_id_and_date_range_do_not_reach_network(self):
         with self.assertRaises(ValueError):
             workouts.get_workout('bad-id', WORKOUT, 'user-jwt')
