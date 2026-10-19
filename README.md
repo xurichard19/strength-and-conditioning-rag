@@ -10,6 +10,7 @@ The Expo/React Native mobile client connects to the containerized FastAPI backen
 
 - [Mobile App Demo](#mobile-app-demo)
 - [App Infrastructure](#app-infrastructure)
+- [Workout Programming Infrastructure](#workout-programming-infrastructure)
 - [Chat LangGraph Workflow](#chat-langgraph-workflow)
 - [Workout Programming LangGraph Workflow](#workout-programming-langgraph-workflow)
 - [Database Infrastructure](#database-infrastructure)
@@ -23,8 +24,14 @@ https://github.com/user-attachments/assets/b91a3d4c-24e4-497a-b0c3-b5eb1353975a
 
 #### App Infrastructure
 ```mermaid
+---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
 flowchart TB
-    User(["User"]) --> FE["React Native mobile client<br/>Expo"]
+    User(["User"]) --> FE["React Native<br/>mobile client · Expo"]
     FE --> Edge["Google Cloud edge<br/>Load Balancer and<br/>Cloud Armor"]
     Edge --> API["FastAPI backend<br/>Cloud Run"]
     API -->|chat| Workflows["LangGraph workflows<br/>chat and plan"]
@@ -41,20 +48,26 @@ flowchart TB
     API -.- ci["GitHub Actions<br/>deployment"]
 ```
 
-##### Programming Infrastructure
+##### Workout Programming Infrastructure
 
 ```mermaid
+---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
 flowchart TB
-    Inputs["Onboarding completion / edits<br/>Sports changes"] --> API["FastAPI backend<br/>Cloud Run"]
-    API -->|persist inputs and scheduling changes| DB[("Supabase<br/>21-day coverage · 7-day refreshes<br/>Durable jobs · calendar · history")]
+    Inputs["Onboarding completion<br/>or edits · Sports changes"] --> API["FastAPI backend<br/>Cloud Run"]
+    API -->|save inputs and schedule| DB[("Supabase<br/>21-day coverage<br/>7-day refreshes<br/>Durable jobs<br/>Calendar and history")]
     Clock["Cloud Scheduler<br/>Every minute"] -->|OIDC POST /dispatch| Dispatcher["Private dispatcher<br/>Cloud Run"]
-    Dispatcher <-->|due refreshes and delivery recovery| DB
-    Dispatcher --> Queue["Cloud Tasks<br/>Deduplicated delivery and retries"]
-    API -.->|explicit adjustment / retry after commit| Queue
+    Dispatcher <-->|due jobs and recovery| DB
+    Dispatcher --> Queue["Cloud Tasks<br/>Deduplicated delivery<br/>and retries"]
+    API -.->|adjust / retry after commit| Queue
     Queue -->|OIDC POST /run| Claim
 
-    subgraph Worker["Private planning worker · Cloud Run"]
-        Claim["Claim delivery lease<br/>Load authoritative context"] --> Graph["Planning LangGraph"]
+    subgraph Worker["Private planning worker"]
+        Claim["Cloud Run<br/>Claim delivery lease<br/>Load authoritative context"] --> Graph["Planning LangGraph"]
         Graph --> Publish["Publish atomically<br/>Check lease and revision"]
     end
 
@@ -66,6 +79,12 @@ flowchart TB
 #### Chat LangGraph Workflow
 
 ```mermaid
+---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
 flowchart TB
     Request["Chat request"] --> History["Load history node<br/>Supabase"]
     History --> Route["GPT-5 nano router"]
@@ -88,18 +107,24 @@ flowchart TB
 #### Workout Programming LangGraph Workflow
 
 ```mermaid
+---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
 flowchart TB
-    Request["Claimed job + athlete context<br/>Initial plan / weekly extension / adjustment"] --> Context["Context node<br/>Fixed dates, editable workouts and athlete inputs"]
+    Request["Claimed job + athlete context<br/>Initial plan / weekly extension<br/>or adjustment"] --> Context["Context node<br/>Fixed dates and editable workouts<br/>Athlete inputs"]
     Context --> Prepare["Prepare node · OpenAI<br/>Focused research query"]
-    Prepare --> Search["Search node<br/>Chroma first · Tavily available on retry"]
+    Prepare --> Search["Search node<br/>Chroma first<br/>Tavily available on retry"]
     Search --> Evaluate{"Evaluate node · OpenAI<br/>Sufficient evidence?"}
     Evaluate -->|yes| Generate["Generate node · OpenAI<br/>Structured PlanningProposal"]
     Evaluate -->|one research retry| Search
-    Evaluate -->|insufficient after retry / budget exhausted| Fail["Raise error<br/>No publication"]
-    Generate --> Validate{"Validate node<br/>Dates, coverage, prescriptions and protected workouts"}
+    Evaluate -->|still insufficient / budget exhausted| Fail["Raise error<br/>No publication"]
+    Generate --> Validate{"Validate node<br/>Dates, coverage and prescriptions<br/>Protected workouts"}
     Validate -->|one repair with feedback| Generate
-    Validate -->|invalid after repair / budget exhausted| Fail
-    Validate -->|valid| Plan["Return validated proposal<br/>Worker publishes outside the graph"]
+    Validate -->|still invalid / budget exhausted| Fail
+    Validate -->|valid| Plan["Return validated proposal<br/>Worker publishes<br/>outside the graph"]
 ```
 
 #### Database Infrastructure
