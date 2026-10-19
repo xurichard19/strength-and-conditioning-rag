@@ -39,9 +39,9 @@ export default function AboutPage() {
           <h1>Making training research<br /><span>useful in your week.</span></h1>
           <div className="about-intro-bottom">
             <p>Arcel brings strength and conditioning research into the decisions
-              behind your training. We’re building a calendar that gives your
-              workouts structure, with chat to help you understand the plan
-              and explain what needs to change.</p>
+              behind your training. A three-week plan refreshes each week, with
+              sports adjustments, detailed workouts, and a timeline of changes.
+              Chat gives you a separate place to ask training questions.</p>
             <nav className="about-contents" aria-label="On this page">
               <a href="#our-approach">Our approach <ArrowDown size={16} aria-hidden="true" /></a>
               <a href="#our-team">Our team <ArrowDown size={16} aria-hidden="true" /></a>
@@ -102,8 +102,8 @@ export default function AboutPage() {
         </section>
 
         <section className="landing-close about-close landing-container" aria-labelledby="about-close-title">
-          <div><h2 id="about-close-title">See a sample training week</h2>
-            <p>Explore how strength work and sport sessions come together in the calendar we’re building.</p></div>
+          <div><h2 id="about-close-title">Explore your next three weeks</h2>
+            <p>Try the plan overview, change history, and chat previews on our home page.</p></div>
           <a className="landing-button landing-button-outline" href="/">View the preview <ArrowRight size={18} aria-hidden="true" /></a>
         </section>
       </main>

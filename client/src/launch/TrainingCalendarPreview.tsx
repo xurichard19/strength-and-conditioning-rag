@@ -23,10 +23,10 @@ const scenarios: Array<{ id: Scenario; label: string; shortLabel: string; title:
   },
   {
     id: 'changed',
-    label: 'Life changes',
-    shortLabel: 'Life changes',
+    label: 'Add a sport',
+    shortLabel: 'Add a sport',
     title: 'A swim joins Wednesday’s schedule.',
-    description: 'The extra session adds training load, so Thursday’s strength workout needs another look.',
+    description: 'Adding a sports session queues a plan update. Review its status in the Plans tab.',
   },
   {
     id: 'adapted',
@@ -40,7 +40,7 @@ const scenarios: Array<{ id: Scenario; label: string; shortLabel: string; title:
 const completedDays: TrainingDay[] = [
   {
     day: 'Mon',
-    title: 'Strength A',
+    title: 'Lower-body strength',
     detail: 'Squat 3 × 5 · Romanian deadlift 3 × 8',
     status: 'Completed',
     tone: 'complete',
@@ -181,7 +181,7 @@ export default function TrainingCalendarPreview() {
         </div>
       </div>
 
-      <p className="training-preview-note">An example of the intended experience. Automatic adjustments are in development.</p>
+      <p className="training-preview-note">Sample data showing one possible sports adjustment. Plan updates run in the background; your timeline shows what changed.</p>
     </section>
   )
 }

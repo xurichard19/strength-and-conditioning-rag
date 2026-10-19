@@ -1,4 +1,4 @@
-/* Lightweight promotional recreations of the native screens; only tabs are interactive. */
+/* Lightweight sample screens, with local plan history and chat interactions. */
 .phone-preview {
   /* Mirror the app palette without making the public site depend on the Expo build. */
   --phone-bg: #0c1013;
@@ -106,13 +106,12 @@
 }
 
 .phone-preview-connectivity { display: flex; gap: 1.1696cqw; align-items: center; }
-.phone-preview-content { flex: 1; min-height: 0; overflow: hidden; padding: 4.1cqw 5.3cqw 3.8cqw; }
+.phone-preview-content { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--phone-border) transparent; padding: 4.1cqw 5.3cqw 18cqw; }
 .phone-preview-content:focus-visible { outline: 1px solid var(--phone-accent); outline-offset: -2cqw; }
 .phone-preview-page { animation: phone-preview-enter 180ms ease-out; }
 .phone-preview-heading { display: flex; align-items: center; justify-content: space-between; }
 .phone-preview .phone-preview-brand { margin-bottom: 2.2cqw; color: var(--phone-accent); font-size: 2.5cqw; font-weight: 500; letter-spacing: .22em; }
 .phone-preview .phone-preview-title { font-size: 10.5cqw; font-weight: 400; letter-spacing: -.045em; line-height: 1.15; }
-.phone-preview-assistant { display: grid; place-items: center; width: 10.5cqw; height: 10.5cqw; border: 0.2924cqw solid var(--phone-border); border-radius: 50%; background: var(--phone-card); color: var(--phone-accent); }
 .phone-preview .phone-preview-subtitle { margin-top: 2cqw; color: var(--phone-secondary); font-size: 3.2cqw; }
 .phone-preview-toolbar { display: flex; align-items: center; justify-content: space-between; margin-top: 5.2cqw; color: var(--phone-accent); font-size: 3.2cqw; }
 .phone-preview-view-switch { display: flex; gap: .9cqw; padding: .9cqw; border: .2924cqw solid var(--phone-border); border-radius: 8cqw; color: var(--phone-secondary); }
@@ -215,6 +214,61 @@
 .phone-preview-send { display: grid; place-items: center; width: 8cqw; height: 8cqw; border-radius: 50%; background: var(--phone-fill); color: var(--phone-muted); }
 .phone-preview .phone-preview-disclaimer { margin-top: 2.5cqw; color: var(--phone-secondary); font-size: 2.3cqw; text-align: center; }
 .phone-preview .phone-preview-plan-title { font-size: 6.5cqw; letter-spacing: -.035em; }
+.phone-preview button { font-family: inherit; }
+.phone-preview button:focus-visible { outline: 2px solid var(--phone-accent); outline-offset: 2px; }
+.phone-preview-between { display: flex; align-items: center; justify-content: space-between; gap: 2cqw; }
+.phone-preview-plan-hero { margin-top: 5cqw; background: #292337; border-color: #4b3e60; }
+.phone-preview-plan-hero .phone-preview-eyebrow, .phone-preview-plan-hero > .phone-preview-between { color: #dfc9ff; }
+.phone-preview-plan-hero .phone-preview-plan-title { margin-top: 3cqw; font-size: 7.6cqw; line-height: 1.15; }
+.phone-preview-plan-hero .phone-preview-copy { margin-top: 3cqw; color: var(--phone-text); }
+.phone-preview-plan-hero > .phone-preview-small-label { margin-top: 1cqw; }
+.phone-preview-weeks { display: flex; gap: 1cqw; margin-block: 4cqw 3.5cqw; padding: 1cqw; border-radius: 3cqw; background: var(--phone-bg); }
+.phone-preview-weeks button { flex: 1; min-width: 0; min-height: 32px; padding: 1.5cqw 1cqw; border: 0; border-radius: 2cqw; background: transparent; color: var(--phone-secondary); font-size: 2.8cqw; cursor: pointer; }
+.phone-preview-weeks button[aria-pressed="true"] { color: #dfc9ff; background: #393047; }
+.phone-preview-week-summary { font-size: 3.1cqw; line-height: 1.6; }
+.phone-preview-week-summary > p + p { margin-top: 1cqw; }
+.phone-preview-refresh { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 2cqw; margin-top: 3.5cqw; padding-top: 3cqw; border-top: .2924cqw solid #594e69; color: var(--phone-secondary); font-size: 2.7cqw; }
+.phone-preview-refresh strong { color: var(--phone-text); font-weight: 500; }
+.phone-preview .phone-preview-job-status { display: flex; align-items: center; gap: 2cqw; margin-top: 3cqw; color: var(--phone-secondary); font-size: 2.7cqw; }
+.phone-preview-job-status svg { color: var(--phone-accent); }
+.phone-preview-update { display: block; width: 100%; color: var(--phone-text); text-align: left; cursor: pointer; }
+.phone-preview-update:hover { border-color: var(--phone-accent); }
+.phone-preview-update-title { display: block; margin-top: 2.5cqw; font-size: 5.1cqw; line-height: 1.25; letter-spacing: -.025em; }
+.phone-preview-update .phone-preview-copy { display: block; margin-top: 2cqw; font-size: 2.9cqw; }
+.phone-preview-update .phone-preview-eyebrow { font-size: 2.1cqw; }
+.phone-preview-update .phone-preview-small-label { font-size: 2.4cqw; white-space: nowrap; }
+.phone-preview-update-footer { display: flex; align-items: center; justify-content: space-between; gap: 2cqw; margin-top: 3cqw; padding-top: 2.5cqw; border-top: .2924cqw solid var(--phone-border); color: var(--phone-accent); font-size: 2.8cqw; }
+.phone-preview-text-button { display: inline-flex; align-items: center; justify-content: center; gap: 1.5cqw; min-height: 32px; padding: 0; border: 0; background: transparent; color: var(--phone-accent); font-size: 3cqw; cursor: pointer; }
+.phone-preview-back { margin-top: 3cqw; }
+.phone-preview-history-row { display: flex; align-items: center; justify-content: space-between; gap: 3cqw; width: 100%; padding: 2cqw 0 3cqw; border: 0; border-bottom: .2924cqw solid var(--phone-border); background: transparent; color: var(--phone-text); text-align: left; font-size: 3.1cqw; cursor: pointer; }
+.phone-preview-history-row small { display: block; margin-top: 1cqw; color: var(--phone-secondary); font-size: 2.6cqw; }
+.phone-preview-history-filter { display: flex; gap: 2cqw; margin-bottom: 4cqw; }
+.phone-preview-history-filter button { min-height: 32px; padding: 1.5cqw 3cqw; border: .2924cqw solid var(--phone-border); border-radius: 6cqw; background: transparent; color: var(--phone-secondary); font-size: 2.8cqw; cursor: pointer; }
+.phone-preview-history-filter button[aria-pressed="true"] { background: #393047; border-color: #68557e; color: #dfc9ff; }
+.phone-preview-timeline { display: grid; gap: 5cqw; margin-left: 1cqw; padding-left: 4cqw; border-left: .2924cqw solid var(--phone-border); }
+.phone-preview-timeline > div { position: relative; }
+.phone-preview-timeline > div::before { content: ''; position: absolute; left: -5cqw; top: 1cqw; width: 1.6cqw; height: 1.6cqw; border-radius: 50%; background: var(--phone-accent); }
+.phone-preview-timeline .phone-preview-panel { margin-top: 2cqw; }
+.phone-preview-chat-bubble { position: absolute; right: 4.5cqw; bottom: 24cqw; display: grid; place-items: center; width: 13cqw; height: 13cqw; min-width: 36px; min-height: 36px; padding: 0; border: .2924cqw solid #8876a2; border-radius: 50%; background: #3c304d; color: #eadbff; box-shadow: 0 2cqw 5cqw rgb(0 0 0 / 40%); cursor: pointer; }
+.phone-preview-overlay { position: absolute; z-index: 2; inset: 13cqw 0 0; display: flex; align-items: end; padding: 2.5cqw; background: rgb(0 0 0 / 45%); }
+.phone-preview-dialog { display: flex; flex-direction: column; width: 100%; max-height: 100%; height: 100%; overflow: hidden; border: .2924cqw solid var(--phone-border); border-radius: 6cqw 6cqw 8cqw 8cqw; background: var(--phone-bg); box-shadow: 0 0 8cqw rgb(0 0 0 / 30%); }
+.phone-preview-dialog:focus-visible { outline: 2px solid var(--phone-accent); outline-offset: -2px; }
+.phone-preview-dialog-compact { height: 72%; }
+.phone-preview-dialog-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 2cqw; padding: 3cqw 4cqw; border-bottom: .2924cqw solid var(--phone-border); font-size: 4cqw; }
+.phone-preview-dialog-heading strong { font-weight: 500; }
+.phone-preview-dialog-heading > span { display: flex; gap: 1cqw; }
+.phone-preview-dialog-heading button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: var(--phone-card); color: var(--phone-text); cursor: pointer; }
+.phone-preview-dialog-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4cqw 4cqw 6cqw; scrollbar-width: thin; }
+.phone-preview-detail-workout { margin-top: 6cqw; padding-top: 4cqw; border-top: .2924cqw solid var(--phone-border); }
+.phone-preview-detail-workout .phone-preview-update-title { margin-block: 3cqw 2cqw; }
+.phone-preview-detail-workout .phone-preview-exercises { margin-bottom: 0; }
+.phone-preview-detail-workout .phone-preview-exercises > div { align-items: start; gap: 2cqw; padding-block: 2cqw; }
+.phone-preview-detail-workout .phone-preview-exercises > div > span:last-child { text-align: right; white-space: nowrap; }
+.phone-preview .phone-preview-chat-history { display: flex; align-items: center; gap: 2cqw; padding-bottom: 3cqw; border-bottom: .2924cqw solid var(--phone-border); color: var(--phone-secondary); font-size: 2.8cqw; }
+.phone-preview-dialog .phone-preview-chat { margin-top: 1cqw; }
+.phone-preview-chat-modes { display: flex; gap: 1.5cqw; }
+.phone-preview-chat-modes button { min-height: 28px; padding: 1cqw 2.5cqw; border: .2924cqw solid var(--phone-border); border-radius: 4cqw; background: transparent; color: var(--phone-secondary); font-size: 2.8cqw; cursor: pointer; }
+.phone-preview-chat-modes button[aria-pressed="true"] { background: var(--phone-fill); color: var(--phone-accent); border-color: var(--phone-accent); }
 .phone-preview-profile-facts { gap: 3.5cqw; }
 .phone-preview-profile-facts > div + div { padding-left: 3.5cqw; }
 .phone-preview-facts .phone-preview-equipment { display: flex; align-items: center; min-height: 9.2cqw; font-size: 3.5cqw; letter-spacing: 0; }

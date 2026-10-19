@@ -40,6 +40,10 @@ export type PlanningChange = {
   horizon_end_before: string | null; horizon_end_after: string; created_at: string;
 };
 export type PlanningHistory = { changes: PlanningChange[]; revision: number | null };
+export type PlanningSchedule = {
+  user_id: string; horizon_days: number; refresh_interval_days: number; horizon_end: string | null;
+  next_refresh_at: string; revision: number; created_at: string; updated_at: string;
+};
 export type PlanningChangePreview = {
   change: PlanningChange; before: CalendarWorkout[]; after: CalendarWorkout[]; revision: number | null;
 };
@@ -115,6 +119,7 @@ export function createBackend(request: ApiRequest) {
     }),
     completeOnboarding: () => json<Onboarding>('/onboarding/complete', { method: 'POST' }),
     getPlanningJobs: () => json<PlanningJob[]>('/planning/jobs?limit=20'),
+    getPlanningSchedule: () => json<PlanningSchedule | null>('/planning/schedule'),
     getPlanningHistory: (beforeRevision?: number) => {
       const query = new URLSearchParams({ limit: '20' });
       if (beforeRevision !== undefined) query.set('before_revision', String(beforeRevision));

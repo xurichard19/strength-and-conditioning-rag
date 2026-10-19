@@ -16,7 +16,7 @@ test('bottom tabs retain Plans and remove Chat', () => {
     '@/design/tokens': { fonts: {} }, '@/state/app-context': { useApp: () => app },
   });
   assert.deepEqual(nodes(Tabs()).filter(node => node.type === 'tab').map(node => node.props.name),
-    ['today', 'week', 'progress', 'plans', 'you']);
+    ['today', 'week', 'plans', 'progress', 'you']);
   assert.equal(existsSync(new URL('../../mobile/src/app/(tabs)/chat.tsx', import.meta.url)), false);
 });
 

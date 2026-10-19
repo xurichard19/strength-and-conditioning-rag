@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { deferred, load, plain, type Stubs, type TestValue } from './helpers.ts';
-import type { createBackend, PlanningChange, PlanningHistory, PlanningJob } from '../../mobile/src/services/backend';
+import type { CalendarResponse, createBackend, PlanningChange, PlanningHistory, PlanningJob, PlanningSchedule } from '../../mobile/src/services/backend';
 
-type Api = Pick<ReturnType<typeof createBackend>, 'getPlanningJobs' | 'getPlanningHistory'>;
+type Api = Pick<ReturnType<typeof createBackend>, 'getPlanningJobs' | 'getPlanningHistory'>
+  & Partial<Pick<ReturnType<typeof createBackend>, 'getPlanningSchedule' | 'getCalendarRange'>>;
+const calendar = load<typeof import('../../mobile/src/lib/calendar')>('lib/calendar.ts');
+const { createCalendarCache } = load<typeof import('../../mobile/src/state/calendar-cache')>('state/calendar-cache.ts', {
+  '../lib/calendar': calendar, './memory-cache': load('state/memory-cache.ts'),
+});
 const change = (revision: number): PlanningChange => ({ id: `change-${revision}`, user_id: 'a', revision,
   kind: 'refresh', status: 'applied', reason: 'Weekly refresh', effective_from: '2026-10-18',
   effective_through: '2026-11-07', horizon_end_before: null, horizon_end_after: '2026-11-07', created_at: '2026-10-18T12:00:00Z' });
@@ -11,6 +16,9 @@ const job: PlanningJob = { id: 'job', kind: 'refresh', status: 'running', reason
   effective_from: null, effective_through: null, scheduled_for: null, change_id: null,
   created_at: '2026-10-18T12:00:00Z', completed_at: null };
 const history = (changes: PlanningChange[] = []): PlanningHistory => ({ changes, revision: changes[0]?.revision ?? null });
+const schedule = (revision = 1): PlanningSchedule => ({ user_id: 'a', horizon_days: 21, refresh_interval_days: 7,
+  horizon_end: '2026-11-07', next_refresh_at: '2026-10-25T12:00:00Z', revision,
+  created_at: '2026-10-18T12:00:00Z', updated_at: '2026-10-18T12:00:00Z' });
 
 /** Exercise the actual hook across focus, account, network and timer boundaries. */
 function fixture(api: Api, initialAppState = 'active') {
@@ -19,6 +27,7 @@ function fixture(api: Api, initialAppState = 'active') {
   let value!: ReturnType<typeof import('../../mobile/src/state/use-planning-manager').usePlanningManager>;
   const events = new Set<(status: string) => void>();
   const timers = new Map<number, () => void>();
+  const calendarCache = createCalendarCache();
   const hooks = {
     useRef: initial => { const i = cursor++; return slots[i] ??= { current: initial }; },
     useState: initial => {
@@ -43,9 +52,10 @@ function fixture(api: Api, initialAppState = 'active') {
       }
     } },
     'react-native': { AppState: native },
+    '@/lib/calendar': calendar,
     '@/lib/errors': { errorMessage: error => error.message },
-    '@/services/api': { backendFor: userId => { assert.equal(userId, owner); return api; } },
-    '@/state/app-context': { useApp: () => ({ authSession: owner ? { user: { id: owner } } : null }) },
+    '@/services/api': { backendFor: userId => { assert.equal(userId, owner); return { getPlanningSchedule: async () => null, ...api }; } },
+    '@/state/app-context': { useApp: () => ({ authSession: owner ? { user: { id: owner } } : null, calendarCache }) },
   }, { setTimeout: (fn: () => void, ms: number) => { assert.equal(ms, 10_000); timers.set(++timerId, fn); return timerId; },
     clearTimeout: (id: number) => timers.delete(id) });
   // eslint-disable-next-line react-hooks/rules-of-hooks -- deterministic React lifecycle test harness.
@@ -148,11 +158,14 @@ test('returning during an outstanding read queues a fresh read instead of displa
 });
 
 test('late planning responses cannot cross accounts or restore signed-out data', async () => {
-  const old = deferred<PlanningHistory>(); let reads = 0;
-  const f = fixture({ getPlanningJobs: async () => [], getPlanningHistory: () => ++reads === 1 ? old.promise : Promise.resolve(history([change(2)])) });
+  const old = deferred<PlanningHistory>(); const oldSchedule = deferred<PlanningSchedule>(); let reads = 0;
+  const f = fixture({ getPlanningJobs: async () => [],
+    getPlanningHistory: () => ++reads === 1 ? old.promise : Promise.resolve(history([change(2)])),
+    getPlanningSchedule: () => reads === 1 ? oldSchedule.promise : Promise.resolve(null) });
   await f.flush(); f.owner('b'); assert.equal(f.render().loaded, false); await f.flush();
-  old.resolve(history([change(1)])); await f.flush();
+  old.resolve(history([change(1)])); oldSchedule.resolve(schedule()); await f.flush();
   assert.equal(f.value.changes[0].revision, 2);
+  assert.equal(f.value.schedule, null); assert.equal(f.value.calendar, null); assert.equal(f.value.overviewLoaded, true);
   f.owner(null); assert.deepEqual(plain(f.render().changes), []); await f.flush();
   await f.value.refresh(); assert.equal(reads, 2); assert.match(f.value.error ?? '', /Sign in/);
 });
@@ -169,17 +182,51 @@ test('planning keeps loaded history on errors, reports stale data and supports r
 
 test('planning pages by revision without overlapping requests and preserves older entries during polling', async () => {
   const cursors: (number | undefined)[] = [];
+  let overviewReads = 0;
   const older = deferred<PlanningHistory>(); let firstPage = Array.from({ length: 20 }, (_, i) => change(30 - i));
-  const f = fixture({ getPlanningJobs: async () => [job], getPlanningHistory: before => {
+  const f = fixture({ getPlanningJobs: async () => [job], getPlanningSchedule: async () => { overviewReads++; return null; }, getPlanningHistory: before => {
     cursors.push(before); return before === undefined ? Promise.resolve(history(firstPage)) : older.promise;
   } });
   await f.flush(); assert.equal(f.value.hasMore, true);
   const load = f.value.loadMore(); await f.flush(); assert.equal(f.value.loadingMore, true);
   await f.value.loadMore(); await f.value.refresh(); assert.deepEqual(cursors, [undefined, 11]);
   older.resolve(history([change(10)])); await load; await f.flush();
+  assert.equal(overviewReads, 1);
   assert.equal(f.value.changes.length, 21); assert.equal(f.value.hasMore, false);
   firstPage = [change(31), ...firstPage.slice(0, 19)]; f.tick(); await f.flush();
   assert.equal(f.value.changes.length, 22); assert.equal(f.value.changes[0].revision, 31);
   assert.equal(f.value.changes.at(-1)?.revision, 10); assert.equal(f.value.hasMore, false);
+  f.focus(false); await f.flush();
+});
+
+test('overview loads independently, avoids calendar reads on unchanged polls, and refreshes changed coverage', async () => {
+  const jobs = deferred<PlanningJob[]>(); let current = schedule(); let overviewReads = 0;
+  let calendarRead = deferred<CalendarResponse>();
+  const ranges: string[][] = [];
+  const f = fixture({ getPlanningJobs: () => jobs.promise, getPlanningHistory: async () => history([change(current.revision)]),
+    getPlanningSchedule: async () => { overviewReads++; return current; },
+    getCalendarRange: (start, end) => { ranges.push([start, end]); return calendarRead.promise; } });
+  await f.flush(); assert.equal(overviewReads, 0);
+  jobs.resolve([job]); await f.flush();
+  assert.equal(f.value.loaded, true); assert.equal(f.value.overviewLoaded, false);
+  assert.equal(f.value.schedule?.revision, 1); assert.deepEqual(ranges, [['2026-10-18', '2026-11-07']]);
+  calendarRead.resolve({ workouts: [], sports_workouts: [], revision: 1 }); await f.flush();
+  assert.equal(f.value.overviewLoaded, true); assert.equal(f.value.calendar?.revision, 1);
+  f.tick(); await f.flush(); assert.equal(overviewReads, 2); assert.equal(ranges.length, 1);
+
+  current = { ...schedule(2), horizon_days: 60 }; calendarRead = deferred<CalendarResponse>();
+  f.tick(); await f.flush();
+  assert.equal(f.value.changes[0].revision, 2); assert.equal(f.value.calendar, null);
+  assert.deepEqual(ranges[1], ['2026-10-08', '2026-11-07']);
+  calendarRead.reject(new Error('calendar offline')); await f.flush();
+  assert.equal(f.value.error, null); assert.equal(f.value.overviewError, 'calendar offline');
+  assert.equal(f.value.overviewLoaded, false);
+
+  calendarRead = deferred<CalendarResponse>();
+  const retry = f.value.refresh(); await f.flush();
+  calendarRead.resolve({ workouts: [], sports_workouts: [], revision: 2 }); await retry; await f.flush();
+  assert.equal(f.value.overviewError, null); assert.equal(f.render().calendar?.revision, 2);
+  assert.equal(f.value.overviewLoaded, true);
+  await f.value.refresh(); await f.flush(); assert.equal(ranges.length, 4);
   f.focus(false); await f.flush();
 });

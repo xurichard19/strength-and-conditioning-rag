@@ -10,7 +10,7 @@ Research and repository review: September 19, 2026. These are substantial drafti
 - [Fitness Disclaimer](./disclaimer.md)
 - [Accessibility Statement](./accessibility.md)
 
-The website reads `client/src/pages/legal-content.ts`. These Markdown copies are generated from that same source by `node legal/export-policies.mjs`; regenerate them after edits. The public routes are `/terms`, `/privacy`, `/health-privacy`, `/disclaimer`, and `/accessibility`.
+The website reads `client/src/pages/legal-content.ts`. These Markdown copies are generated from that same source by `node client/legal/export-policies.mjs` from the repository root; regenerate them after edits. The public routes are `/terms`, `/privacy`, `/health-privacy`, `/disclaimer`, and `/accessibility`.
 
 ## What needs an answer, and what does not
 

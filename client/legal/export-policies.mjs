@@ -1,5 +1,5 @@
 import { writeFile } from 'node:fs/promises'
-import { legalContent } from '../client/src/pages/legal-content.ts'
+import { legalContent } from '../src/pages/legal-content.ts'
 
 // Node 24 strips the content module's TypeScript types. Keep review copies in sync.
 for (const [page, content] of Object.entries(legalContent)) {
