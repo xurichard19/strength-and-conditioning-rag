@@ -35,6 +35,8 @@ jobs:
   deploy:
     needs: tests
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.uri }}
 
     steps:
       - name: check out repository
@@ -162,4 +164,6 @@ jobs:
   planning:
     needs: deploy
     uses: ./.github/workflows/deploy-planning-cloud-run.yml
+    with:
+      image: ${{ needs.deploy.outputs.image }}
     secrets: inherit
