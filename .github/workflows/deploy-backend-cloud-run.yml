@@ -57,6 +57,41 @@ jobs:
             exit 1
           fi
 
+      - name: validate optional billing configuration
+        env:
+          BILLING_ENABLED: ${{ vars.BILLING_ENABLED || 'false' }}
+          REVENUECAT_API_KEY: ${{ secrets.REVENUECAT_API_KEY }}
+          REVENUECAT_WEBHOOK_AUTHORIZATION: ${{ secrets.REVENUECAT_WEBHOOK_AUTHORIZATION }}
+          REVENUECAT_APP_IDS: ${{ vars.REVENUECAT_APP_IDS || '[]' }}
+          BILLING_SANDBOX_USER_IDS: ${{ vars.BILLING_SANDBOX_USER_IDS || '[]' }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from uuid import UUID
+
+          flag = os.environ['BILLING_ENABLED']
+          if flag not in ('true', 'false'):
+              raise SystemExit('::error::BILLING_ENABLED must be true or false')
+          if flag == 'false':
+              raise SystemExit(0)
+          for name in ('REVENUECAT_API_KEY', 'REVENUECAT_WEBHOOK_AUTHORIZATION'):
+              if not os.environ[name].strip():
+                  raise SystemExit(f'::error::missing {name} while billing is enabled')
+          for name in ('REVENUECAT_APP_IDS', 'BILLING_SANDBOX_USER_IDS'):
+              try:
+                  values = json.loads(os.environ[name])
+                  if not isinstance(values, list) or any(not isinstance(v, str) or not v.strip() for v in values):
+                      raise ValueError()
+                  if name == 'REVENUECAT_APP_IDS' and not values:
+                      raise ValueError()
+                  if name == 'BILLING_SANDBOX_USER_IDS':
+                      for value in values:
+                          UUID(value)
+              except (ValueError, TypeError):
+                  raise SystemExit(f'::error::invalid {name}; use a JSON array of app IDs or user UUIDs')
+          PY
+
       - name: authenticate to google cloud
         uses: google-github-actions/auth@v3
         with:
@@ -139,6 +174,12 @@ jobs:
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}
             SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
             SUPABASE_SECRET_KEY=${{ secrets.SUPABASE_SECRET_KEY }}
+            BILLING_ENABLED=${{ vars.BILLING_ENABLED || 'false' }}
+            REVENUECAT_API_KEY=${{ vars.BILLING_ENABLED == 'true' && secrets.REVENUECAT_API_KEY || '' }}
+            REVENUECAT_WEBHOOK_AUTHORIZATION=${{ vars.BILLING_ENABLED == 'true' && secrets.REVENUECAT_WEBHOOK_AUTHORIZATION || '' }}
+            REVENUECAT_WEBHOOK_SIGNING_SECRET=${{ vars.BILLING_ENABLED == 'true' && secrets.REVENUECAT_WEBHOOK_SIGNING_SECRET || '' }}
+            REVENUECAT_APP_IDS='${{ vars.BILLING_ENABLED == 'true' && vars.REVENUECAT_APP_IDS || '[]' }}'
+            BILLING_SANDBOX_USER_IDS='${{ vars.BILLING_ENABLED == 'true' && vars.BILLING_SANDBOX_USER_IDS || '[]' }}'
           flags: >-
             --port=8000
             --memory=2Gi

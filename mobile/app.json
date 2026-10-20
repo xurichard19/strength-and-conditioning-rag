@@ -32,6 +32,15 @@
     "plugins": [
       "expo-router",
       "expo-web-browser",
+      "expo-image",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "enableSceneSupport": true
+          }
+        }
+      ],
       [
         "expo-splash-screen",
         {

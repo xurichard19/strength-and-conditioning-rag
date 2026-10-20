@@ -16,7 +16,7 @@ load_dotenv()
 from app.config import get_settings
 
 # import routers
-from app.api.routers import calendar, chat, health, onboarding, planning, profile, sports_workouts, workouts
+from app.api.routers import billing, calendar, chat, health, onboarding, planning, profile, sports_workouts, workouts
 from app.api.schemas import AppResponse
 
 
@@ -63,6 +63,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app.include_router(billing.router)
 app.include_router(chat.router)
 app.include_router(planning.router)
 app.include_router(profile.router)

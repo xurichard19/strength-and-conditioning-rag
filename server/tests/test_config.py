@@ -24,8 +24,26 @@ class SupabaseURLTests(unittest.TestCase):
         self.assertEqual(self.settings('https://project.supabase.co/').supabase_url,
             'https://project.supabase.co')
 
+    def test_local_http_supabase_is_accepted_in_development_and_test(self):
+        for environment in ('development', 'local', 'test'):
+            for host in ('localhost', '127.0.0.1', '[::1]', '10.0.0.2',
+                         '172.16.0.2', '192.168.1.2', '[fd00::1]'):
+                with self.subTest(environment=environment, host=host):
+                    url = f'http://{host}:54321'
+                    self.assertEqual(self.settings(url + '/', environment=environment).supabase_url, url)
+
+    def test_local_http_is_rejected_outside_development_and_test(self):
+        for environment in ('production', 'staging', 'prod', 'unknown'):
+            for host in ('localhost', '127.0.0.1', '[::1]', '192.168.1.2'):
+                with self.subTest(environment=environment, host=host), self.assertRaises(ValidationError):
+                    self.settings(f'http://{host}:54321', environment=environment)
+
     def test_unsafe_supabase_urls_fail_during_configuration(self):
-        for url in ('http://project.supabase.co', 'http://localhost:54321',
+        for url in ('http://project.supabase.co', 'http://8.8.8.8:54321',
+                    'http://localhost.example.com:54321', 'http://0.0.0.0:54321',
+                    'http://169.254.169.254', 'http://172.32.0.1:54321',
+                    'http://user:password@localhost:54321',
+                    'http://localhost:54321?key=value', 'http://localhost:54321#fragment',
                     'project.supabase.co', 'https://', 'https://user:password@host',
                     'https://host?key=value', 'https://host#fragment'):
             with self.subTest(url=url), self.assertRaises(ValidationError):

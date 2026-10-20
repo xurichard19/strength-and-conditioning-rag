@@ -9,6 +9,7 @@ import { AppText, Card, ChoiceChip, PrimaryButton, SecondaryButton, ShieldLine }
 import { fonts, radius } from '@/design/tokens';
 import type { Profile } from '@/domain/types';
 import { useApp } from '@/state/app-context';
+import { useSubscription } from '@/state/subscription-context';
 import { surveyAnswers, type Answers } from '@/services/api';
 
 const trainingDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -42,6 +43,7 @@ function textAnswer(answers: Answers, key: string, fallback: string) {
 
 export default function OnboardingScreen() {
   const { accountReady, colors, profile, onboardingAnswers, notice, finishOnboarding } = useApp();
+  const subscription = useSubscription();
   const { edit } = useLocalSearchParams<{ edit?: string }>();
   const editing = edit === '1' && profile.onboardingComplete;
   const [step, setStep] = useState(editing ? 1 : 0);
@@ -58,13 +60,16 @@ export default function OnboardingScreen() {
     setBuilding(true);
     const saved = await finishOnboarding(draft, surveyAnswers(draft, { ...onboardingAnswers, runCapacity, pushups, pain, note }));
     setBuilding(false);
-    if (saved) router.replace('/(tabs)/chat');
+    if (saved) {
+      subscription.rememberDestination('/(tabs)/chat');
+      router.replace(subscription.next('/(tabs)/chat'));
+    }
   };
   const shouldRedirect = accountReady && profile.onboardingComplete && !editing && step === 0;
 
   useEffect(() => {
-    if (shouldRedirect) router.replace('/(tabs)/today');
-  }, [shouldRedirect]);
+    if (shouldRedirect) router.replace(subscription.next());
+  }, [shouldRedirect, subscription]);
 
   if (shouldRedirect) {
     return <View style={[styles.redirecting, { backgroundColor: colors.background }]}><ActivityIndicator color={colors.tint} /></View>;

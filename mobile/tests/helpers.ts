@@ -8,7 +8,8 @@ import ts from 'typescript';
 export type TestValue = any;
 export type TestModule = Record<string, TestValue>;
 export type TestNode = { type: TestValue; props: TestModule };
-type Stub = string | number | boolean | null | undefined | Stub[] | Stubs | ((...args: TestValue[]) => TestValue);
+type Stub = string | number | boolean | null | undefined | Stub[] | Stubs
+  | ((...args: TestValue[]) => TestValue) | (new (...args: TestValue[]) => TestValue);
 export type Stubs = { [name: string]: Stub };
 
 /** Load app code with explicit test doubles; unexpected imports never reach native APIs or the network. */

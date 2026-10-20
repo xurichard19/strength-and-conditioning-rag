@@ -13,6 +13,8 @@ The Expo/React Native mobile client connects to the containerized FastAPI backen
 - [Workout Programming LangGraph Workflow](#workout-programming-langgraph-workflow)
 - [Database Infrastructure](#database-infrastructure)
 - [Local Development Services](#local-development-services)
+- [Mobile setup](mobile/README.md)
+- [RevenueCat billing setup](docs/REVENUECAT.md)
 
 ---
 
@@ -259,14 +261,19 @@ erDiagram
 
 ### Local development services
 
-build api image from /
->> docker build -f server/Dockerfile -t arcel-backend .
+From the repository root, run the backend on port 8000:
 
-run api server from /
->> docker compose up --build api
+```sh
+docker compose up --build api
+```
 
-reindex with compose service
->> docker compose run --rm index
+From `mobile/`, use Node 22.18+ and start Metro on 8081 (or 8082 if occupied):
 
-run mobile client from /mobile
->> npm start
+```sh
+npm ci
+npx expo start --dev-client --port 8081
+```
+
+See [mobile setup](mobile/README.md) for environment values, native development builds, and physical-phone networking. RevenueCat billing is **disabled by default** in the mobile client and backend; [configure and verify billing](docs/REVENUECAT.md) before enabling it.
+
+Offline reindexing remains `docker compose run --rm index`; it replaces the configured research collection. The backend deployment workflow applies pending Supabase migrations before deploying Cloud Run on matching `main` pushes or a manual run. Neither starting local services nor configuring billing requires a deployment.

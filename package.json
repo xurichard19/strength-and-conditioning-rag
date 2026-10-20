@@ -9,9 +9,19 @@
     "db:new": "supabase migration new",
     "db:pull": "supabase db pull",
     "db:push:check": "supabase db push --dry-run",
-    "db:push": "supabase db push"
+    "db:push": "supabase db push",
+    "db:local:start": ".venv/bin/python server/scripts/bind_local_supabase.py --start",
+    "db:local:status": "supabase status",
+    "db:local:migrations": "supabase migration list --local",
+    "db:local:migrate": "supabase migration up --local",
+    "db:local:stop": "supabase stop --project-id strength-and-conditioning-rag",
+    "api:local": ".venv/bin/python -m uvicorn app.main:app --env-file .env.local --host 127.0.0.1 --port 8000",
+    "webhook:proxy": ".venv/bin/python server/scripts/revenuecat_webhook_proxy.py",
+    "webhook:tunnel": ".local-dev/bin/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8001",
+    "db:local:bind": ".venv/bin/python server/scripts/bind_local_supabase.py"
   },
   "devDependencies": {
     "supabase": "^2.109.1"
-  }
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

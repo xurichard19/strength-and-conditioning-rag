@@ -51,3 +51,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# local database/tunnel runtime files and credentials
+.local-dev/
+
+# graphify local skill
+/graphify-out
+/AGENTS.md
+/.codex

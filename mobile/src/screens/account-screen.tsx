@@ -8,6 +8,8 @@ import { AppText, Card, PrimaryButton, SecondaryButton } from '@/components/ui';
 import { fonts, radius } from '@/design/tokens';
 import { liveApiConfigured } from '@/services/api';
 import { useApp } from '@/state/app-context';
+import { useSubscription } from '@/state/subscription-context';
+import { PolicyLinks } from '@/components/policy-links';
 
 function ConnectionStatus() {
   const { colors, authSession } = useApp();
@@ -33,6 +35,29 @@ function SignedInActions() {
       <SecondaryButton icon={LogOut} onPress={() => void signOut()}>Sign out</SecondaryButton>
     </View>
   );
+}
+
+function SubscriptionActions() {
+  const subscription = useSubscription();
+  if (!subscription.enabled) return null;
+  const busy = Boolean(subscription.busy) || subscription.loading;
+  const status = subscription.status;
+  const expiry = status?.expires_at ? new Date(status.expires_at).toLocaleDateString() : null;
+  return <Card>
+    <AppText weight="semibold">Subscription</AppText>
+    <AppText tone="secondary" style={styles.infoCopy}>{subscription.loading ? 'Checking subscription…'
+      : subscription.hasAccess ? status?.enabled === false ? 'Subscription access is not required in this environment.'
+        : status?.phase === 'trial' ? 'Arcel Pro trial is active.' : status?.phase === 'grace' ? 'Arcel Pro is active during the billing grace period.' : 'Arcel Pro is active.'
+        : 'No verified active subscription.'}</AppText>
+    {expiry ? <AppText tone="secondary" style={styles.infoCopy}>{status?.will_renew ? 'Renews' : 'Access until'} {expiry}</AppText> : null}
+    {subscription.error || subscription.message ? <AppText accessibilityRole="alert" style={styles.infoCopy}>{subscription.error ?? subscription.message}</AppText> : null}
+    <View style={styles.form}>
+      <SecondaryButton disabled={busy} onPress={() => void subscription.refresh()}>Refresh subscription</SecondaryButton>
+      <SecondaryButton disabled={busy} loading={subscription.busy === 'restore'} onPress={() => void subscription.restore()}>Restore purchases</SecondaryButton>
+      <PrimaryButton disabled={busy} loading={subscription.busy === 'manage'} onPress={() => void subscription.manage()}>Manage subscription</PrimaryButton>
+      {!subscription.hasAccess ? <SecondaryButton disabled={busy} onPress={() => router.replace('/paywall')}>View plans</SecondaryButton> : null}
+    </View>
+  </Card>;
 }
 
 function AccountForm() {
@@ -70,8 +95,10 @@ export default function AccountScreen() {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <ConnectionStatus />
           <BackendNotice />
+          {authSession ? <SubscriptionActions /> : null}
           {authSession ? <SignedInActions /> : <AccountForm />}
           <AppText tone="secondary" style={styles.footnote}>Profile, onboarding, and chat use the live API. Planning and workout syncing are not connected yet.</AppText>
+          <PolicyLinks />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

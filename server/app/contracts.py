@@ -4,7 +4,7 @@ import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 
 # -------------------- shared literals --------------------
@@ -19,6 +19,44 @@ ReplanKind = Literal["adjustment", "refresh"]
 PlanningChangeStatus = Literal["applied", "undone", "discarded"]
 ChangeWorkoutSide = Literal["before", "after"]
 ReplanJobStatus = Literal["pending", "running", "succeeded", "failed", "cancelled"]
+BillingEnvironment = Literal["sandbox", "production"]
+BillingPhase = Literal["inactive", "trial", "paid", "grace"]
+
+
+# -------------------- verified billing access --------------------
+
+class BillingSnapshot(BaseModel):
+    """provider-verified entitlement fields; database verification time is server-owned"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    product_id: str | None = None
+    store: str | None = None
+    period_type: str | None = None
+    active: bool = False
+    expires_at: AwareDatetime | None = None
+    grace_expires_at: AwareDatetime | None = None
+    will_renew: bool | None = None
+
+
+class BillingEntitlementRecord(BillingSnapshot):
+    user_id: UUID
+    environment: BillingEnvironment
+    entitlement_key: Literal["arcel_pro"] = "arcel_pro"
+    verified_at: AwareDatetime | None = None
+    sync_revision: int = Field(ge=0)
+    updated_at: AwareDatetime
+
+
+class BillingAccessDecision(BaseModel):
+    enabled: bool
+    has_access: bool
+    entitlement: Literal["arcel_pro"] = "arcel_pro"
+    phase: BillingPhase = "inactive"
+    product_id: str | None = None
+    expires_at: datetime.datetime | None = None
+    will_renew: bool | None = None
+    verified_at: datetime.datetime | None = None
 
 
 # -------------------- retrieval --------------------

@@ -13,11 +13,15 @@ import { ActivityIndicator, View } from 'react-native';
 import { AppText, PrimaryButton, SecondaryButton } from '@/components/ui';
 
 import { AppProvider, useApp } from '@/state/app-context';
+import { SubscriptionProvider, useSubscription } from '@/state/subscription-context';
 
 void SplashScreen.preventAutoHideAsync();
 
 function Navigation() {
   const { accountReady, accountError, authSession, colorScheme, colors, hydrated, passwordRecovery, profile, refreshLiveData, signOut } = useApp();
+  const subscription = useSubscription();
+  const paidScreensAvailable = !subscription.enabled || Boolean(hydrated && authSession && accountReady
+    && profile.onboardingComplete && !passwordRecovery && subscription.hasAccess);
   const segments = useSegments();
   const baseTheme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
   const theme = {
@@ -51,10 +55,13 @@ function Navigation() {
         <Stack.Screen name="auth" options={{ gestureEnabled: false }} />
         <Stack.Screen name="reset-password" options={{ gestureEnabled: false }} />
         <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="session/[id]" />
-        <Stack.Screen name="sports-workout" />
-        <Stack.Screen name="workout/[id]" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="paywall" options={{ gestureEnabled: false }} />
+        <Stack.Protected guard={paidScreensAvailable}>
+          <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
+          <Stack.Screen name="session/[id]" />
+          <Stack.Screen name="sports-workout" />
+          <Stack.Screen name="workout/[id]" options={{ gestureEnabled: false }} />
+        </Stack.Protected>
         <Stack.Screen name="account" options={{ presentation: 'modal' }} />
       </Stack>
     </ThemeProvider>
@@ -69,5 +76,5 @@ export default function RootLayout() {
   }, [error, loaded]);
 
   if (!loaded && !error) return null;
-  return <AppProvider><Navigation /></AppProvider>;
+  return <AppProvider><SubscriptionProvider><Navigation /></SubscriptionProvider></AppProvider>;
 }

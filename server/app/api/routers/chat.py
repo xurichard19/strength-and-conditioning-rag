@@ -12,6 +12,7 @@ from app.api.errors import PRIVATE_HEADERS, database_errors, private_response
 from app.api.parameters import message_cursor
 from app.api.schemas import ConversationUpdate, ConversationResponse, ChatSavedEvent, ChatDoneEvent, ChatErrorEvent, ChatRequest, ChatSourcesEvent, ChatStatusEvent, ChatTextEvent, MessageResponse
 from app.auth.supabase import AuthUser, require_user
+from app.auth.billing import require_paid_user
 from app.db.supabase import messages
 
 
@@ -92,7 +93,7 @@ def get_messages(
     "description": "newline-separated ChatStreamEvent objects: optional saved/status events, text, sources, then done or error",
 }})
 async def chat_reply(
-    payload: ChatRequest, request: Request, user: AuthUser = Depends(require_user),
+    payload: ChatRequest, request: Request, user: AuthUser = Depends(require_paid_user),
     x_chat_saved_events: str | None = Header(None),
     x_chat_status_events: str | None = Header(None),
 ) -> StreamingResponse:

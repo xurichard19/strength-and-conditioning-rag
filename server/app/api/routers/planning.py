@@ -8,6 +8,7 @@ from app.api.schemas import (
     JobResponse, RevisionRequest, ScheduleRequest, ScheduleResponse,
 )
 from app.auth.supabase import AuthUser, require_user
+from app.auth.billing import require_paid_user
 from app.db.supabase import planning_changes, planning_schedules, replan_jobs
 
 
@@ -29,7 +30,7 @@ def get_schedule(user: AuthUser = Depends(require_user)) -> ScheduleResponse | N
 
 
 @router.put("/schedule", response_model=ScheduleResponse)
-def configure_schedule(payload: ScheduleRequest, user: AuthUser = Depends(require_user)) -> ScheduleResponse:
+def configure_schedule(payload: ScheduleRequest, user: AuthUser = Depends(require_paid_user)) -> ScheduleResponse:
     """
     initialize or explicitly change refresh settings, not generate workouts
 
@@ -49,7 +50,7 @@ def configure_schedule(payload: ScheduleRequest, user: AuthUser = Depends(requir
 
 
 @router.post("/adjustments", response_model=JobResponse, status_code=202)
-def request_adjustment(payload: AdjustmentRequest, user: AuthUser = Depends(require_user)) -> JobResponse:
+def request_adjustment(payload: AdjustmentRequest, user: AuthUser = Depends(require_paid_user)) -> JobResponse:
     """
     accept an explicit adjustment request within existing coverage
 
@@ -113,7 +114,7 @@ def cancel_job(job_id: UUID, user: AuthUser = Depends(require_user)) -> JobRespo
 
 
 @router.post("/jobs/{job_id}/retry", response_model=JobResponse, status_code=202)
-def retry_job(job_id: UUID, user: AuthUser = Depends(require_user)) -> JobResponse:
+def retry_job(job_id: UUID, user: AuthUser = Depends(require_paid_user)) -> JobResponse:
     """
     explicitly retry a terminal failure/cancellation without allocating a new key
 

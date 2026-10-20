@@ -7,6 +7,19 @@ export type Onboarding = { answers: Answers; completed_at: string | null };
 export type Conversation = { id: string; title: string; created_at: string };
 export type SavedMessage = { id: string; role: 'user' | 'assistant'; content: string; created_at: string };
 export type ApiRequest = (path: string, options?: RequestInit) => Promise<Response>;
+export type BillingStatus = {
+  enabled: boolean; has_access: boolean; entitlement: 'arcel_pro';
+  phase: 'inactive' | 'trial' | 'paid' | 'grace'; product_id: string | null;
+  expires_at: string | null; will_renew: boolean | null; verified_at: string | null;
+};
+
+export class BackendError extends Error {
+  status: number;
+  detail: string;
+  constructor(status: number, detail: string) {
+    super(detail); this.name = 'BackendError'; this.status = status; this.detail = detail;
+  }
+}
 export type SportsWorkoutInput = {
   sport: string; scheduled_date: string; start_time: string; planned_duration_minutes: number;
   intensity: 'easy' | 'moderate' | 'hard' | 'variable'; notes: string | null;
@@ -31,7 +44,7 @@ export function deviceTimezone(): string | undefined {
 async function checked(response: Response): Promise<Response> {
   if (response.ok) return response;
   const body = await response.json().catch(() => null);
-  throw new Error(typeof body?.detail === 'string' ? body.detail : `Request failed (${response.status}).`);
+  throw new BackendError(response.status, typeof body?.detail === 'string' ? body.detail : `Request failed (${response.status}).`);
 }
 
 /** Keep every survey answer together; identity and local display preferences stay separate. */
@@ -61,11 +74,20 @@ export function profileFromApi(profile: ApiProfile, onboarding: Onboarding | nul
 }
 
 /** HTTP shapes only. Auth is supplied by the mobile adapter; this module never calls planning. */
-export function createBackend(request: ApiRequest) {
+export function createBackend(request: ApiRequest, onSubscriptionRequired?: () => void) {
+  async function check(response: Response): Promise<Response> {
+    try { return await checked(response); }
+    catch (error) {
+      if (error instanceof BackendError && error.status === 403 && error.detail === 'subscription_required') onSubscriptionRequired?.();
+      throw error;
+    }
+  }
   async function json<T>(path: string, options?: RequestInit): Promise<T> {
-    return (await checked(await request(path, options))).json();
+    return (await check(await request(path, options))).json();
   }
   return {
+    getBillingStatus: () => json<BillingStatus>('/billing/status'),
+    syncBilling: () => json<BillingStatus>('/billing/sync', { method: 'POST' }),
     getProfile: () => json<ApiProfile>('/profile'),
     getOnboarding: () => json<Onboarding | null>('/onboarding'),
     saveTimezone: (timezone: string) => json<ApiProfile>('/profile', {
@@ -84,7 +106,7 @@ export function createBackend(request: ApiRequest) {
       const path = `/calendar?${query}`;
       let response = await request(path);
       if (response.status === 409) response = await request(path);
-      return (await checked(response)).json() as Promise<CalendarResponse>;
+      return (await check(response)).json() as Promise<CalendarResponse>;
     },
     createSportsWorkout: (workout: SportsWorkoutInput) => json<SportsWorkout>('/sports-workouts', {
       method: 'POST', body: JSON.stringify(workout),
@@ -95,7 +117,7 @@ export function createBackend(request: ApiRequest) {
       method: 'PATCH', body: JSON.stringify({ title: title.trim() }),
     }),
     deleteConversation: async (id: string) => {
-      await checked(await request(`/chat/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' }));
+      await check(await request(`/chat/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' }));
     },
     getConversations: (before?: string) => json<Conversation[]>(`/chat/conversations${before ? `?before=${encodeURIComponent(before)}` : ''}`),
     getMessages: (conversationId: string, before?: SavedMessage) => {
@@ -106,7 +128,7 @@ export function createBackend(request: ApiRequest) {
     streamChat: async (text: string, onText: (delta: string) => void,
       onSources: (sources: ChatSource[]) => void, signal: AbortSignal | undefined, conversationId: string,
       onSaved?: (message: SavedMessage) => void, onStatus?: (stage: ChatStage) => void, mode: ChatMode = 'quick') => {
-      const response = await checked(await request('/chat', {
+      const response = await check(await request('/chat', {
         method: 'POST', body: JSON.stringify({ text, conversation_id: conversationId, mode }), signal,
         headers: { Accept: 'application/x-ndjson', 'X-Chat-Saved-Events': '1', 'X-Chat-Status-Events': '1' },
       }));

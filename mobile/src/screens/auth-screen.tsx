@@ -10,6 +10,7 @@ import { PolicyLinks } from '@/components/policy-links';
 import { AppText } from '@/components/ui';
 import { liveApiConfigured } from '@/services/api';
 import { useApp } from '@/state/app-context';
+import { useSubscription } from '@/state/subscription-context';
 
 const screenCopy: Record<AuthMode, { title: string; copy: string }> = {
   'sign-in': { title: 'Welcome back', copy: 'Continue with your plan exactly where you left it.' },
@@ -24,12 +25,14 @@ export default function AuthScreen() {
     authSession,
     colors,
     profile,
+    passwordRecovery,
     notice,
     requestPasswordReset,
     signIn,
     signInWithGoogle,
     signUp,
   } = useApp();
+  const subscription = useSubscription();
   const [mode, setMode] = useState<AuthMode>('sign-up');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,9 +43,9 @@ export default function AuthScreen() {
   );
 
   useEffect(() => {
-    if (!authSession || !accountReady) return;
-    router.replace(profile.onboardingComplete ? '/(tabs)/today' : '/onboarding');
-  }, [accountReady, authSession, profile.onboardingComplete]);
+    if (!authSession || !accountReady || passwordRecovery) return;
+    router.replace(profile.onboardingComplete ? subscription.next() : '/onboarding');
+  }, [accountReady, authSession, passwordRecovery, profile.onboardingComplete, subscription]);
 
   const chooseMode = (next: AuthMode) => {
     setMode(next);
