@@ -65,5 +65,26 @@ with ThreadPoolExecutor(max_workers=2) as pool:
 assert int(sql(f"select revision from public.planning_schedules where user_id = '{user}';").strip()) == revision + 1
 print('concurrent identical onboarding saves invalidate once')
 
+# A calendar query keeps its starting snapshot even if a sport commits before the RPC reads.
+revision += 1
+with ThreadPoolExecutor(max_workers=1) as pool:
+    reader = pool.submit(sql, "set role authenticated; set application_name = 'calendar-reader'; "
+                         f"set request.jwt.claim.sub = '{user}'; "
+                         f"select public.get_calendar_snapshot('{user}', current_date, current_date) "
+                         "from (select pg_sleep(2)) pause;")
+    for _ in range(100):
+        if 't' in sql("select exists(select 1 from pg_stat_activity "
+                      "where application_name = 'calendar-reader' and wait_event = 'PgSleep');"):
+            break
+        time.sleep(0.05)
+    else:
+        raise AssertionError('calendar reader did not reach its snapshot barrier')
+    sql(f"insert into public.sports_workouts(user_id, sport, scheduled_date) values ('{user}', 'boxing', current_date);")
+    snapshot = json.loads(next(line for line in reader.result().splitlines() if line.startswith('{')))
+assert snapshot['revision'] == revision and snapshot['sports_workouts'] == [], 'calendar mixed snapshots'
+snapshot = json.loads(sql(f"select public.get_calendar_snapshot('{user}', current_date, current_date);"))
+assert snapshot['revision'] == revision + 1 and len(snapshot['sports_workouts']) == 1, 'next calendar read missed commit'
+print('calendar snapshot stays consistent across concurrent sports changes')
+
 for user in users:
     sql(f"delete from auth.users where id = '{user}';")

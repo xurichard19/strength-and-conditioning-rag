@@ -35,6 +35,7 @@ def build_plan_workflow():
     graph.add_edge("generate", "validate")
     graph.add_conditional_edges("validate",
         lambda state: "generate" if state["retry_generation"] else END, ["generate", END])
+
     return graph.compile()
 
 
@@ -50,6 +51,7 @@ async def generate_plan(claim: ClaimedReplanJob, context: ReplanContext) -> Plan
     if claim.effective_from > claim.effective_through:
         return validate_proposal(claim, context, PlanningProposal(
             before_ids=[], workouts=[], day_decisions=[]))
+
     deadline = monotonic() + PLAN_TIMEOUT_SECONDS
     async with asyncio.timeout(PLAN_TIMEOUT_SECONDS):
         result = await build_plan_workflow().ainvoke({
@@ -57,4 +59,5 @@ async def generate_plan(claim: ClaimedReplanJob, context: ReplanContext) -> Plan
             "retries_left": 1, "repairs_left": 1,
             "sources": [], "searches": [], "warnings": [],
         }, context=WorkflowContext(claim, context), config={"recursion_limit": 20, "tags": ["Planning"]})
+
     return result["proposal"]

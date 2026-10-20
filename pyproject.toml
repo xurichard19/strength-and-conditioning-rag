@@ -29,6 +29,7 @@ dependencies = [
     "pytesseract==0.3.13",
     "python-dotenv==1.2.2",
     "sentry-sdk[fastapi]",
+    "snowballstemmer==3.1.1",
     "supabase",
     "tqdm==4.67.3",
     "tzdata>=2025.2",

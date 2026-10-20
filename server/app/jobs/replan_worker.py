@@ -45,6 +45,7 @@ async def execute(job: ReplanTask, generate_plan: PlanHandler) -> dict:
         return {"status": delivery.status}
     if delivery.status != "claimed":
         raise HTTPException(503, "planning job is not ready")
+
     claim = delivery.claim
     try:
         async with asyncio.timeout(ATTEMPT_SECONDS):
@@ -73,6 +74,7 @@ def create_app(generate_plan: PlanHandler | None = None) -> FastAPI:
     async def run(job: ReplanTask):
         if generate_plan is None:
             raise HTTPException(503, "plan generation is not configured")
+
         try:
             return await execute(job, generate_plan)
         except HTTPException:

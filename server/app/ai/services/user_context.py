@@ -63,4 +63,5 @@ async def load_user_context(context, route, today: date) -> dict:
             load_profile_context(context), load_training_context(context, start, end))
         data.update(profile)
         data.update(training)
+
     return data

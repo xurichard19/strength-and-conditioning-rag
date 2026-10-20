@@ -73,6 +73,7 @@ def get_conversations(user_id: str | UUID, access_token: str, *, before: UUID | 
             return []
         stamp = datetime.fromisoformat(rows[0]["created_at"]).isoformat()
         cursor = [("or", f"(created_at.lt.{stamp},and(created_at.eq.{stamp},id.lt.{identifier(before)}))")]
+
     return [ConversationRecord.model_validate(row) for row in select_rows("conversations",
         [("select", "id,user_id,title,created_at"), ("user_id", f"eq.{identifier(user_id)}"),
          *cursor, ("order", "created_at.desc,id.desc"), ("limit", "50")], access_token)]
@@ -105,6 +106,7 @@ def get_recent_messages(
     page_limit(limit)
     if (before_created_at is None) != (before_id is None):
         raise ValueError("message cursor requires both timestamp and id")
+
     cursor = []
     if before_created_at is not None:
         if before_created_at.utcoffset() is None:

@@ -266,6 +266,17 @@ class HandlerTests(unittest.TestCase):
         self.assertIn('offset=1', urls[1])
         self.assertTrue(all('status=eq.planned' in url and 'superseded_at=is.null' in url for url in urls))
 
+    def test_workout_id_reads_stop_when_complete_and_keep_short_or_missing_pages(self):
+        first, second = workout_row(), {**workout_row(), 'id': str(TOKEN)}
+        for pages, expected in (([[first, second]], 2), ([[first], [second]], 2), ([[first], []], 1)):
+            with self.subTest(pages=len(pages), expected=expected):
+                self.http.reset_mock()
+                self.http.side_effect = [httpx.Response(200, json=rows) for rows in pages]
+                result = workouts.get_workouts_by_ids(USER, [WORKOUT, TOKEN, WORKOUT], 'user-jwt')
+                self.assertEqual(len(result), expected)
+                self.assertEqual(self.http.call_count, len(pages))
+                self.assertTrue(all(call.args[0].url.params['user_id'] == f'eq.{USER}' for call in self.http.call_args_list))
+
     def test_invalid_id_and_date_range_do_not_reach_network(self):
         with self.assertRaises(ValueError):
             workouts.get_workout('bad-id', WORKOUT, 'user-jwt')
@@ -382,14 +393,29 @@ class HandlerTests(unittest.TestCase):
         self.assertEqual(result.sports_workouts[0].sport, 'basketball')
         self.assertIn('status=neq.cancelled', str(self.http.call_args.args[0].url))
 
-    def test_calendar_snapshot_matches_revision_and_preserves_unconfigured_state(self):
-        for revision_rows, expected in (([{'revision': 3}], 3), ([], None)):
-            with self.subTest(revision=expected):
-                self.http.side_effect = [httpx.Response(200, json=rows)
-                    for rows in (revision_rows, [workout_row()], [], [], revision_rows)]
-                result = calendar.get_calendar_snapshot(USER, DAY, DAY, 'user-jwt')
-                self.assertEqual(result.revision, expected)
-                self.assertEqual(result.workouts[0].id, WORKOUT)
+    def test_calendar_snapshot_uses_one_caller_scoped_rpc(self):
+        for revision, rows in ((3, [workout_row()]), (None, [])):
+            with self.subTest(revision=revision):
+                self.http.reset_mock()
+                self.response(dict(revision=revision, workouts=rows, sports_workouts=[sports_row()]))
+                result = calendar.get_calendar_snapshot(USER, DAY, DAY + dt.timedelta(days=30), 'user-jwt')
+                self.assertEqual(result.revision, revision)
+                self.assertEqual([row.id for row in result.workouts], [WORKOUT] if rows else [])
+                self.assertEqual(result.sports_workouts[0].sport, 'running')
+                self.http.assert_called_once()
+                request = self.http.call_args.args[0]
+                self.assertEqual(request.method, 'POST')
+                self.assertEqual(request.url.path, '/rest/v1/rpc/get_calendar_snapshot')
+                self.assertEqual(request.headers.get('Authorization'), 'Bearer user-jwt')
+                self.assertEqual(request.headers.get('Apikey'), 'public-key')
+                self.assertEqual(json.loads(request.content), dict(p_user_id=str(USER),
+                    p_start_date=str(DAY), p_end_date=str(DAY + dt.timedelta(days=30))))
+
+    def test_calendar_snapshot_rejects_invalid_inputs_before_network(self):
+        for user, days in ((USER, -1), (USER, 31), ('not-a-uuid', 0)):
+            with self.subTest(user=user, days=days), self.assertRaises(ValueError):
+                calendar.get_calendar_snapshot(user, DAY, DAY + dt.timedelta(days=days), 'user-jwt')
+        self.http.assert_not_called()
 
     def test_workout_snapshot_rejects_a_concurrent_revision_change(self):
         self.http.side_effect = [httpx.Response(200, json=rows)

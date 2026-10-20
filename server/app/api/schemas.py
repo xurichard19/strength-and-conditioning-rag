@@ -399,6 +399,15 @@ class SourceResponse(ResponseModel):
     doi: str | None = None
     url: str | None = None
     document_id: str | None = None
+    chunk_id: str | None = None
+    author: str | None = None
+    publication_year: str | None = None
+    journal: str | None = None
+    publisher: str | None = None
+    license: str | None = None
+    license_url: str | None = None
+    copyright_notice: str | None = None
+    page: int | None = Field(default=None, ge=1)
     source_type: Literal["research", "web"]
     content: str = Field(min_length=1)
     score: float | None = None

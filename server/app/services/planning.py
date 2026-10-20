@@ -39,6 +39,7 @@ def _prescription_errors(workout: PlannedWorkout, path: str):
         yield f"{path}.name: require a nonblank workout name"
     if not workout.exercises:
         yield f"{path}.exercises: require exercises; use a rest decision for rest"
+
     for index, exercise in enumerate(workout.exercises):
         exercise_path = f"{path}.exercises[{index}]"
         if not exercise.name.strip():
@@ -48,6 +49,7 @@ def _prescription_errors(workout: PlannedWorkout, path: str):
         for target, unit in (("planned_weight", "weight_unit"), ("planned_distance", "distance_unit")):
             if any(getattr(item, target) is not None for item in exercise.sets) != (getattr(exercise, unit) is not None):
                 yield f"{exercise_path}.{unit}: set a matching unit when {target} is present; otherwise use null"
+
         for index, item in enumerate(exercise.sets):
             set_path = f"{exercise_path}.sets[{index}]"
             if not any((item.planned_reps, item.planned_distance, item.planned_duration_seconds)):
@@ -82,6 +84,7 @@ def validate_proposal(claim: ClaimedReplanJob, context: ReplanContext, proposal:
         raise ValueError("edit window exceeds the claimed horizon")
     if claim.job.claimed_on is not None and claim.effective_from < claim.job.claimed_on:
         raise ValueError("edit window must not precede the claimed local date")
+
     if claim.job.kind == "refresh":
         if proposal.before_ids:
             raise ValueError("refreshes must preserve all existing workouts")
@@ -92,12 +95,14 @@ def validate_proposal(claim: ClaimedReplanJob, context: ReplanContext, proposal:
                 raise ValueError("refresh window must start after existing coverage")
     elif claim.horizon_end != context.schedule.horizon_end or claim.effective_from > claim.effective_through:
         raise ValueError("adjustments must preserve coverage and have an editable window")
+
     existing = {workout.id: workout for workout in workouts}
     if len(existing) != len(workouts) or any(workout.superseded_at is not None for workout in workouts):
         raise ValueError("planning calendar must contain unique current workouts")
     before = set(proposal.before_ids)
     if len(before) != len(proposal.before_ids):
         raise ValueError("replacement ids must be unique")
+
     replaceable = defaultdict(list)
     for workout_id in proposal.before_ids:
         workout = existing.get(workout_id)
@@ -108,6 +113,7 @@ def validate_proposal(claim: ClaimedReplanJob, context: ReplanContext, proposal:
     for workout in proposal.workouts:
         if not claim.effective_from <= workout.scheduled_date <= claim.effective_through:
             raise ValueError("new workouts must stay within the allowed window")
+
     errors = list(islice(chain.from_iterable(_prescription_errors(workout, f"workouts[{index}]")
         for index, workout in enumerate(proposal.workouts)), MAX_PRESCRIPTION_ERRORS + 1))
     if errors:
@@ -115,6 +121,7 @@ def validate_proposal(claim: ClaimedReplanJob, context: ReplanContext, proposal:
         if len(errors) > MAX_PRESCRIPTION_ERRORS:
             feedback.append("additional prescription errors omitted; check all remaining exercises and sets")
         raise ValueError("\n".join(feedback))
+
     additions = []
     for workout in proposal.workouts:
         matching = replaceable.get(_workout_key(workout))
@@ -122,6 +129,7 @@ def validate_proposal(claim: ClaimedReplanJob, context: ReplanContext, proposal:
             before.remove(matching.pop())
         else:
             additions.append(workout)
+
     kept = [workout for workout in workouts if workout.id not in before]
     seen = {_workout_key(workout) for workout in kept}
     for workout in additions:
@@ -129,14 +137,17 @@ def validate_proposal(claim: ClaimedReplanJob, context: ReplanContext, proposal:
         if key in seen:
             raise ValueError("new workouts must not duplicate another session on the same date")
         seen.add(key)
+
     decisions = {item.scheduled_date: item.rest for item in proposal.day_decisions}
     days = max(0, (claim.effective_through - claim.effective_from).days + 1)
     if (len(decisions) != len(proposal.day_decisions) or len(decisions) != days
             or any(not claim.effective_from <= day <= claim.effective_through for day in decisions)):
         raise ValueError("each date in the allowed window requires exactly one day decision")
+
     occupied = {workout.scheduled_date for workout in chain(kept, additions) if workout.exercises}
     occupied.update(item.scheduled_date for item in sports if item.status != "cancelled")
     if any(rest == (day in occupied) for day, rest in decisions.items()):
         raise ValueError("rest decisions must match the resulting workouts and sports sessions")
+
     return proposal.model_copy(update={"before_ids": [value for value in proposal.before_ids if value in before],
         "workouts": additions})

@@ -26,6 +26,7 @@ async def evaluate_node(state: PlanState) -> dict:
     remaining = state["research_deadline"] - monotonic()
     if remaining <= 0:
         raise TimeoutError("planning evidence review budget exhausted")
+
     async with asyncio.timeout(min(DECISION_TIMEOUT_SECONDS, remaining)):
         review = EvidenceReview.model_validate(await decision_model(EvidenceReview).ainvoke([
             SystemMessage(content=EVALUATE_PROMPT),
@@ -35,11 +36,13 @@ async def evaluate_node(state: PlanState) -> dict:
                 "warnings": state["warnings"],
                 "attempted_queries": [query.model_dump() for query in state["searches"]]}, ensure_ascii=False)),
         ]))
+
     if review.sufficient and state["sources"]:
         return {"retry_search": False}
     query = review.next_search
     if not state["retries_left"] or query is None:
         raise RuntimeError("planning evidence is insufficient after bounded research")
+
     # Widen the only retry beyond the collection that could not fill the gap.
     query = query.model_copy(update={"providers": "both"})
     attempted = {(search_key(item), provider) for item in state["searches"]
@@ -50,5 +53,6 @@ async def evaluate_node(state: PlanState) -> dict:
         raise RuntimeError("planning evidence is insufficient; no new research query")
     if monotonic() + SEARCH_TIMEOUT_SECONDS + 1 + DECISION_TIMEOUT_SECONDS > state["research_deadline"]:
         raise TimeoutError("planning research cannot retry without consuming generation budget")
+
     query = query.model_copy(update={"providers": "both" if len(providers) == 2 else providers[0]})
     return {"retry_search": True, "search": query, "retries_left": state["retries_left"] - 1}

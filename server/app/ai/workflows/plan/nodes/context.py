@@ -16,6 +16,7 @@ def compact_record(record, *, keep_id: bool = False) -> dict:
             return {key: compact(item) for key, item in value.items()
                 if key not in {"id", "created_at", "updated_at"} and not key.endswith("_id")}
         return value
+
     data = compact(record.model_dump(mode="json", exclude_none=True))
     if keep_id:
         data["id"] = str(record.id)
@@ -40,6 +41,7 @@ async def context_node(state: PlanState, runtime: Runtime[WorkflowContext]) -> d
         raise ValueError("planning context does not match the claimed owner and revision")
     if claim.job.claimed_on is None:
         raise ValueError("planning requires a frozen local claim date")
+
     task = "adjustment" if claim.job.kind == "adjustment" else (
         "first_fill" if data.schedule.horizon_end is None else "extension")
     packet = json.dumps({
@@ -56,6 +58,7 @@ async def context_node(state: PlanState, runtime: Runtime[WorkflowContext]) -> d
         "calendar": {"workouts": [compact_record(workout, keep_id=True) for workout in data.calendar.workouts],
             "sports_workouts": [compact_record(workout) for workout in data.calendar.sports_workouts]},
     }, ensure_ascii=False, separators=(",", ":"))
+
     if len(packet) > MAX_CONTEXT_CHARS:
         raise ValueError("planning context exceeds the bounded input size")
     return {"context_packet": packet}

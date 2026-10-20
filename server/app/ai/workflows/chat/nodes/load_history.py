@@ -23,6 +23,7 @@ async def history_node(state: ChatState, runtime: Runtime[WorkflowContext]) -> d
         load_history(context, limit=CHAT_POLICIES[state["mode"]].history_messages),
         asyncio.to_thread(get_profile, context.user_id, context.access_token),
     )
+
     if profile is None:
         raise ValueError("profile unavailable for chat context")
     return {"history": history,

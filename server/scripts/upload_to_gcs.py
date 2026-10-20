@@ -1,3 +1,10 @@
+"""legacy uploader; research objects now use <uuid>.pdf with custom metadata:
+document_id, title, author, doi, publication_year, journal, publisher, license,
+license_url and copyright_notice. document_id matches the filename uuid; missing
+values use the string "none". this script still preserves input paths and writes
+source_* fields, so its upload behavior needs updating before adding research.
+"""
+
 from __future__ import annotations
 
 import argparse

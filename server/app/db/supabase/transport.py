@@ -85,6 +85,7 @@ def _request(
     url = f'{settings.supabase_url.rstrip("/")}/rest/v1/{resource}'
     if query_params:
         url = f"{url}?{urlencode(query_params, safe=',().')}"
+
     headers = {
         "apikey": api_key,
         "Accept": "application/json",
@@ -103,12 +104,14 @@ def _request(
             if response.is_success:
                 content = response.read()
                 return json.loads(content.decode("utf-8")) if content else None
+
             try:
                 error = json.loads(response.read().decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError, OSError, httpx.RequestError):
                 error = {}
             if not isinstance(error, dict):
                 error = {}
+
             code = error.get("code")
             raise SupabaseDataError(
                 str(error.get("message", "supabase data api request failed")).lower(),

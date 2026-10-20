@@ -43,6 +43,7 @@ def dispatch_due(settings: TaskSettings, limit: int = 20) -> dict:
     """
     deadline = monotonic() + 45
     counts = {"created": replan_jobs.enqueue_due_replans(limit), "dispatched": 0, "errors": 0}
+
     for job in replan_jobs.list_replan_deliveries(limit):
         if monotonic() >= deadline:
             break
@@ -55,11 +56,13 @@ def dispatch_due(settings: TaskSettings, limit: int = 20) -> dict:
                 job = replan_jobs.recover_replan_delivery(job.id, task.delivery_token)
                 if job is None or job.status != "pending":
                     continue
+
             dispatch_job(job, settings)
             counts["dispatched"] += 1
         except Exception as exc:
             counts["errors"] += 1
             logger.warning("planning reconciliation deferred error_type=%s", type(exc).__name__)
+
     return counts
 
 
@@ -73,6 +76,7 @@ def dispatch():
     settings = get_task_settings()
     if not settings.enabled:
         raise HTTPException(503, "planning dispatch is disabled")
+
     try:
         result = dispatch_due(settings)
     except Exception as exc:

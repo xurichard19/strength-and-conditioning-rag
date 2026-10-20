@@ -23,11 +23,34 @@ ReplanJobStatus = Literal["pending", "running", "succeeded", "failed", "cancelle
 
 # -------------------- retrieval --------------------
 
+RESEARCH_METADATA_FIELDS = (
+    "document_id", "title", "author", "doi", "publication_year", "journal",
+    "publisher", "license", "license_url", "copyright_notice",
+)
+
+
+def metadata_text(value: str | None) -> str | None:
+    """treat the bucket's missing-value marker as absent"""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value if value and value.casefold() != "none" else None
+
+
 class Source(BaseModel):
     title: str | None = None
     doi: str | None = None
     url: str | None = None
     document_id: str | None = None
+    chunk_id: str | None = None
+    author: str | None = None
+    publication_year: str | None = None
+    journal: str | None = None
+    publisher: str | None = None
+    license: str | None = None
+    license_url: str | None = None
+    copyright_notice: str | None = None
+    page: int | None = Field(default=None, ge=1)
     source_type: Literal["research", "web"]
     content: str = Field(min_length=1)
     score: float | None = None
@@ -35,9 +58,9 @@ class Source(BaseModel):
     @model_validator(mode="after")
     def check_source_identifier(self):
         if self.source_type == "research":
-            if not (self.doi or self.document_id) or self.url:
-                raise ValueError("research sources require a doi or document id and no url")
-        elif not self.url or self.doi or self.document_id:
+            if not (self.doi or self.document_id or self.chunk_id) or self.url:
+                raise ValueError("research sources require a doi, document id or chunk id and no url")
+        elif not self.url or self.doi or self.document_id or self.chunk_id:
             raise ValueError("web sources require a url and no research identifiers")
         return self
 
