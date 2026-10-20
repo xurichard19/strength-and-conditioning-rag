@@ -17,6 +17,13 @@ from tests.backend.test_chat_workflow import CONTEXT, ID, TODAY, route
 from tests.backend.test_supabase_queries import workout_row
 
 
+def hybrid_collection(result):
+    sparse = SimpleNamespace(embed_query=Mock(return_value=[SparseVector(indices=[1], values=[.3])]))
+    index = SimpleNamespace(enabled=True, config=SimpleNamespace(embedding_function=sparse))
+    schema = SimpleNamespace(keys={'sparse_embedding': SimpleNamespace(sparse_vector=SimpleNamespace(sparse_vector_index=index))})
+    return SimpleNamespace(schema=schema, query=AsyncMock(), search=AsyncMock(return_value=result))
+
+
 class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.enterContext(patch.dict('os.environ', {'LANGSMITH_TRACING': 'false', 'LANGCHAIN_TRACING_V2': 'false'}))
@@ -54,17 +61,33 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_research_uses_async_queries_with_original_chunk_ids_without_fabricated_doi(self):
         passage = 'finding ' * 250
-        query = AsyncMock(return_value={'ids': [['chunk-1', 'chunk-2']], 'documents': [[passage, '']],
-            'metadatas': [[{'source': r'C:\private\paper.pdf'}, None]]})
-        with patch.object(search, 'research_collection', new=AsyncMock(return_value=SimpleNamespace(query=query))), \
+        result = SearchResult(ids=[['chunk-1', 'chunk-2']], documents=[[passage, '']],
+            metadatas=[[{'source': r'C:\private\paper.pdf'}, None]], scores=[[-.04, 0]])
+        collection = hybrid_collection(result)
+        with patch.object(search, 'research_collection', new=AsyncMock(return_value=collection)), \
              patch.object(search, '_research_embeddings', return_value=[[.1, .2]]):
-            sources = await search.search_research_docs('public question', 3)
+            sources = await search.hybrid_search_research_docs('public question', 3)
         self.assertEqual(sources[0].chunk_id, 'chunk-1')
         self.assertIsNone(sources[0].document_id)
         self.assertIsNone(sources[0].doi)
         self.assertIsNone(sources[0].title)
         self.assertEqual(sources[0].content, passage.strip())
-        query.assert_awaited_once_with(query_embeddings=[[.1, .2]], n_results=3, include=['documents', 'metadatas'])
+        collection.query.assert_not_awaited()
+        collection.search.assert_awaited_once()
+        self.assertEqual(collection.search.call_args.args[0].to_dict()['limit']['limit'], 3)
+
+    async def test_deprecated_dense_helper_remains_callable_with_citation_metadata(self):
+        metadata = {'document_id': '489cd9ad-7d53-4b34-8c56-6953edb2885c',
+            'title': 'Training plans', 'author': 'A. Author', 'doi': 'none', 'page': 2}
+        identifier = '50a3d460-c74b-4fe1-971c-dfa32567ddfd'
+        collection = SimpleNamespace(query=AsyncMock(return_value={
+            'ids': [[identifier, 'empty']], 'documents': [[' full excerpt ', '']], 'metadatas': [[metadata, None]]}))
+        with patch.object(search, 'research_collection', new=AsyncMock(return_value=collection)), \
+             patch.object(search, '_research_embeddings', return_value=[[.1, .2]]):
+            sources = await search.search_research_docs('training', 2)
+        self.assertEqual(sources, [Source(source_type='research', chunk_id=identifier,
+            document_id=metadata['document_id'], title='Training plans', author='A. Author', page=2, content='full excerpt')])
+        collection.query.assert_awaited_once_with(query_embeddings=[[.1, .2]], n_results=2, include=['documents', 'metadatas'])
 
     async def test_research_uses_only_explicit_citations_and_treats_none_as_missing(self):
         metadata = [
@@ -74,11 +97,12 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
             {'source': 'notes:recovery.pdf'},
             None,
         ]
-        query = AsyncMock(return_value={'ids': [[str(i) for i in range(5)]],
-            'documents': [['full excerpt'] * 5], 'metadatas': [metadata]})
-        with patch.object(search, 'research_collection', new=AsyncMock(return_value=SimpleNamespace(query=query))), \
+        result = SearchResult(ids=[[str(i) for i in range(5)]],
+            documents=[['full excerpt'] * 5], metadatas=[metadata], scores=[[-.04] * 5])
+        collection = hybrid_collection(result)
+        with patch.object(search, 'research_collection', new=AsyncMock(return_value=collection)), \
              patch.object(search, '_research_embeddings', return_value=[[.1, .2]]):
-            sources = await search.search_research_docs('recovery', 5)
+            sources = await search.hybrid_search_research_docs('recovery', 5)
         self.assertEqual([source.doi for source in sources],
             [None, None, '10.9999/explicit', None, None])
         self.assertIsNone(sources[0].title)
@@ -92,17 +116,23 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
             'journal': 'Training', 'publisher': 'Publisher', 'license': 'CC BY 4.0',
             'license_url': 'https://creativecommons.org/licenses/by/4.0/', 'copyright_notice': 'Copyright the authors'}
         chunk_ids = ['50a3d460-c74b-4fe1-971c-dfa32567ddfd', 'c1965c92-1fe9-45ec-bdfc-41c69dd3d6e4']
-        query = AsyncMock(return_value={'ids': [chunk_ids], 'documents': [['first passage', 'second passage']],
-            'metadatas': [[{**metadata, 'page': 1}, {**metadata, 'page': 2}]]})
-        with patch.object(search, 'research_collection', new=AsyncMock(return_value=SimpleNamespace(query=query))), \
+        result = SearchResult(ids=[chunk_ids], documents=[['first passage', 'second passage']],
+            metadatas=[[{**metadata, 'page': 1}, {**metadata, 'page': 2}]], scores=[[-.04, -.03]])
+        collection = hybrid_collection(result)
+        with patch.object(search, 'research_collection', new=AsyncMock(return_value=collection)), \
              patch.object(search, '_research_embeddings', return_value=[[.1, .2]]):
-            sources = await search.search_research_docs('training', 2)
+            response = await search.search_sources('training', providers='research', top_k=2)
+        sources = response.results
+        self.assertEqual(response.warnings, [])
+        collection.query.assert_not_awaited()
+        collection.search.assert_awaited_once()
         event = ChatSourcesEvent.model_validate({'sources': [source.model_dump() for source in sources]})
         payload = json.loads(event.model_dump_json())['sources']
         for index, source in enumerate(payload):
             self.assertEqual({field: source[field] for field in metadata}, metadata)
             self.assertEqual(source['chunk_id'], chunk_ids[index])
             self.assertEqual(source['page'], index + 1)
+            self.assertEqual(source['score'], [-.04, -.03][index])
         self.assertIn('10.1234/training', search.format_sources_for_prompt(sources))
 
     async def test_cached_collection_does_not_acquire_initialization_lock(self):
@@ -134,7 +164,7 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
         async def web(*args):
             started.set()
             return [Source(source_type='web', url='https://example.org', content='usable result')]
-        with patch.object(search, 'search_research_docs', side_effect=research), patch.object(search, 'web_search', side_effect=web):
+        with patch.object(search, 'hybrid_search_research_docs', side_effect=research), patch.object(search, 'web_search', side_effect=web):
             response = await search.search_sources('test', top_k=3)
         self.assertEqual(len(response.results), 1)
         self.assertIn('research search unavailable', response.warnings[0])
@@ -156,22 +186,25 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_search_accepts_long_queries_and_forwards_provider_result_count(self):
         query = 'training ' * 100
-        with patch.object(search, 'search_research_docs', new=AsyncMock(return_value=[])) as read:
+        with patch.object(search, 'hybrid_search_research_docs', new=AsyncMock(return_value=[])) as read, \
+             patch.object(search, 'search_research_docs', new=AsyncMock()) as dense:
             await search.search_sources(query, providers='research', top_k=10)
         read.assert_awaited_once_with(query, 10)
+        dense.assert_not_awaited()
 
-    async def test_optional_hybrid_search_keeps_rrf_weights_identifiers_and_original_text(self):
+    async def test_hybrid_search_keeps_rrf_weights_identifiers_and_original_text(self):
         sparse = SimpleNamespace(embed_query=Mock(return_value=[SparseVector(indices=[1], values=[.3])]))
         index = SimpleNamespace(enabled=True, config=SimpleNamespace(embedding_function=sparse))
         schema = SimpleNamespace(keys={'sparse_embedding': SimpleNamespace(sparse_vector=SimpleNamespace(sparse_vector_index=index))})
         metadata = {'doi': '10.1/a', 'document_id': 'paper-uuid', 'author': 'A. Author',
             'license_url': 'https://creativecommons.org/licenses/by/4.0/', 'page': 2}
-        result = SearchResult(ids=[['chunk-1']], documents=[['full passage']], metadatas=[[metadata]], scores=[[-.04]])
+        result = SearchResult(ids=[['chunk-1', 'empty']], documents=[['full passage', ' ']],
+            metadatas=[[metadata, None]], scores=[[-.04, 0]])
         collection = SimpleNamespace(schema=schema, search=AsyncMock(return_value=result))
         with patch.object(search, 'research_collection', new=AsyncMock(return_value=collection)), \
              patch.object(search, '_research_embeddings', return_value=[[.1, .2]]), \
              patch.object(search, 'Rrf', wraps=search.Rrf) as rank:
-            docs = await search.hybrid_search_research_docs('boxing', top_k=7)
+            sources = await search.hybrid_search_research_docs('boxing', top_k=7)
         sparse.embed_query.assert_called_once_with(['boxing'])
         self.assertEqual(rank.call_args.kwargs['weights'], [2.0, 1.0])
         self.assertTrue(all(knn.return_rank and knn.limit == 75 and knn.default == 1000 for knn in rank.call_args.kwargs['ranks']))
@@ -180,16 +213,34 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('sparse_embedding', json.dumps(payload))
         for field in search.RESEARCH_METADATA_FIELDS:
             self.assertIn(field, json.dumps(payload['select']))
-        self.assertEqual(docs[0].id, 'chunk-1')
-        self.assertEqual(docs[0].page_content, 'full passage')
-        self.assertEqual(docs[0].metadata, {**metadata, 'source_type': 'research', 'score': -.04})
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0].chunk_id, 'chunk-1')
+        self.assertEqual(sources[0].content, 'full passage')
+        self.assertEqual({field: getattr(sources[0], field) for field in metadata}, metadata)
+        self.assertEqual(sources[0].score, -.04)
 
-    async def test_optional_hybrid_surfaces_missing_schema_without_changing_the_collection(self):
-        collection = SimpleNamespace(schema=None, search=AsyncMock())
-        with patch.object(search, 'research_collection', new=AsyncMock(return_value=collection)):
-            with self.assertRaises(AttributeError):
-                await search.hybrid_search_research_docs('boxing')
+    async def test_hybrid_returns_no_matches_when_query_has_no_keyword_tokens(self):
+        sparse = SimpleNamespace(embed_query=Mock(return_value=[SparseVector(indices=[], values=[])]))
+        index = SimpleNamespace(enabled=True, config=SimpleNamespace(embedding_function=sparse))
+        schema = SimpleNamespace(keys={'sparse_embedding': SimpleNamespace(sparse_vector=SimpleNamespace(sparse_vector_index=index))})
+        result = SearchResult(ids=[['chunk-1']], documents=[['full passage']], metadatas=[[None]], scores=[[.2]])
+        collection = SimpleNamespace(schema=schema, search=AsyncMock(return_value=result))
+        with patch.object(search, 'research_collection', new=AsyncMock(return_value=collection)), \
+             patch.object(search, '_research_embeddings', return_value=[[.1, .2]]):
+            sources = await search.hybrid_search_research_docs('the and of', 5)
+        self.assertEqual(sources, [])
         collection.search.assert_not_awaited()
+
+    async def test_research_requires_sparse_schema_without_running_dense_queries(self):
+        collection = SimpleNamespace(schema=None, search=AsyncMock(), query=AsyncMock())
+        with patch.object(search, 'research_collection', new=AsyncMock(return_value=collection)), \
+             patch.object(search, 'search_research_docs', new=AsyncMock()) as dense:
+            response = await search.search_sources('boxing', providers='research')
+        self.assertEqual(response.results, [])
+        self.assertEqual(response.warnings, ['research search unavailable; no evidence from this attempt'])
+        collection.search.assert_not_awaited()
+        collection.query.assert_not_awaited()
+        dense.assert_not_awaited()
 
     async def test_optional_rerank_preserves_original_text_and_does_not_retry(self):
         client = SimpleNamespace(rerank=AsyncMock(return_value=SimpleNamespace(results=[SimpleNamespace(index=1), SimpleNamespace(index=0)])))

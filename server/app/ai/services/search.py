@@ -10,7 +10,6 @@ import chromadb
 from chromadb import K, Knn, Rrf, Search
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 import cohere
-from langchain_core.documents import Document
 from langchain_tavily import TavilySearch
 from pydantic import BaseModel, Field
 
@@ -59,56 +58,61 @@ def rerank_client():
     return cohere.AsyncClientV2(api_key=get_settings().cohere_api_key, timeout=20)
 
 
+def _research_source(identifier: str, text: str, metadata: dict | None, score: float | None = None) -> Source:
+    """map research results to citation fields and chunk identifiers"""
+    metadata = metadata or {}
+    citation = {field: metadata_text(metadata.get(field)) for field in RESEARCH_METADATA_FIELDS}
+    page = metadata.get("page")
+    return Source(source_type="research", chunk_id=str(identifier), score=score,
+        page=page if isinstance(page, int) and page > 0 else None,
+        content=text.strip(), **citation)
+
+
 async def search_research_docs(query: str, top_k: int) -> list[Source]:
     """
-    dense research rag retrieval
+    deprecated: dense research retrieval; use hybrid_search_research_docs instead
+
+    chat and planning workflows do not call this helper.
 
     - **query**: standalone retrieval question
     - **top_k**: bounded number of chunks
-    - **returns**: original excerpts and real chunk identifiers
+    - **returns**: original excerpts with citation metadata and chunk identifiers
     """
     collection = await research_collection()
     embeddings = await asyncio.to_thread(_research_embeddings, [query])
     result = await collection.query(query_embeddings=embeddings, n_results=top_k,
         include=["documents", "metadatas"])
-    sources = []
-    for identifier, text, metadata in zip(result["ids"][0], result["documents"][0], result["metadatas"][0]):
-        if not text.strip():
-            continue
-        metadata = metadata or {}
-        citation = {field: metadata_text(metadata.get(field)) for field in RESEARCH_METADATA_FIELDS}
-        page = metadata.get("page")
-        sources.append(Source(source_type="research", chunk_id=str(identifier),
-            page=page if isinstance(page, int) and page > 0 else None,
-            content=text.strip(), **citation))
-    return sources
+    return [_research_source(identifier, text, metadata)
+        for identifier, text, metadata in zip(result["ids"][0], result["documents"][0], result["metadatas"][0])
+        if text and text.strip()]
 
 
-async def hybrid_search_research_docs(query: str, top_k: int = 10) -> list[Document]:
+async def hybrid_search_research_docs(query: str, top_k: int = 10) -> list[Source]:
     """
     hybrid research retrieval using rrf with 2:1 dense-to-sparse rank weights
 
     - **query**: research question
     - **top_k**: result count
-    - **returns**: full research documents in fused rank order, retaining chunk ids,
+    - **returns**: research sources in fused rank order, retaining chunk ids,
       available citation metadata and rrf scores
     """
     collection = await research_collection()
     index = collection.schema.keys["sparse_embedding"].sparse_vector.sparse_vector_index
-    sparse_embeddings = index.config.embedding_function # move to cache during prod
+    sparse_embeddings = index.config.embedding_function
     dense, sparse = await asyncio.gather(
         asyncio.to_thread(_research_embeddings, [query]),
         asyncio.to_thread(sparse_embeddings.embed_query, [query]),
     )
+    if not sparse[0].indices:
+        return []
     rank = Rrf(ranks=[
         Knn(query=dense[0], return_rank=True, limit=max(75, top_k), default=1000),
         Knn(query=sparse[0], key="sparse_embedding", return_rank=True, limit=max(75, top_k), default=1000),
     ], weights=[2.0, 1.0], k=60)
     result = await collection.search(Search().rank(rank).limit(top_k).select(
         K.DOCUMENT, K.SCORE, *RESEARCH_METADATA_FIELDS, "source", "page"))
-    return [Document(id=row["id"], page_content=row["document"],
-        metadata={**(row["metadata"] or {}), "source_type": "research", "score": row["score"]})
-        for row in result.rows()[0] if row["document"] and row["document"].strip()]
+    return [_research_source(row["id"], row["document"], row.get("metadata"), row.get("score"))
+        for row in result.rows()[0] if row.get("document") and row["document"].strip()]
 
 
 async def rerank_research_results(query: str, research_documents: list[str], top_n: int = 5) -> list[str]:
@@ -153,7 +157,7 @@ async def _retrieve(provider: str, query: str, top_k: int) -> SearchResponse:
     """search wrapper, isolate provider failures"""
     try:
         async with asyncio.timeout(SEARCH_TIMEOUT_SECONDS):
-            sources = await (search_research_docs(query, top_k)
+            sources = await (hybrid_search_research_docs(query, top_k)
                 if provider == "research" else web_search(query, top_k))
         return SearchResponse(results=sources)
     except Exception as exc:

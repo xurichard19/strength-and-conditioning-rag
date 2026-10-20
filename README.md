@@ -6,7 +6,7 @@ Arcel is a full-stack assistant for hybrid athletes building strength and condit
 
 Adaptive workout programming turns onboarding responses, existing workouts, and scheduled sports sessions into a three-week training plan with exercise- and set-level prescriptions. Completing onboarding triggers the initial plan, and weekly refreshes extend its coverage. Changes to onboarding responses or sports commitments adjust upcoming workouts within the existing horizon while preserving completed training. The mobile Plan Manager shows the current plan, background job status, and a history of published changes.
 
-The Expo/React Native mobile client connects to the containerized FastAPI backend running on Google Cloud Run. LangGraph orchestrates separate chat and planning workflows, using OpenAI for model inference, Chroma Cloud for research retrieval, Tavily for web search, and Supabase for authentication and application data. Chat uses deterministic evidence retrieval with bounded search retries; planning evaluates evidence, generates structured workouts, and validates proposed changes before publishing them atomically. Cloud Scheduler discovers due refreshes, and Cloud Tasks delivers durable jobs to a private Cloud Run planning worker so generation can finish independently of the mobile connection. Cohere reranking and hybrid retrieval are available separately but are not part of the active chat workflow. GitHub Actions runs the tests before building and pushing backend images to Google Artifact Registry, deploying them to Cloud Run, and verifying backend health.
+The Expo/React Native mobile client connects to the containerized FastAPI backend running on Google Cloud Run. LangGraph orchestrates separate chat and planning workflows, using OpenAI for model inference, Chroma Cloud for research retrieval, Tavily for web search, and Supabase for authentication and application data. Chat uses deterministic evidence retrieval with bounded search retries; planning evaluates evidence, generates structured workouts, and validates proposed changes before publishing them atomically. Cloud Scheduler discovers due refreshes, and Cloud Tasks delivers durable jobs to a private Cloud Run planning worker so generation can finish independently of the mobile connection. Research retrieval combines dense similarity and BM25 keyword results through reciprocal rank fusion. GitHub Actions runs the tests before building and pushing backend images to Google Artifact Registry, deploying them to Cloud Run, and verifying backend health.
 
 #### Table of Contents
 
@@ -343,7 +343,7 @@ run api server from /
 >> docker compose up --build api
 
 reindex with compose service
->> docker compose run --rm index
+>> docker compose run --build --rm index
 
 run mobile client from /mobile
 >> npm start

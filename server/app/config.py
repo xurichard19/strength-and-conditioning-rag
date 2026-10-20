@@ -53,7 +53,6 @@ class Settings(DatabaseSettings):
     sentry_dsn: str | None = None
     sentry_traces_sample_rate: float = Field(default=0.1, ge=0, le=1)
     system_collection_name: str = "system-docs"
-    retrieval_top_k: int = 15
     index_batch_size: int = 300
 
 

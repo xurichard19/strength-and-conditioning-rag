@@ -4,10 +4,13 @@ import shutil
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import fitz
 import google.cloud
+from chromadb.api.models.Collection import Collection
+from chromadb.api.types import SparseVector
+from chromadb.types import Collection as CollectionModel
 from langchain_core.documents import Document
 
 try:
@@ -80,6 +83,38 @@ class VectorIndexingTests(unittest.TestCase):
         self.assertEqual(self.collection.add.call_args.kwargs["documents"], ["chunk 2"])
         self.assertEqual([item for call in self.collection.add.call_args_list for item in call.kwargs["metadatas"]],
             [metadata] * 3)
+
+    def test_reset_keeps_collection_name_and_sdk_generates_keyword_vectors_from_chunk_text(self):
+        self.db.settings.system_collection_name = "research"
+        self.db.client = Mock()
+        vector_store.VectorDB.reset_system_docs(self.db)
+        self.db.client.delete_collection.assert_called_once_with("research")
+        args = self.db.client.create_collection.call_args
+        self.assertEqual(args.args, ("research",))
+        schema = args.kwargs["schema"]
+        index = schema.keys["sparse_embedding"].sparse_vector.sparse_vector_index
+        self.assertTrue(index.enabled)
+        self.assertTrue(index.config.bm25)
+        self.assertEqual(index.config.source_key, "#document")
+
+        client = Mock()
+        model = CollectionModel(id=uuid4(), name="research", configuration_json={},
+            serialized_schema=schema.serialize_to_json(), metadata=None, dimension=2, tenant="test", database="test")
+        collection = Collection(client=client, model=model, embedding_function=None)
+        metadata = {"document_id": str(uuid4()), "title": "Training plans", "author": "A. Author", "doi": "none"}
+        documents = ["weekly undulating periodization improves squat strength", "walking and running recovery for endurance athletes"]
+        collection.add(ids=[str(uuid4()), str(uuid4())], documents=documents,
+            embeddings=[[.1, .2], [.2, .3]], metadatas=[metadata, metadata])
+        submitted = client._add.call_args.kwargs
+        self.assertEqual(submitted["documents"], documents)
+        query = index.config.embedding_function.embed_query(["periodization"])[0]
+        for position, values in enumerate(submitted["metadatas"]):
+            self.assertEqual({field: values[field] for field in metadata}, metadata)
+            vector = values["sparse_embedding"]
+            self.assertIsInstance(vector, SparseVector)
+            self.assertTrue(vector.indices)
+            self.assertEqual(bool(set(query.indices) & set(vector.indices)), position == 0)
+        self.assertNotIn("sparse_embedding", metadata)
 
 
 class VectorIngestionTests(unittest.TestCase):
