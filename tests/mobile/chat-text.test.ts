@@ -284,9 +284,9 @@ test('selection uses rendered markdown text but preserves literal fenced/inline 
 });
 
 test('research sources prefer titles, fall back to DOI, and keep DOI navigation', () => {
-  for (const title of ['  Recovery research  ', '', '   ', undefined]) {
+  for (const title of ['  Recovery research  ', '', '   ', 'none', ' NONE ', null, undefined]) {
     reset(); openedUrls.length = 0;
-    const label = title?.trim() || '10.1234/recovery';
+    const label = title?.trim() && title.trim().toLowerCase() !== 'none' ? title.trim() : '10.1234/recovery';
     app.chatMessages = [{ id: 'reply', role: 'assistant', text: 'Answer', sources: [
       { source_type: 'research', title, doi: '10.1234/recovery', content: 'Excerpt' },
     ] }];
@@ -296,6 +296,43 @@ test('research sources prefer titles, fall back to DOI, and keep DOI navigation'
     nodes(render()).find(node => node.props.accessibilityLabel === `Read excerpt from ${label}`)!.props.onPress();
     assert.ok(nodes(render()).find(node => node.props.selectable && node.props.children === label));
   }
+});
+
+test('research excerpts display supplied attribution and license metadata', () => {
+  reset(); openedUrls.length = 0;
+  const licenseUrl = 'https://creativecommons.org/licenses/by/4.0/';
+  app.chatMessages = [{ id: 'reply', role: 'assistant', text: 'Answer', sources: [
+    { source_type: 'research', document_id: 'paper-uuid', chunk_id: '1000', title: 'Training plans',
+      author: 'A. Author; B. Author', doi: '10.1234/training', publication_year: '2024', journal: 'Training journal',
+      publisher: 'Publisher', license: 'CC BY 4.0', license_url: licenseUrl,
+      copyright_notice: 'Copyright the authors', page: 2, content: 'Training excerpt' },
+  ] }];
+  const button = (label: string) => nodes(render()).find(node => node.props.accessibilityLabel === label)!;
+  button('Open 1 source').props.onPress();
+  assert.ok(nodes(render()).find(node => node.props.children === 'Training journal · 2024'));
+  button('Read excerpt from Training plans').props.onPress();
+  for (const value of ['Training plans', 'A. Author; B. Author', 'Publisher', 'CC BY 4.0', 'Copyright the authors']) {
+    assert.ok(nodes(render()).find(node => node.props.selectable && node.props.children === value));
+  }
+  assert.ok(nodes(render()).find(node => Array.isArray(node.props.children) && node.props.children.join('') === 'RETRIEVED PASSAGE · PAGE 2'));
+  button('View source license').props.onPress();
+  button('Open original source').props.onPress();
+  assert.deepEqual(openedUrls, [licenseUrl, 'https://doi.org/10.1234/training']);
+});
+
+test('missing research metadata stays hidden without UUID titles or placeholder links', () => {
+  reset();
+  app.chatMessages = [{ id: 'reply', role: 'assistant', text: 'Answer', sources: [
+    { source_type: 'research', document_id: 'paper-uuid', chunk_id: '1000', title: 'none', doi: 'none',
+      author: 'none', publication_year: null, journal: 'none', publisher: 'none', license: 'none',
+      license_url: 'none', copyright_notice: 'none', page: null, content: 'Excerpt' },
+  ] }];
+  nodes(render()).find(node => node.props.accessibilityLabel === 'Open 1 source')!.props.onPress();
+  assert.equal(nodes(render()).some(node => node.props.accessibilityRole === 'link'), false);
+  nodes(render()).find(node => node.props.accessibilityLabel === 'Read excerpt from Research source 1')!.props.onPress();
+  assert.equal(nodes(render()).some(node => node.props.accessibilityRole === 'link'), false);
+  assert.equal(nodes(render()).some(node => node.type === 'text' && node.props.children === 'none'), false);
+  assert.ok(nodes(render()).find(node => node.props.selectable && node.props.children === 'Research source 1'));
 });
 
 test('sources open DOI/web links separately from full selectable excerpts', () => {

@@ -22,8 +22,11 @@ class ApiSchemaTests(unittest.TestCase):
                     Source(source_type=kind, content='evidence')
                 with self.assertRaises(ValidationError):
                     Source(source_type=kind, content='evidence', **{required: 'identifier', excluded: 'other'})
-        source = Source(source_type='research', document_id='real-chroma-id', content='evidence')
+        source = Source(source_type='research', chunk_id='real-chroma-id', content='evidence')
         self.assertIsNone(source.doi)
+        self.assertIsNone(source.document_id)
+        with self.assertRaises(ValidationError):
+            Source(source_type='web', url='https://example.org', chunk_id='research-chunk', content='evidence')
 
     def test_chat_mode_is_allow_listed_and_clients_cannot_supply_internal_budgets(self):
         self.assertEqual(schemas.ChatRequest(conversation_id=ID, text='question').mode, 'quick')

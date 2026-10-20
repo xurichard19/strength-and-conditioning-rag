@@ -17,19 +17,25 @@ import type { ChatMessage, ChatSource } from '@/domain/types';
 import { webUrl } from '@/lib/links';
 import { useApp } from '@/state/app-context';
 
+function citationText(value?: string | null) {
+  const text = value?.trim();
+  return text && text.toLowerCase() !== 'none' ? text : null;
+}
+
 function sourceUrl(source: ChatSource) {
-  return webUrl(source.url ?? (source.doi ? `https://doi.org/${encodeURI(source.doi).replace(/#/g, '%23').replace(/\?/g, '%3F')}` : null));
+  const doi = citationText(source.doi);
+  return webUrl(citationText(source.url) ?? (doi ? `https://doi.org/${encodeURI(doi).replace(/#/g, '%23').replace(/\?/g, '%3F')}` : null));
 }
 
 function sourceMeta(source: ChatSource) {
-  if (source.source_type === 'research') return 'Research paper';
+  if (source.source_type === 'research') return [citationText(source.journal) || 'Research paper', citationText(source.publication_year)].filter(Boolean).join(' · ');
   if (!source.url) return 'Web';
   return source.url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
 }
 
 function sourceTitle(source: ChatSource, index: number) {
-  if (source.source_type === 'research') return source.title?.trim() || source.doi || `Research source ${index + 1}`;
-  return source.title?.trim() || `Web source ${index + 1}`;
+  if (source.source_type === 'research') return citationText(source.title) || citationText(source.doi) || `Research source ${index + 1}`;
+  return citationText(source.title) || `Web source ${index + 1}`;
 }
 
 function SourceRow({ source, index, onExcerpt }: { source: ChatSource; index: number; onExcerpt: () => void }) {
@@ -68,6 +74,12 @@ function SourceRow({ source, index, onExcerpt }: { source: ChatSource; index: nu
 function SourceExcerpt({ source, index }: { source: ChatSource; index: number }) {
   const { colors } = useApp();
   const url = sourceUrl(source);
+  const doi = citationText(source.doi);
+  const author = citationText(source.author);
+  const publisher = citationText(source.publisher);
+  const license = citationText(source.license);
+  const copyright = citationText(source.copyright_notice);
+  const licenseUrl = webUrl(citationText(source.license_url));
   const Icon = source.source_type === 'research' ? BookOpen : Globe2;
   return <View style={styles.sourceExcerpt}>
     <View style={[styles.sourceDocument, { backgroundColor: colors.card, borderColor: colors.separator }]}>
@@ -76,15 +88,22 @@ function SourceExcerpt({ source, index }: { source: ChatSource; index: number })
         <AppText tone="secondary" numberOfLines={2} style={styles.sourceDocumentMeta}>{sourceMeta(source)}</AppText>
       </View>
       <AppText selectable style={styles.sourceExcerptTitle}>{sourceTitle(source, index)}</AppText>
+      {author ? <AppText selectable tone="secondary" style={styles.sourceOriginalLink}>{author}</AppText> : null}
+      {publisher ? <AppText selectable tone="secondary" style={styles.sourceOriginalLink}>{publisher}</AppText> : null}
+      {copyright ? <AppText selectable tone="secondary" style={styles.sourceOriginalLink}>{copyright}</AppText> : null}
+      {license ? <AppText selectable tone="secondary" style={styles.sourceOriginalLink}>{license}</AppText> : null}
+      {licenseUrl ? <Pressable accessibilityRole="link" accessibilityLabel="View source license" onPress={() => void Linking.openURL(licenseUrl).catch(() => undefined)} style={styles.sourceExcerptButton}>
+        <AppText tone="tint" style={styles.sourceActionText}>View license</AppText>
+      </Pressable> : null}
       {url ? <>
-        <AppText selectable tone="secondary" style={styles.sourceOriginalLink}>{source.doi ? `DOI ${source.doi}` : url}</AppText>
+        <AppText selectable tone="secondary" style={styles.sourceOriginalLink}>{doi ? `DOI ${doi}` : url}</AppText>
         <Pressable accessibilityRole="link" accessibilityLabel="Open original source" onPress={() => void Linking.openURL(url).catch(() => undefined)} style={[styles.sourceOriginalButton, { borderTopColor: colors.separator }]}>
           <AppText tone="tint" weight="medium" style={styles.sourceActionText}>Open original source</AppText><ArrowUpRight color={colors.tintText} size={18} />
         </Pressable>
       </> : null}
     </View>
     <View style={[styles.sourcePassage, { backgroundColor: colors.tintSoft }]}>
-      <View style={styles.sourcePassageHeading}><Quote color={colors.tintText} size={24} strokeWidth={1.4} /><AppText tone="tint" style={styles.sourceEyebrow}>RETRIEVED PASSAGE</AppText></View>
+      <View style={styles.sourcePassageHeading}><Quote color={colors.tintText} size={24} strokeWidth={1.4} /><AppText tone="tint" style={styles.sourceEyebrow}>RETRIEVED PASSAGE{source.page ? ` · PAGE ${source.page}` : ''}</AppText></View>
       <AppText selectable style={styles.sourceExcerptText}>{source.content?.trim() || 'No excerpt is available for this source.'}</AppText>
     </View>
   </View>;

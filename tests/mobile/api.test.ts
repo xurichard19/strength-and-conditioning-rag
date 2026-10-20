@@ -386,12 +386,17 @@ test('history passes both cursor fields and a bounded page size', async () => {
 
 test('chat handles split UTF-8, sources, and final persistence receipt without trailing newline', async () => {
   let text = ''; let sources!: ChatSource[];
+  const citation: ChatSource = { source_type: 'research', title: 'Source', document_id: 'paper-uuid', chunk_id: '1000',
+    author: 'A. Author', doi: null, publication_year: '2024', journal: 'Training', publisher: 'Publisher',
+    license: 'CC BY 4.0', license_url: 'https://creativecommons.org/licenses/by/4.0/',
+    copyright_notice: 'Copyright the authors', page: 2, content: 'Full excerpt' };
   const id = await backend.readChatStream(stream([
     JSON.stringify({ type: 'text', delta: 'café 🏋️' }),
-    JSON.stringify({ type: 'sources', sources: [{ title: 'Source' }] }),
+    JSON.stringify({ type: 'sources', sources: [citation] }),
     JSON.stringify({ type: 'done', message_id: 'saved-id' }),
   ].join('\n')), delta => { text += delta; }, value => { sources = value; });
   assert.equal(text, 'café 🏋️'); assert.equal(id, 'saved-id'); assert.equal(sources[0].title, 'Source');
+  assert.deepEqual(JSON.parse(JSON.stringify(sources)), [citation]);
 });
 
 test('chat rejects interrupted, malformed, and server-error streams', async () => {

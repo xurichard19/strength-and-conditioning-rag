@@ -16,6 +16,7 @@ import tempfile
 from pathlib import Path
 from google.cloud import storage
 from app.config import get_settings
+from app.contracts import RESEARCH_METADATA_FIELDS, metadata_text
 
 ALLOWED_EXTENSIONS = {".pdf", ".txt"}
 
@@ -87,14 +88,17 @@ def load_system_docs_from_gcs(bucket: str, prefix: str) -> list[Document]:
             
             blob.download_to_filename(tmp_path)
             file_docs = load_single_doc(tmp_path)
+            if not any(doc.page_content.strip() for doc in file_docs):
+                raise ValueError("document contains no readable text")
+            metadata = {field: metadata_text((blob.metadata or {}).get(field)) or "none"
+                for field in RESEARCH_METADATA_FIELDS}
             for doc in file_docs:
-                doc.metadata['source'] = gcs_source
-                doc.metadata.setdefault('page', 1)
+                # bucket fields are authoritative; retain only parser page information
+                doc.metadata = {**metadata, "source": gcs_source, "page": doc.metadata.get("page", 1)}
             
             docs.extend(file_docs)
         except Exception as exc:
-            print(f"[GCS] failed to load {gcs_source}: {exc}")
-            continue
+            raise RuntimeError(f"failed to load {gcs_source}: {exc}") from exc
         finally:
             if tmp_path and os.path.exists(tmp_path):
                 os.remove(tmp_path)
@@ -128,7 +132,11 @@ def load_single_doc(path: str) -> list[Document]:
     else:
         raise Exception(f"invalid document type at {path}")
         
-    return loader.load()
+    docs = loader.load()
+    if path.lower().endswith('.pdf'):
+        for doc in docs:
+            doc.metadata["page"] += 1
+    return docs
 
 
 def read_scanned_pdf(path: str, loader: PyMuPDFLoader) -> list[Document]:
@@ -175,9 +183,11 @@ def split_docs(docs: list[Document], size=1500, overlap=250, min_len=150):
     for chunk in tqdm(chunks, desc="merging documents"):
         clean_doc(chunk)
         text = chunk.page_content.strip()
+        same_page = bool(merged) and all(merged[-1].metadata.get(field) == chunk.metadata.get(field)
+            for field in ("source", "page"))
 
         if merge_next:
-            if merged[-1].metadata["source"] == chunk.metadata["source"]:
+            if same_page:
                 merged[-1].page_content += " " + text
             else:
                 merged.append(chunk)
@@ -185,7 +195,7 @@ def split_docs(docs: list[Document], size=1500, overlap=250, min_len=150):
             continue
 
         elif len(text) < min_len:
-            if merged and merged[-1].metadata["source"] == chunk.metadata["source"]:
+            if same_page:
                 merged[-1].page_content += " " + text
                 continue
             else:

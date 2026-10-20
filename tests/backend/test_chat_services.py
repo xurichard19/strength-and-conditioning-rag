@@ -10,6 +10,7 @@ from chromadb.api.types import SearchResult, SparseVector
 from app.ai.services import conversations, search, user_context
 from app.ai.workflows.chat import models
 from app.ai.workflows.chat.state import ChatRoute, EvidenceReview
+from app.api.schemas import ChatSourcesEvent
 from app.contracts import CalendarRecords, MessageRecord, Source
 from app.db.supabase import calendar
 from tests.backend.test_chat_workflow import CONTEXT, ID, TODAY, route
@@ -58,16 +59,17 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(search, 'research_collection', new=AsyncMock(return_value=SimpleNamespace(query=query))), \
              patch.object(search, '_research_embeddings', return_value=[[.1, .2]]):
             sources = await search.search_research_docs('public question', 3)
-        self.assertEqual(sources[0].document_id, 'chunk-1')
+        self.assertEqual(sources[0].chunk_id, 'chunk-1')
+        self.assertIsNone(sources[0].document_id)
         self.assertIsNone(sources[0].doi)
-        self.assertEqual(sources[0].title, 'paper.pdf')
+        self.assertIsNone(sources[0].title)
         self.assertEqual(sources[0].content, passage.strip())
         query.assert_awaited_once_with(query_embeddings=[[.1, .2]], n_results=3, include=['documents', 'metadatas'])
 
-    async def test_research_recovers_doi_from_filename_and_preserves_explicit_metadata(self):
+    async def test_research_uses_only_explicit_citations_and_treats_none_as_missing(self):
         metadata = [
             {'source': 'papers/10.1234:journal.2026.001.pdf'},
-            {'source': r'C:\papers\10.5678:section:paper.PDF'},
+            {'source': 'papers/489cd9ad-7d53-4b34-8c56-6953edb2885c.pdf', 'doi': 'none', 'title': ' none '},
             {'source': '10.1234:inferred.pdf', 'doi': '10.9999/explicit', 'title': 'Paper title'},
             {'source': 'notes:recovery.pdf'},
             None,
@@ -78,10 +80,30 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
              patch.object(search, '_research_embeddings', return_value=[[.1, .2]]):
             sources = await search.search_research_docs('recovery', 5)
         self.assertEqual([source.doi for source in sources],
-            ['10.1234/journal.2026.001', '10.5678/section/paper', '10.9999/explicit', None, None])
-        self.assertEqual(sources[0].title, '10.1234/journal.2026.001')
+            [None, None, '10.9999/explicit', None, None])
+        self.assertIsNone(sources[0].title)
+        self.assertIsNone(sources[1].title)
         self.assertEqual(sources[2].title, 'Paper title')
         self.assertTrue(all(source.content == 'full excerpt' for source in sources))
+
+    async def test_research_citations_keep_paper_uuid_separate_from_chunks_through_the_public_stream(self):
+        metadata = {'document_id': '489cd9ad-7d53-4b34-8c56-6953edb2885c', 'title': 'Training plans',
+            'doi': '10.1234/training', 'author': 'A. Author; B. Author', 'publication_year': '2024',
+            'journal': 'Training', 'publisher': 'Publisher', 'license': 'CC BY 4.0',
+            'license_url': 'https://creativecommons.org/licenses/by/4.0/', 'copyright_notice': 'Copyright the authors'}
+        chunk_ids = ['50a3d460-c74b-4fe1-971c-dfa32567ddfd', 'c1965c92-1fe9-45ec-bdfc-41c69dd3d6e4']
+        query = AsyncMock(return_value={'ids': [chunk_ids], 'documents': [['first passage', 'second passage']],
+            'metadatas': [[{**metadata, 'page': 1}, {**metadata, 'page': 2}]]})
+        with patch.object(search, 'research_collection', new=AsyncMock(return_value=SimpleNamespace(query=query))), \
+             patch.object(search, '_research_embeddings', return_value=[[.1, .2]]):
+            sources = await search.search_research_docs('training', 2)
+        event = ChatSourcesEvent.model_validate({'sources': [source.model_dump() for source in sources]})
+        payload = json.loads(event.model_dump_json())['sources']
+        for index, source in enumerate(payload):
+            self.assertEqual({field: source[field] for field in metadata}, metadata)
+            self.assertEqual(source['chunk_id'], chunk_ids[index])
+            self.assertEqual(source['page'], index + 1)
+        self.assertIn('10.1234/training', search.format_sources_for_prompt(sources))
 
     async def test_cached_collection_does_not_acquire_initialization_lock(self):
         collection, lock = object(), AsyncMock()
@@ -142,7 +164,9 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
         sparse = SimpleNamespace(embed_query=Mock(return_value=[SparseVector(indices=[1], values=[.3])]))
         index = SimpleNamespace(enabled=True, config=SimpleNamespace(embedding_function=sparse))
         schema = SimpleNamespace(keys={'sparse_embedding': SimpleNamespace(sparse_vector=SimpleNamespace(sparse_vector_index=index))})
-        result = SearchResult(ids=[['chunk-1']], documents=[['full passage']], metadatas=[[{'doi': '10.1/a'}]], scores=[[-.04]])
+        metadata = {'doi': '10.1/a', 'document_id': 'paper-uuid', 'author': 'A. Author',
+            'license_url': 'https://creativecommons.org/licenses/by/4.0/', 'page': 2}
+        result = SearchResult(ids=[['chunk-1']], documents=[['full passage']], metadatas=[[metadata]], scores=[[-.04]])
         collection = SimpleNamespace(schema=schema, search=AsyncMock(return_value=result))
         with patch.object(search, 'research_collection', new=AsyncMock(return_value=collection)), \
              patch.object(search, '_research_embeddings', return_value=[[.1, .2]]), \
@@ -154,9 +178,11 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
         payload = collection.search.call_args.args[0].to_dict()
         self.assertEqual(payload['limit']['limit'], 7)
         self.assertIn('sparse_embedding', json.dumps(payload))
+        for field in search.RESEARCH_METADATA_FIELDS:
+            self.assertIn(field, json.dumps(payload['select']))
         self.assertEqual(docs[0].id, 'chunk-1')
         self.assertEqual(docs[0].page_content, 'full passage')
-        self.assertEqual(docs[0].metadata, {'doi': '10.1/a', 'source_type': 'research', 'score': -.04})
+        self.assertEqual(docs[0].metadata, {**metadata, 'source_type': 'research', 'score': -.04})
 
     async def test_optional_hybrid_surfaces_missing_schema_without_changing_the_collection(self):
         collection = SimpleNamespace(schema=None, search=AsyncMock())

@@ -4,8 +4,6 @@ from functools import lru_cache
 from hashlib import sha256
 from itertools import chain
 import logging
-from pathlib import PurePosixPath
-import re
 from typing import Literal
 
 import chromadb
@@ -17,7 +15,7 @@ from langchain_tavily import TavilySearch
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
-from app.contracts import Source
+from app.contracts import RESEARCH_METADATA_FIELDS, Source, metadata_text
 
 
 logger = logging.getLogger(__name__)
@@ -78,13 +76,11 @@ async def search_research_docs(query: str, top_k: int) -> list[Source]:
         if not text.strip():
             continue
         metadata = metadata or {}
-        filename = PurePosixPath(str(metadata.get("source", "research document")).replace("\\", "/")).name
-        # research filenames encode doi slashes as colons; remove only the file extension
-        candidate = re.sub(r"\.(pdf|txt|md|docx|html)$", "", filename, flags=re.IGNORECASE)
-        doi = metadata.get("doi") or (candidate.replace(":", "/") if re.fullmatch(r"10\.\d{4,9}:\S+", candidate) else None)
-        title = metadata.get("title") or doi or filename
-        sources.append(Source(source_type="research", document_id=str(identifier),
-            doi=doi, title=str(title), content=text.strip()))
+        citation = {field: metadata_text(metadata.get(field)) for field in RESEARCH_METADATA_FIELDS}
+        page = metadata.get("page")
+        sources.append(Source(source_type="research", chunk_id=str(identifier),
+            page=page if isinstance(page, int) and page > 0 else None,
+            content=text.strip(), **citation))
     return sources
 
 
@@ -108,7 +104,8 @@ async def hybrid_search_research_docs(query: str, top_k: int = 10) -> list[Docum
         Knn(query=dense[0], return_rank=True, limit=max(75, top_k), default=1000),
         Knn(query=sparse[0], key="sparse_embedding", return_rank=True, limit=max(75, top_k), default=1000),
     ], weights=[2.0, 1.0], k=60)
-    result = await collection.search(Search().rank(rank).limit(top_k).select(K.DOCUMENT, K.SCORE, "title", "source", "doi"))
+    result = await collection.search(Search().rank(rank).limit(top_k).select(
+        K.DOCUMENT, K.SCORE, *RESEARCH_METADATA_FIELDS, "source", "page"))
     return [Document(id=row["id"], page_content=row["document"],
         metadata={**(row["metadata"] or {}), "source_type": "research", "score": row["score"]})
         for row in result.rows()[0] if row["document"] and row["document"].strip()]
@@ -203,6 +200,6 @@ def format_sources_for_prompt(sources: Sequence[Source]) -> str:
     """format sources as numbered excerpts with titles and citation identifiers"""
     return "\n\n".join(
         f"[{index}] {source.source_type}; {source.title or 'untitled'}; "
-        f"{source.doi or source.url or source.document_id}\n{source.content}"
+        f"{source.doi or source.url or source.document_id or source.chunk_id}\n{source.content}"
         for index, source in enumerate(sources, 1)
     ) or "no relevant evidence was retrieved"

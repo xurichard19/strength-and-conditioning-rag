@@ -4,6 +4,7 @@ from chromadb.errors import NotFoundError
 from app.config import get_settings
 from app.db.vector.ingestion import load_system_docs, split_docs
 from tqdm import tqdm
+from uuid import uuid4
 
 class VectorDB:
 
@@ -52,7 +53,7 @@ class VectorDB:
         for batch in tqdm(range(0, len(docs), batch_size), desc="submitting documents"):
             end = min(batch + batch_size, len(docs))
             system_db.add(
-                ids=[str(i) for i in range(batch + 1000, end + 1000)],
+                ids=[str(uuid4()) for _ in range(batch, end)],
                 documents=[doc.page_content for doc in docs[batch:end]],
                 metadatas=[doc.metadata for doc in docs[batch:end]]
             )
