@@ -90,6 +90,7 @@ def load_system_docs_from_gcs(bucket: str, prefix: str) -> list[Document]:
             file_docs = load_single_doc(tmp_path)
             if not any(doc.page_content.strip() for doc in file_docs):
                 raise ValueError("document contains no readable text")
+
             metadata = {field: metadata_text((blob.metadata or {}).get(field)) or "none"
                 for field in RESEARCH_METADATA_FIELDS}
             for doc in file_docs:
@@ -180,6 +181,7 @@ def split_docs(docs: list[Document], size=1500, overlap=250, min_len=150):
 
     merged = []
     merge_next = False
+
     for chunk in tqdm(chunks, desc="merging documents"):
         clean_doc(chunk)
         text = chunk.page_content.strip()

@@ -85,6 +85,7 @@ def create_sports_workout(user_id: str | UUID, values: SportsWorkoutInput, acces
         if existing is not None and existing.model_dump(include=set(SportsWorkoutInput.model_fields)) == values.model_dump():
             return existing
         raise SupabaseDataError("sports workout id already used", status_code=409) from exc
+
     if not rows:
         raise SupabaseDataError("sports workout write returned no rows")
     return SportsWorkoutRecord.model_validate(rows[0])
@@ -115,6 +116,7 @@ def update_sports_workout(
     payload = values.model_dump(mode="json", exclude_unset=True)
     if not payload:
         raise ValueError("sports workout update is empty")
+
     rows = update_rows("sports_workouts", payload, [("id", f"eq.{identifier(workout_id)}"),
         ("user_id", f"eq.{identifier(user_id)}")], access_token)
     return SportsWorkoutRecord.model_validate(rows[0]) if rows else None
@@ -145,6 +147,7 @@ def set_sports_workout_status(
 
     if status not in ("planned", "completed", "cancelled"):
         raise ValueError("invalid sports workout status")
+
     now = datetime.now(UTC).isoformat()
     rows = update_rows("sports_workouts", {"status": status,
         "completed_at": now if status == "completed" else None,

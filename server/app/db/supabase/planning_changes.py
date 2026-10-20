@@ -44,6 +44,7 @@ def get_change_preview(user_id: str | UUID, change_id: UUID, access_token: str) 
         change = get_planning_change(user_id, change_id, access_token)
         if change is None:
             return None
+
         links = get_change_workouts(user_id, change_id, access_token)
         versions = get_workouts_by_ids(user_id, [link.workout_id for link in links], access_token)
         before_ids = {link.workout_id for link in links if link.side == "before"}

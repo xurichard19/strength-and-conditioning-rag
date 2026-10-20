@@ -18,6 +18,7 @@ async def prepare_node(state: PlanState) -> dict:
     remaining = state["research_deadline"] - monotonic()
     if remaining <= 0:
         raise TimeoutError("planning research budget exhausted")
+
     async with asyncio.timeout(min(DECISION_TIMEOUT_SECONDS, remaining)):
         search = SearchQuery.model_validate(await decision_model(SearchQuery).ainvoke([
             SystemMessage(content=PREPARE_PROMPT), HumanMessage(content=state["context_packet"]),

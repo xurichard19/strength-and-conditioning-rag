@@ -66,6 +66,7 @@ def request_adjustment(payload: AdjustmentRequest, user: AuthUser = Depends(requ
     with database_errors("planning.request_adjustment"):
         job = replan_jobs.enqueue_adjustment(user.id, payload.deduplication_key,
             payload.reason, payload.effective_from, payload.effective_through)
+
     dispatch_after_commit(job)
     return JobResponse.model_validate(job)
 
@@ -127,6 +128,7 @@ def retry_job(job_id: UUID, user: AuthUser = Depends(require_user)) -> JobRespon
 
     with database_errors("planning.retry_job"):
         job = replan_jobs.retry_replan_job(user.id, job_id)
+
     dispatch_after_commit(job)
     return JobResponse.model_validate(job)
 

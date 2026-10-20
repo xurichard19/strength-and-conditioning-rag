@@ -34,6 +34,7 @@ async def research_collection():
     """initialize async chroma client, lock connection window then cache collection"""
     global _collection
     if _collection: return _collection
+
     async with _collection_lock:
         if _collection is None:
             settings = get_settings()
@@ -41,6 +42,7 @@ async def research_collection():
                 headers={"x-chroma-token": settings.chroma_api_key},
                 tenant=settings.chroma_tenant, database=settings.chroma_database)
             _collection = await client.get_collection(settings.system_collection_name)
+
     return _collection
 
 
@@ -82,6 +84,7 @@ async def search_research_docs(query: str, top_k: int) -> list[Source]:
     embeddings = await asyncio.to_thread(_research_embeddings, [query])
     result = await collection.query(query_embeddings=embeddings, n_results=top_k,
         include=["documents", "metadatas"])
+
     return [_research_source(identifier, text, metadata)
         for identifier, text, metadata in zip(result["ids"][0], result["documents"][0], result["metadatas"][0])
         if text and text.strip()]
@@ -99,18 +102,21 @@ async def hybrid_search_research_docs(query: str, top_k: int = 10) -> list[Sourc
     collection = await research_collection()
     index = collection.schema.keys["sparse_embedding"].sparse_vector.sparse_vector_index
     sparse_embeddings = index.config.embedding_function
+
     dense, sparse = await asyncio.gather(
         asyncio.to_thread(_research_embeddings, [query]),
         asyncio.to_thread(sparse_embeddings.embed_query, [query]),
     )
     if not sparse[0].indices:
         return []
+
     rank = Rrf(ranks=[
         Knn(query=dense[0], return_rank=True, limit=max(75, top_k), default=1000),
         Knn(query=sparse[0], key="sparse_embedding", return_rank=True, limit=max(75, top_k), default=1000),
     ], weights=[2.0, 1.0], k=60)
     result = await collection.search(Search().rank(rank).limit(top_k).select(
         K.DOCUMENT, K.SCORE, *RESEARCH_METADATA_FIELDS, "source", "page"))
+
     return [_research_source(row["id"], row["document"], row.get("metadata"), row.get("score"))
         for row in result.rows()[0] if row.get("document") and row["document"].strip()]
 
@@ -126,6 +132,7 @@ async def rerank_research_results(query: str, research_documents: list[str], top
     """
     if not research_documents:
         return []
+
     result = await rerank_client().rerank(model="rerank-v4.0-fast", query=query,
         documents=research_documents, top_n=min(top_n, len(research_documents)), request_options={"max_retries": 0})
     return [research_documents[item.index] for item in result.results]
@@ -143,6 +150,7 @@ async def web_search(query: str, top_k: int) -> list[Source]:
     result = await web_search_client(top_k).ainvoke({"query": query})
     if not isinstance(result, dict) or "results" not in result:
         raise ValueError("web search returned no result envelope")
+
     sources = []
     for item in result["results"]:
         text = item.get("content") or ""
@@ -150,6 +158,7 @@ async def web_search(query: str, top_k: int) -> list[Source]:
             continue
         sources.append(Source(source_type="web", url=item["url"], title=str(item.get("title") or "web source"),
             content=text.strip()))
+
     return sources
 
 
@@ -179,8 +188,10 @@ async def search_sources(
     """
     if not query.strip() or top_k < 1:
         raise ValueError("invalid search query or result limit")
+
     selected = SEARCH_PROVIDERS[providers]
     responses = await asyncio.gather(*(_retrieve(provider, query, top_k) for provider in selected))
+
     return SearchResponse(results=merge_sources([], [source for response in responses for source in response.results]),
         warnings=[note for response in responses for note in response.warnings])
 

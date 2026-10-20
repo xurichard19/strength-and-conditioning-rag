@@ -81,12 +81,14 @@ def get_replan_context(claim: ClaimedReplanJob, history_days: int = 30) -> Repla
     today = claim.job.claimed_on
     if today is None:
         raise ValueError("planning context requires a frozen claim date")
+
     schedule = get_planning_schedule(user_id, None)
     if schedule is None or schedule.revision != claim.job.expected_revision:
         raise SupabaseDataError("planning inputs changed; reload the job", status_code=409)
     profile = get_profile(user_id, None)
     if profile is None:
         raise SupabaseDataError("profile not found", status_code=404)
+
     context = ReplanContext(
         schedule=schedule,
         profile=profile,
@@ -98,6 +100,7 @@ def get_replan_context(claim: ClaimedReplanJob, history_days: int = 30) -> Repla
                 today - timedelta(days=3), claim.horizon_end + timedelta(days=3), None),
         ),
     )
+
     current = get_planning_schedule(user_id, None)
     if current is None or current.revision != schedule.revision:
         raise SupabaseDataError("planning inputs changed during context read", status_code=409)

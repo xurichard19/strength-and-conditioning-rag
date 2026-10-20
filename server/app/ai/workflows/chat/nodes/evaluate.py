@@ -31,6 +31,7 @@ async def evaluate_node(state: ChatState) -> dict:
     time_warning = "research time budget reached; evidence may be incomplete"
     if monotonic() + DECISION_TIMEOUT_SECONDS + SEARCH_TIMEOUT_SECONDS > deadline:
         return {"retry_search": False, "warnings": [*state.get("warnings", []), time_warning]}
+
     try:
         review = EvidenceReview.model_validate(await decision_model(EvidenceReview).ainvoke([
             SystemMessage(content=EVALUATE_PROMPT),
@@ -42,16 +43,19 @@ async def evaluate_node(state: ChatState) -> dict:
     except Exception as exc:
         logger.warning("evidence evaluation failed error_type=%s", type(exc).__name__)
         return {"retry_search": False, "warnings": [*state.get("warnings", []), "evidence adequacy could not be checked"]}
+
     next_query = review.next_search
     key = search_key(next_query)
     attempted = {(search_key(query), provider) for query in state["searches"] for provider in SEARCH_PROVIDERS[query.providers]}
     providers = [provider for provider in SEARCH_PROVIDERS[next_query.providers] if (key, provider) not in attempted]
     stop = review.sufficient or not review.gap.strip() or not key or not providers
     out_of_time = monotonic() + SEARCH_TIMEOUT_SECONDS > deadline
+
     if stop or out_of_time:
         warnings = state.get("warnings", [])
         if not review.sufficient:
             warnings = [*warnings, time_warning if out_of_time else review.gap or "no useful further search identified"]
         return {"retry_search": False, "warnings": warnings}
+
     next_query = next_query.model_copy(update={"providers": "both" if len(providers) == 2 else providers[0]})
     return {"retry_search": True, "search": next_query, "retries_left": state["retries_left"] - 1}

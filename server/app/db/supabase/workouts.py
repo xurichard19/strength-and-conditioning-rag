@@ -78,11 +78,13 @@ def get_workouts_by_ids(user_id: str | UUID, workout_ids: list[UUID], access_tok
 
     ids = list(dict.fromkeys(identifier(value) for value in workout_ids))
     rows = []
+
     for start in range(0, len(ids), 50):
         batch = ids[start:start + 50]
         rows.extend(all_rows("workouts", [("select", WORKOUT_COLUMNS),
             ("user_id", f"eq.{identifier(user_id)}"), ("id", f"in.({','.join(batch)})"),
             *NESTED_ORDER, ("order", "scheduled_date.asc,id.asc")], access_token, max_rows=len(batch)))
+
     return sorted((WorkoutRecord.model_validate(row) for row in rows), key=lambda row: (row.scheduled_date, row.id))
 
 
