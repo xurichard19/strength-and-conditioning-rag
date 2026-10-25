@@ -8,19 +8,18 @@ from typing import Literal
 
 import chromadb
 from chromadb import K, Knn, Rrf, Search
-from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 import cohere
 from langchain_tavily import TavilySearch
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.contracts import RESEARCH_METADATA_FIELDS, Source, metadata_text
+from app.db.vector.embeddings import MODEL_NAME, embed_research_queries as _research_embeddings
 
 
 logger = logging.getLogger(__name__)
 _collection = None
 _collection_lock = asyncio.Lock()
-_research_embeddings = DefaultEmbeddingFunction()
 SEARCH_PROVIDERS = {"none": (), "research": ("research",), "web": ("web",), "both": ("research", "web")}
 SEARCH_TIMEOUT_SECONDS = 25
 
@@ -41,7 +40,10 @@ async def research_collection():
             client = await chromadb.AsyncHttpClient(host="api.trychroma.com", port=443, ssl=True,
                 headers={"x-chroma-token": settings.chroma_api_key},
                 tenant=settings.chroma_tenant, database=settings.chroma_database)
-            _collection = await client.get_collection(settings.system_collection_name)
+            collection = await client.get_collection(settings.system_collection_name)
+            if (collection.metadata or {}).get("embedding_model") != MODEL_NAME:
+                raise RuntimeError("research collection must be reindexed with the configured embedding model")
+            _collection = collection
 
     return _collection
 
@@ -94,6 +96,8 @@ async def hybrid_search_research_docs(query: str, top_k: int = 10) -> list[Sourc
     """
     hybrid research retrieval using rrf with 2:1 dense-to-sparse rank weights
 
+    use dense ranking alone when the query has no keyword tokens
+
     - **query**: research question
     - **top_k**: result count
     - **returns**: research sources in fused rank order, retaining chunk ids,
@@ -107,13 +111,11 @@ async def hybrid_search_research_docs(query: str, top_k: int = 10) -> list[Sourc
         asyncio.to_thread(_research_embeddings, [query]),
         asyncio.to_thread(sparse_embeddings.embed_query, [query]),
     )
-    if not sparse[0].indices:
-        return []
-
-    rank = Rrf(ranks=[
-        Knn(query=dense[0], return_rank=True, limit=max(75, top_k), default=1000),
-        Knn(query=sparse[0], key="sparse_embedding", return_rank=True, limit=max(75, top_k), default=1000),
-    ], weights=[2.0, 1.0], k=60)
+    rank = Knn(query=dense[0], return_rank=True, limit=max(75, top_k), default=1000)
+    if sparse[0].indices:
+        rank = Rrf(ranks=[rank,
+            Knn(query=sparse[0], key="sparse_embedding", return_rank=True, limit=max(75, top_k), default=1000),
+        ], weights=[2.0, 1.0], k=60)
     result = await collection.search(Search().rank(rank).limit(top_k).select(
         K.DOCUMENT, K.SCORE, *RESEARCH_METADATA_FIELDS, "source", "page"))
 

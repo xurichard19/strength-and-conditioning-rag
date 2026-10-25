@@ -1,9 +1,10 @@
 from collections import defaultdict
+from datetime import timedelta
 from itertools import chain, islice
 from math import isfinite
 
 from app.contracts import (
-    ClaimedReplanJob, PlannedExercise, PlannedExerciseSet, PlannedWorkout, PlanningProposal,
+    ClaimedReplanJob, PlannedExercise, PlannedExerciseSet, PlannedWorkout, PlanningDayDecision, PlanningProposal,
     ReplanContext, WorkoutRecord,
 )
 
@@ -13,6 +14,8 @@ EXERCISE_FIELDS = tuple(field for field in PlannedExercise.model_fields if field
 RESULT_FIELDS = ("actual_reps", "actual_weight", "actual_distance", "actual_duration_seconds",
     "actual_rpe", "result_notes", "completed_at")
 MAX_PRESCRIPTION_ERRORS = 20
+UNIT_TARGETS = (("planned_weight", "weight_unit"), ("planned_distance", "distance_unit"))
+WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 
 def workout_has_results(workout: WorkoutRecord) -> bool:
@@ -33,6 +36,23 @@ def _workout_key(workout: PlannedWorkout | WorkoutRecord) -> tuple:
         for exercise in exercises))
 
 
+def training_weekdays(context: ReplanContext) -> set[int] | None:
+    """read explicit mobile availability; absent or unrecognized answers stay unspecified"""
+    days = context.onboarding.answers.get("trainingDays") if context.onboarding else None
+    return ({WEEKDAYS.index(day) for day in days} if isinstance(days, list) and days
+        and all(isinstance(day, str) and day in WEEKDAYS for day in days) else None)
+
+
+def _normalize_units(workout: PlannedWorkout) -> PlannedWorkout:
+    """clear unused units on copies without changing any prescribed targets"""
+    exercises = []
+    for exercise in workout.exercises:
+        unused = {unit: None for target, unit in UNIT_TARGETS if getattr(exercise, unit) is not None
+            and not any(getattr(item, target) is not None for item in exercise.sets)}
+        exercises.append(exercise.model_copy(update=unused) if unused else exercise)
+    return workout.model_copy(update={"exercises": exercises})
+
+
 def _prescription_errors(workout: PlannedWorkout, path: str):
     """yield actionable, indexed issues without copying athlete text into feedback"""
     if not workout.name.strip():
@@ -46,7 +66,7 @@ def _prescription_errors(workout: PlannedWorkout, path: str):
             yield f"{exercise_path}.name: require a nonblank exercise name"
         if not exercise.sets:
             yield f"{exercise_path}.sets: require at least one set"
-        for target, unit in (("planned_weight", "weight_unit"), ("planned_distance", "distance_unit")):
+        for target, unit in UNIT_TARGETS:
             if any(getattr(item, target) is not None for item in exercise.sets) != (getattr(exercise, unit) is not None):
                 yield f"{exercise_path}.{unit}: set a matching unit when {target} is present; otherwise use null"
 
@@ -69,7 +89,7 @@ def validate_proposal(claim: ClaimedReplanJob, context: ReplanContext, proposal:
 
     - **claim**: server-owned job revision and allowed dates
     - **context**: matching athlete inputs and current calendar
-    - **proposal**: proposed removals, additions and one rest decision per editable date
+    - **proposal**: proposed removals and additions; empty day decisions are derived from the resulting calendar
     - **returns**: normalized proposal ready for atomic publication; raises valueerror on invalid changes
     """
     owner = claim.job.user_id
@@ -114,6 +134,7 @@ def validate_proposal(claim: ClaimedReplanJob, context: ReplanContext, proposal:
         if not claim.effective_from <= workout.scheduled_date <= claim.effective_through:
             raise ValueError("new workouts must stay within the allowed window")
 
+    proposal = proposal.model_copy(update={"workouts": [_normalize_units(workout) for workout in proposal.workouts]})
     errors = list(islice(chain.from_iterable(_prescription_errors(workout, f"workouts[{index}]")
         for index, workout in enumerate(proposal.workouts)), MAX_PRESCRIPTION_ERRORS + 1))
     if errors:
@@ -131,23 +152,29 @@ def validate_proposal(claim: ClaimedReplanJob, context: ReplanContext, proposal:
             additions.append(workout)
 
     kept = [workout for workout in workouts if workout.id not in before]
+    allowed_days = training_weekdays(context)
     seen = {_workout_key(workout) for workout in kept}
     for workout in additions:
+        if allowed_days is not None and workout.scheduled_date.weekday() not in allowed_days:
+            raise ValueError(f"new workout on {workout.scheduled_date} must use an available training day "
+                f"({', '.join(WEEKDAYS[index] for index in sorted(allowed_days))})")
         key = _workout_key(workout)
         if key in seen:
             raise ValueError("new workouts must not duplicate another session on the same date")
         seen.add(key)
 
-    decisions = {item.scheduled_date: item.rest for item in proposal.day_decisions}
+    occupied = {workout.scheduled_date for workout in chain(kept, additions) if workout.exercises}
+    occupied.update(item.scheduled_date for item in sports if item.status != "cancelled")
     days = max(0, (claim.effective_through - claim.effective_from).days + 1)
-    if (len(decisions) != len(proposal.day_decisions) or len(decisions) != days
+    day_decisions = proposal.day_decisions or [PlanningDayDecision(scheduled_date=day, rest=day not in occupied)
+        for day in (claim.effective_from + timedelta(days=index) for index in range(days))]
+    decisions = {item.scheduled_date: item.rest for item in day_decisions}
+    if (len(decisions) != len(day_decisions) or len(decisions) != days
             or any(not claim.effective_from <= day <= claim.effective_through for day in decisions)):
         raise ValueError("each date in the allowed window requires exactly one day decision")
 
-    occupied = {workout.scheduled_date for workout in chain(kept, additions) if workout.exercises}
-    occupied.update(item.scheduled_date for item in sports if item.status != "cancelled")
     if any(rest == (day in occupied) for day, rest in decisions.items()):
         raise ValueError("rest decisions must match the resulting workouts and sports sessions")
 
     return proposal.model_copy(update={"before_ids": [value for value in proposal.before_ids if value in before],
-        "workouts": additions})
+        "workouts": additions, "day_decisions": day_decisions})

@@ -1,10 +1,11 @@
 import json
+from datetime import timedelta
 from itertools import chain
 
 from langgraph.runtime import Runtime
 
 from app.ai.workflows.plan.state import MAX_CONTEXT_CHARS, PlanState, WorkflowContext
-from app.services.planning import workout_has_results
+from app.services.planning import training_weekdays, workout_has_results
 
 
 def compact_record(record, *, keep_id: bool = False) -> dict:
@@ -44,10 +45,14 @@ async def context_node(state: PlanState, runtime: Runtime[WorkflowContext]) -> d
 
     task = "adjustment" if claim.job.kind == "adjustment" else (
         "first_fill" if data.schedule.horizon_end is None else "extension")
+    weekdays = training_weekdays(data)
+    workout_dates = [claim.effective_from + timedelta(days=index)
+        for index in range(max(0, (claim.effective_through - claim.effective_from).days + 1))]
     packet = json.dumps({
         "task": {"kind": task, "reason": claim.job.reason,
             "effective_from": str(claim.effective_from), "effective_through": str(claim.effective_through),
-            "horizon_end": str(claim.horizon_end), "claimed_on": str(claim.job.claimed_on)},
+            "horizon_end": str(claim.horizon_end), "claimed_on": str(claim.job.claimed_on),
+            "workout_dates": [str(day) for day in workout_dates if weekdays is None or day.weekday() in weekdays]},
         "timezone": data.profile.timezone,
         "onboarding": data.onboarding.answers if data.onboarding else None,
         "editable_workout_ids": [str(workout.id) for workout in data.calendar.workouts

@@ -12,6 +12,7 @@ from chromadb.api.models.Collection import Collection
 from chromadb.api.types import SparseVector
 from chromadb.types import Collection as CollectionModel
 from langchain_core.documents import Document
+from tokenizers import Tokenizer, models, normalizers, pre_tokenizers, processors
 
 try:
     from google.cloud import storage
@@ -23,6 +24,39 @@ with patch.object(google.cloud, "storage", storage, create=True):
     from app.db.vector import ingestion, vector_store
 
 
+def chunk_tokenizer():
+    """small offline wordpiece tokenizer with the same special-token budget"""
+    tokenizer = Tokenizer(models.WordPiece(
+        vocab={"[UNK]": 0, "[CLS]": 1, "[SEP]": 2, "training": 3,
+            "resistance": 4, "a": 5, "##a": 6, "tailmarker": 7},
+        unk_token="[UNK]", max_input_chars_per_word=1000))
+    tokenizer.normalizer = normalizers.BertNormalizer(lowercase=True)
+    tokenizer.pre_tokenizer = pre_tokenizers.BertPreTokenizer()
+    tokenizer.post_processor = processors.TemplateProcessing(
+        single="[CLS] $A [SEP]", special_tokens=[("[CLS]", 1), ("[SEP]", 2)])
+    return tokenizer
+
+
+class ChunkTokenizerTests(unittest.TestCase):
+    def test_counter_is_cached_and_does_not_inherit_embedding_truncation_or_padding(self):
+        tokenizer = chunk_tokenizer()
+        tokenizer.enable_truncation(max_length=512)
+        tokenizer.enable_padding(pad_id=0, pad_token="[UNK]", length=512)
+        embeddings = SimpleNamespace(tokenizer=SimpleNamespace(backend_tokenizer=tokenizer))
+        ingestion._chunk_tokenizer.cache_clear()
+        self.addCleanup(ingestion._chunk_tokenizer.cache_clear)
+
+        with patch.object(ingestion, "research_model", return_value=embeddings) as model:
+            counter = ingestion._chunk_tokenizer()
+            self.assertIs(ingestion._chunk_tokenizer(), counter)
+
+        model.assert_called_once_with()
+        self.assertEqual(len(counter.encode("training " * 600, add_special_tokens=False).ids), 600)
+        self.assertEqual(len(counter.encode("training").ids), 3)
+        self.assertEqual(len(tokenizer.encode("training").ids), 512)
+        self.assertIsNotNone(tokenizer.truncation)
+
+
 class VectorIndexingTests(unittest.TestCase):
     def setUp(self):
         self.db = vector_store.VectorDB.__new__(vector_store.VectorDB)
@@ -31,6 +65,8 @@ class VectorIndexingTests(unittest.TestCase):
         self.reset = self.enterContext(patch.object(self.db, "reset_system_docs", return_value=self.collection))
         self.load = self.enterContext(patch.object(vector_store, "load_system_docs"))
         self.split = self.enterContext(patch.object(vector_store, "split_docs"))
+        self.embed = self.enterContext(patch.object(vector_store, "embed_research_documents",
+            side_effect=lambda texts: [[.1, .2] for _ in texts]))
         self.enterContext(patch.object(vector_store, "tqdm", side_effect=lambda values, **kwargs: values))
 
     def test_source_loading_or_splitting_failure_preserves_existing_collection(self):
@@ -81,6 +117,8 @@ class VectorIndexingTests(unittest.TestCase):
         self.assertEqual([UUID(identifier).version for identifier in identifiers], [4] * len(chunks))
         self.assertNotIn(metadata["document_id"], identifiers)
         self.assertEqual(self.collection.add.call_args.kwargs["documents"], ["chunk 2"])
+        self.assertEqual(self.collection.add.call_args.kwargs["embeddings"], [[.1, .2]])
+        self.assertEqual([call.args[0] for call in self.embed.call_args_list], [["chunk 0", "chunk 1"], ["chunk 2"]])
         self.assertEqual([item for call in self.collection.add.call_args_list for item in call.kwargs["metadatas"]],
             [metadata] * 3)
 
@@ -91,6 +129,8 @@ class VectorIndexingTests(unittest.TestCase):
         self.db.client.delete_collection.assert_called_once_with("research")
         args = self.db.client.create_collection.call_args
         self.assertEqual(args.args, ("research",))
+        self.assertIsNone(args.kwargs["embedding_function"])
+        self.assertEqual(args.kwargs["metadata"]["embedding_model"], "BAAI/bge-small-en-v1.5")
         schema = args.kwargs["schema"]
         index = schema.keys["sparse_embedding"].sparse_vector.sparse_vector_index
         self.assertTrue(index.enabled)
@@ -118,6 +158,89 @@ class VectorIndexingTests(unittest.TestCase):
 
 
 class VectorIngestionTests(unittest.TestCase):
+    def setUp(self):
+        self.tokenizer = chunk_tokenizer()
+        self.tokenizer_factory = self.enterContext(patch.object(ingestion, "_chunk_tokenizer", return_value=self.tokenizer))
+        self.enterContext(patch.object(ingestion, "tqdm", side_effect=lambda values, **kwargs: values))
+
+    def test_default_chunks_fit_complete_embedding_input_and_retain_the_tail(self):
+        text = "training resistance " * 450 + "tailmarker"
+        metadata = {"source": "paper.pdf", "page": 4, "document_id": str(uuid4()), "title": "training"}
+        chunks = ingestion.split_docs([Document(page_content=text, metadata=metadata)])
+
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(chunks[-1].page_content.endswith("tailmarker"))
+        for chunk in chunks:
+            self.assertLessEqual(len(self.tokenizer.encode(chunk.page_content).ids), 512)
+            self.assertEqual(chunk.metadata, metadata)
+            self.assertIn(chunk.page_content, text)
+
+    def test_short_chunk_merging_never_exceeds_the_token_budget(self):
+        cases = ((95, 10, [95, 10]), (5, 100, [5, 100]), (5, 95, [100]))
+        for first, second, expected in cases:
+            with self.subTest(first=first, second=second):
+                text = ("training " * first).strip() + "\n\n" + ("resistance " * second).strip()
+                chunks = ingestion.split_docs([Document(page_content=text, metadata={"source": "paper.pdf", "page": 1})],
+                    size=100, overlap=0, min_len=30)
+                self.assertEqual([len(self.tokenizer.encode(chunk.page_content, add_special_tokens=False).ids)
+                    for chunk in chunks], expected)
+                self.assertEqual(" ".join(chunk.page_content for chunk in chunks), " ".join(text.split()))
+
+    def test_skipped_bibliography_does_not_join_passages_across_the_gap(self):
+        metadata = {"source": "paper.pdf", "page": 1}
+        bibliography = ("1. Smith J. Strength. 2020; 2. Jones K. Recovery. 2021; "
+            "3. Brown L. Endurance. 2022.")
+        docs = [Document(page_content=text, metadata=metadata)
+            for text in ("training resistance", bibliography, "resistance training")]
+
+        chunks = ingestion.split_docs(docs)
+
+        self.assertEqual([chunk.page_content for chunk in chunks], ["training resistance", "resistance training"])
+        self.assertTrue(all(chunk.metadata == metadata for chunk in chunks))
+
+    def test_bibliography_filter_keeps_mixed_sections_and_citation_heavy_prose(self):
+        texts = [
+            "1. Smith J. Strength. 2020; 2. Jones K. Recovery. 2021; 3. Brown L. Endurance. 2022. "
+                "Conﬂict of Interest: the authors report none.",
+            "Training studies (2020, 2021, 2022) support recovery between sessions. "
+                "See doi:10.1234/a and doi:10.1234/b for methods.",
+            "Smith J, Jones K, Brown L. Training review. doi:10.1234/a Published 2022. "
+                "Received 2021. Accepted 2022. Citation doi:10.1234/a",
+            "Amrullah, R., et al. 2022. Outcomes: 1. Core strength. 2. Dynamic balance. "
+                "Sato, K., Mokha, M. 2009. Outcomes: 1. Running. 2. Stability. "
+                "Liu Q. 2023. Outcomes: 1. Endurance.",
+            "BW DB, RT DB, BB BW, training studies 2018 2015 2011; "
+                "3(4):10–12; 4(5):8–10. Two weekly sessions used squats and rows with dumbbells.",
+        ]
+        for text in texts:
+            with self.subTest(text=text):
+                chunks = ingestion.split_docs([Document(page_content=text)])
+                self.assertEqual([chunk.page_content for chunk in chunks], [text])
+
+    def test_pdf_control_character_cleanup_is_counted_before_splitting(self):
+        text = "training\x1fresistance " * 400
+        chunks = ingestion.split_docs([Document(page_content=text)])
+
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all("\x1f" not in chunk.page_content for chunk in chunks))
+        self.assertTrue(all(len(self.tokenizer.encode(chunk.page_content).ids) <= 512 for chunk in chunks))
+        self.assertTrue(chunks[-1].page_content.endswith("training resistance"))
+
+    def test_wordpiece_splits_preserve_text_without_decoding_tokens(self):
+        text = "a" * 600
+        chunks = ingestion.split_docs([Document(page_content=text, metadata={"source": "paper.pdf", "page": 1})],
+            overlap=0)
+        self.assertGreater(len(chunks), 1)
+        self.assertEqual("".join(chunk.page_content for chunk in chunks), text)
+        self.assertTrue(all(len(self.tokenizer.encode(chunk.page_content).ids) <= 512 for chunk in chunks))
+
+    def test_invalid_token_budgets_fail_before_loading_the_model(self):
+        for values in ({"size": 511}, {"size": 0}, {"overlap": 510}, {"overlap": -1},
+                {"min_len": -1}, {"min_len": 511}):
+            with self.subTest(values=values), self.assertRaisesRegex(ValueError, "chunk size"):
+                ingestion.split_docs([], **values)
+        self.tokenizer_factory.assert_not_called()
+
     def test_gcs_fields_override_embedded_pdf_metadata_and_survive_every_chunk(self):
         identifier = "489cd9ad-7d53-4b34-8c56-6953edb2885c"
         metadata = {"document_id": identifier, "title": "Training plans", "author": "Bucket author",
@@ -139,7 +262,7 @@ class VectorIngestionTests(unittest.TestCase):
             with patch.object(ingestion.storage, "Client", return_value=client, create=True), \
                     patch.object(ingestion, "tqdm", side_effect=lambda values, **kwargs: values):
                 pages = ingestion.load_system_docs_from_gcs("research", "/raw/system/")
-                chunks = ingestion.split_docs(pages)
+                chunks = ingestion.split_docs(pages, size=100, overlap=10, min_len=30)
         expected = {**metadata, "doi": "none", "source": f"gs://research/{blob.name}"}
         self.assertEqual([page.metadata for page in pages], [{**expected, "page": 1}, {**expected, "page": 2}])
         self.assertGreater(len(chunks), len(pages))
