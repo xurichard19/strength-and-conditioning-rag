@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewInstance } from 'react-native';
 
 import { AppText } from '@/components/ui';
 import { radius } from '@/design/tokens';
@@ -13,7 +13,7 @@ const offsetFor = (minutes: number) => SESSION_DURATIONS.indexOf(minutes) * ROW_
 
 export function DurationWheel({ minutes, onChange }: DurationWheelProps) {
   const { colors } = useApp();
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
   const selected = normalizeSessionMinutes(minutes);
   const latest = useRef(selected);
   const [initialOffset] = useState(() => ({ x: 0, y: offsetFor(selected) }));

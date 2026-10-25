@@ -54,6 +54,7 @@ class PlanState(TypedDict):
     sources: list[Source]
     warnings: list[str]
     retry_search: NotRequired[bool]
+    evidence_gap: NotRequired[str]
     proposal: NotRequired[PlanningProposal | None]
     validation_error: NotRequired[str]
     retry_generation: NotRequired[bool]

@@ -116,6 +116,29 @@ class PlanningValidationTests(unittest.TestCase):
         self.assertEqual(submitted.before_ids, [WORKOUT_ID])
         self.assertEqual(len(submitted.workouts), 1)
 
+    def test_unused_units_are_cleared_without_mutation_or_unnecessary_replacement(self):
+        for target, unit, value in (("planned_weight", "weight_unit", "kg"),
+                ("planned_distance", "distance_unit", "km")):
+            with self.subTest(unit=unit):
+                planned = prescription()
+                setattr(planned.exercises[0], unit, None)
+                for item in planned.exercises[0].sets:
+                    setattr(item, target, None)
+                current = record(planned)
+                setattr(planned.exercises[0], unit, value)
+                submitted = proposal([planned], active_days=[DAY])
+                original = submitted.model_dump()
+                result = validate_proposal(*inputs(), submitted)
+                self.assertIsNone(getattr(result.workouts[0].exercises[0], unit))
+                expected = submitted.model_dump()
+                expected["workouts"][0]["exercises"][0][unit] = None
+                self.assertEqual(result.model_dump(), expected)
+                submitted.before_ids = [WORKOUT_ID]
+                unchanged = validate_proposal(*inputs(workouts=[current]), submitted)
+                self.assertEqual((unchanged.before_ids, unchanged.workouts), ([], []))
+                submitted.before_ids = []
+                self.assertEqual(submitted.model_dump(), original)
+
     def test_normalization_respects_stored_exercise_and_set_order(self):
         planned = prescription()
         planned.exercises[0].sets.append(PlannedExerciseSet(planned_reps=8, planned_weight=30))
@@ -136,6 +159,41 @@ class PlanningValidationTests(unittest.TestCase):
         self.assertEqual(result.workouts[0].exercises[0].sets[0].planned_reps, 6)
         deleted = validate_proposal(claim, context, proposal(before=[WORKOUT_ID]))
         self.assertEqual(deleted.before_ids, [WORKOUT_ID])
+
+    def test_training_days_only_fence_actual_additions_with_valid_preferences(self):
+        for answers in (None, {}, {"trainingDays": None}, {"trainingDays": []}, {"trainingDays": "Mon"},
+                {"trainingDays": ["Monday"]}, {"trainingDays": ["Mon", 2]}, {"trainingDays": ["Mon", []]},
+                {"trainingDays": ["Tue"]}, {"trainingDays": ["Mon", "Thu"]}):
+            with self.subTest(answers=answers):
+                claim, context = inputs()
+                if answers is not None:
+                    context.onboarding = OnboardingResponseRecord(user_id=OWNER, answers=answers,
+                        created_at=NOW, updated_at=NOW)
+                submitted = proposal([prescription()], active_days=[DAY])
+                if answers == {"trainingDays": ["Mon", "Thu"]}:
+                    with self.assertRaisesRegex(ValueError, f"{DAY}.*Mon, Thu"):
+                        validate_proposal(claim, context, submitted)
+                else:
+                    self.assertEqual(validate_proposal(claim, context, submitted), submitted)
+
+        for status in ("planned", "completed"):
+            with self.subTest(preserved=status):
+                current = record()
+                current.status = status
+                claim, context = inputs(workouts=[current])
+                context.onboarding = OnboardingResponseRecord(user_id=OWNER, answers={"trainingDays": ["Mon"]},
+                    created_at=NOW, updated_at=NOW)
+                self.assertEqual(validate_proposal(claim, context, proposal(active_days=[DAY])).workouts, [])
+                if status == "planned":
+                    unchanged = validate_proposal(claim, context, proposal([prescription()], [WORKOUT_ID], [DAY]))
+                    self.assertEqual((unchanged.before_ids, unchanged.workouts), ([], []))
+                    changed = proposal([prescription(name="new session")], [WORKOUT_ID], [DAY])
+                    with self.assertRaisesRegex(ValueError, "available training day"):
+                        validate_proposal(claim, context, changed)
+                context.calendar.workouts = []
+                context.calendar.sports_workouts = [SportsWorkoutRecord(id=UUID(int=6), user_id=OWNER,
+                    sport="boxing", scheduled_date=DAY, created_at=NOW, updated_at=NOW)]
+                self.assertEqual(validate_proposal(claim, context, proposal(active_days=[DAY])).workouts, [])
 
     def test_edit_ids_and_dates_must_be_current_unique_and_in_scope(self):
         for ids in ([UUID(int=999)], [WORKOUT_ID, WORKOUT_ID]):
@@ -175,6 +233,27 @@ class PlanningValidationTests(unittest.TestCase):
                 submitted = proposal()
                 submitted.day_decisions = [PlanningDayDecision(scheduled_date=day, rest=True) for day in days]
                 validate_proposal(*inputs(), submitted)
+
+    def test_empty_day_decisions_derive_exact_coverage_without_mutating_inputs(self):
+        protected = record()
+        protected.status = "completed"
+        removed = record(prescription(DAY + timedelta(days=1)), UUID(int=8))
+        unchanged = prescription(DAY + timedelta(days=2))
+        added = prescription(DAY + timedelta(days=3))
+        sports = [SportsWorkoutRecord(id=UUID(int=6 + index), user_id=OWNER, sport="boxing",
+            scheduled_date=DAY + timedelta(days=4 + index), status=status, created_at=NOW, updated_at=NOW)
+            for index, status in enumerate(("planned", "cancelled"))]
+        claim, context = inputs(workouts=[protected, removed, record(unchanged, UUID(int=9)),
+            record(prescription(DAY - timedelta(days=1)), UUID(int=10))], sports=sports)
+        submitted = PlanningProposal(before_ids=[removed.id, UUID(int=9)], workouts=[unchanged, added], day_decisions=[])
+        original, original_context = submitted.model_dump(), context.model_dump()
+        result = validate_proposal(claim, context, submitted)
+        active_days = {DAY + timedelta(days=index) for index in (0, 2, 3, 4)}
+        self.assertEqual(result.day_decisions, [PlanningDayDecision(scheduled_date=day, rest=day not in active_days)
+            for day in (DAY + timedelta(days=index) for index in range(21))])
+        self.assertEqual((result.before_ids, result.workouts), ([removed.id], [added]))
+        self.assertEqual(submitted.model_dump(), original)
+        self.assertEqual(context.model_dump(), original_context)
 
     def test_rest_matches_preserved_workouts_and_non_cancelled_sports(self):
         with self.assertRaisesRegex(ValueError, "rest decisions"):
@@ -265,7 +344,6 @@ class PlanningValidationTests(unittest.TestCase):
 
     def test_units_finite_targets_and_repetitions_per_side_are_consistent(self):
         mutations = [lambda exercise: setattr(exercise, "weight_unit", None),
-            lambda exercise: setattr(exercise, "distance_unit", "km"),
             lambda exercise: setattr(exercise.sets[0], "planned_distance", 2),
             lambda exercise: setattr(exercise.sets[0], "planned_weight", float("inf")),
             lambda exercise: setattr(exercise.sets[0], "planned_weight", float("nan"))]
@@ -274,6 +352,21 @@ class PlanningValidationTests(unittest.TestCase):
                 planned = prescription()
                 mutate(planned.exercises[0])
                 validate_proposal(*inputs(), proposal([planned], active_days=[DAY]))
+        for target, unit, value, amount in (("planned_weight", "weight_unit", "kg", 0),
+                ("planned_distance", "distance_unit", "km", 2)):
+            for unit_value in (value, None):
+                with self.subTest(target=target, unit=unit_value):
+                    planned = prescription()
+                    setattr(planned.exercises[0].sets[0], target, None)
+                    planned.exercises[0].sets.append(PlannedExerciseSet(planned_reps=5))
+                    setattr(planned.exercises[0].sets[-1], target, amount)
+                    setattr(planned.exercises[0], unit, unit_value)
+                    submitted = proposal([planned], active_days=[DAY])
+                    if unit_value is None:
+                        with self.assertRaisesRegex(ValueError, unit):
+                            validate_proposal(*inputs(), submitted)
+                    else:
+                        self.assertEqual(validate_proposal(*inputs(), submitted), submitted)
         planned = prescription()
         planned.exercises = [PlannedExercise(name="hold", reps_per_side=True,
             sets=[PlannedExerciseSet(planned_duration_seconds=30)])]

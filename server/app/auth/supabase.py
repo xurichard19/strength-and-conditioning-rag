@@ -26,7 +26,6 @@ def require_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> AuthUser:
     if not credentials:
-        logger.warning("authentication rejected reason=missing_bearer_token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="authentication required",
@@ -47,7 +46,6 @@ def verify_supabase_token(access_token: str) -> AuthUser:
         with sentry_sdk.start_span(op="auth", name="auth.verify_session"), \
                 get_http_client().stream("GET", url, headers=headers) as response:
             if response.status_code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
-                logger.warning("authentication rejected reason=invalid_or_expired_session status=%s", response.status_code)
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="invalid or expired session",
@@ -67,7 +65,6 @@ def verify_supabase_token(access_token: str) -> AuthUser:
 
     user_id = payload.get("id") if isinstance(payload, dict) else None
     if not isinstance(user_id, str) or not user_id:
-        logger.warning("authentication rejected reason=missing_user_id")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="invalid session user",
@@ -76,5 +73,4 @@ def verify_supabase_token(access_token: str) -> AuthUser:
 
     email = payload.get("email")
     user = AuthUser(id=user_id, email=email if isinstance(email, str) else None, access_token=access_token)
-    logger.info("authentication accepted user_id=%s", user.id)
     return user

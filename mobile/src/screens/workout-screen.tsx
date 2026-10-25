@@ -1,7 +1,7 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Check, ChevronDown, ChevronUp, Circle, Clock3, MessageCircle, Minus, Plus, SkipForward, X } from 'lucide-react-native';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type AppStateStatus } from 'react-native';
+import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText, Card, ChoiceChip, PrimaryButton, SecondaryButton } from '@/components/ui';
@@ -77,7 +77,7 @@ function WorkoutTimer() {
     let timer: ReturnType<typeof setInterval> | undefined;
     const stop = () => { if (timer !== undefined) { clearInterval(timer); timer = undefined; } };
     const update = () => setSeconds(Math.max(0, Math.floor((Date.now() - start) / 1000)));
-    const sync = (state: AppStateStatus) => {
+    const sync = (state: typeof AppState.currentState) => {
       stop();
       if (state === 'active') { update(); timer = setInterval(update, 1000); }
     };

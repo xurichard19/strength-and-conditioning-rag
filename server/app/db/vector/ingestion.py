@@ -1,5 +1,9 @@
 import fitz
 import io
+from functools import lru_cache
+
+from tokenizers import Tokenizer
+from app.db.vector.embeddings import MAX_INPUT_TOKENS, research_model
 
 # more doc types supported in future
 from langchain_community.document_loaders import PyMuPDFLoader, TextLoader
@@ -10,6 +14,7 @@ import os
 from PIL import Image
 import pytesseract
 import re
+import unicodedata
 from tqdm import tqdm
 
 import tempfile
@@ -19,14 +24,16 @@ from app.config import get_settings
 from app.contracts import RESEARCH_METADATA_FIELDS, metadata_text
 
 ALLOWED_EXTENSIONS = {".pdf", ".txt"}
+MAX_CHUNK_TOKENS = MAX_INPUT_TOKENS - 2
 
 
-def _normalize_prefix(prefix: str) -> str:
-    return prefix.strip("/")
-
-
-def _gcs_uri(bucket: str, blob_name: str) -> str:
-    return f"gs://{bucket}/{blob_name}"
+@lru_cache(maxsize=1)
+def _chunk_tokenizer():
+    """copy the shared model's tokenizer without truncation or padding for exact chunk counts"""
+    tokenizer = Tokenizer.from_str(research_model().tokenizer.backend_tokenizer.to_str())
+    tokenizer.no_truncation()
+    tokenizer.no_padding()
+    return tokenizer
 
 
 def load_system_docs(data_dir: str | None = None) -> list[Document]:
@@ -58,7 +65,7 @@ def load_system_docs_from_local(data_dir: str | None = None) -> list[Document]:
 
 def load_system_docs_from_gcs(bucket: str, prefix: str) -> list[Document]:
     """ load system docs from gcs by downloading each blob to a temp file and parsing """
-    prefix = _normalize_prefix(prefix)
+    prefix = prefix.strip("/")
 
     docs: list[Document] = []
 
@@ -79,15 +86,12 @@ def load_system_docs_from_gcs(bucket: str, prefix: str) -> list[Document]:
         if suffix not in ALLOWED_EXTENSIONS:
             continue
 
-        gcs_source = _gcs_uri(bucket, blob.name)
+        gcs_source = f"gs://{bucket}/{blob.name}"
 
-        tmp_path = None
         try: 
-            with tempfile.NamedTemporaryFile(suffix = suffix, delete=False) as tmp:
-                tmp_path = tmp.name
-            
-            blob.download_to_filename(tmp_path)
-            file_docs = load_single_doc(tmp_path)
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete_on_close=False) as tmp:
+                blob.download_to_filename(tmp.name)
+                file_docs = load_single_doc(tmp.name)
             if not any(doc.page_content.strip() for doc in file_docs):
                 raise ValueError("document contains no readable text")
 
@@ -100,9 +104,6 @@ def load_system_docs_from_gcs(bucket: str, prefix: str) -> list[Document]:
             docs.extend(file_docs)
         except Exception as exc:
             raise RuntimeError(f"failed to load {gcs_source}: {exc}") from exc
-        finally:
-            if tmp_path and os.path.exists(tmp_path):
-                os.remove(tmp_path)
     
     if not docs:
         raise Exception(
@@ -167,43 +168,72 @@ def read_scanned_pdf(path: str, loader: PyMuPDFLoader) -> list[Document]:
     return docs
     
 
-def split_docs(docs: list[Document], size=1500, overlap=250, min_len=150):
-    """ use langchain built in text splitter """
+def split_docs(docs: list[Document], size=MAX_CHUNK_TOKENS, overlap=80, min_len=60):
+    """split and merge by model tokens, reserving two of the 512 positions for special tokens"""
+    if not 0 <= overlap < size <= MAX_CHUNK_TOKENS or not 0 <= min_len <= size:
+        raise ValueError("chunk size must be 1 to 510 tokens with smaller overlap and bounded minimum")
+
+    tokenizer = _chunk_tokenizer()
+
+    @lru_cache(maxsize=4096)
+    def token_count(text: str) -> int:
+        # measure the same whitespace normalization applied before embedding
+        text = re.sub(r'\s+', ' ', text)
+        return len(tokenizer.encode(text, add_special_tokens=False).ids)
+
     text_splitter = RecursiveCharacterTextSplitter(
         separators=["\n\n", "\n", " ", ""],
         chunk_size=size,
         chunk_overlap=overlap,
-        add_start_index=True
+        length_function=token_count,
     )
 
     chunks = text_splitter.split_documents(docs)
     premerge = len(chunks)
 
     merged = []
-    merge_next = False
+    previous_short = False
+    previous_skipped = False
 
     for chunk in tqdm(chunks, desc="merging documents"):
         clean_doc(chunk)
         text = chunk.page_content.strip()
-        same_page = bool(merged) and all(merged[-1].metadata.get(field) == chunk.metadata.get(field)
-            for field in ("source", "page"))
+        tokens = token_count(text)
+        if tokens > size:
+            raise ValueError("research chunk exceeds the embedding token budget")
 
-        if merge_next:
-            if same_page:
-                merged[-1].page_content += " " + text
-            else:
-                merged.append(chunk)
-            merge_next = False
+        # skip bibliography chunks due to limited value
+        # use regex to match repeated author initials and years with dois, page ranges, or numbered entries
+        citation_text = unicodedata.normalize("NFKC", text)
+        authors = list(re.finditer(r"\b[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ'’\-][A-Za-zÀ-ÿ'’\-]*(?:,\s*|\s+)(?:[A-Z]\.?){1,3}(?=[\s,;:(])", citation_text))
+        references = re.search(r"\b(?:references|bibliography)\b", citation_text, re.I)
+        if (len(authors) >= 3 and authors[0].start() <= len(citation_text) * 0.1
+            and len(re.findall(r"\b(?:19|20)\d{2}[a-z]?\b", citation_text)) >= 3
+            and (len(set(re.findall(r"10\.\d{4,9}/\S+", citation_text))) >= 2
+                or len(re.findall(r"\b\d{1,4}\s*(?:\(\d{1,3}\))?\s*[,;:]\s*[a-z]?\d{1,6}\s*[-–−]\s*\d{1,6}\b", citation_text)) >= 2
+                or len(re.findall(r"(?<![\d.])(?:\[\d{1,3}\]|\d{1,3}\.)\s+"
+                    r"[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ'’\-]+(?:,\s*|\s+)(?:[A-Z]\.?){1,3}(?=[\s,;:(])", citation_text)) >= 3)
+            and (references is None or references.start() <= len(citation_text) * 0.05)
+            and not re.search(r"\b(?:conclusions?|conflicts? of interest|publisher[’']?s note|copyright|creative commons|"
+                r"author contributions|funding|acknowledg(?:e)?ments|appendi(?:x|ces)|supplementary (?:material|information)|"
+                r"supporting information|ethics statement|data availability)\b", citation_text, re.I)):
+            previous_skipped = True
             continue
 
-        elif len(text) < min_len:
-            if same_page:
-                merged[-1].page_content += " " + text
+        same_page = not previous_skipped and bool(merged) and all(merged[-1].metadata.get(field) == chunk.metadata.get(field)
+            for field in ("source", "page"))
+        previous_skipped = False
+
+        if same_page and (previous_short or tokens < min_len):
+            combined = merged[-1].page_content + " " + text
+            combined_tokens = token_count(combined)
+            if combined_tokens <= size:
+                merged[-1].page_content = combined
+                previous_short = combined_tokens < min_len
                 continue
-            else:
-                merge_next = True
-            
+
         merged.append(chunk)
+        previous_short = tokens < min_len
     
     print(f"compressed {premerge} chunks into {len(merged)} chunks")
     return merged
@@ -211,7 +241,4 @@ def split_docs(docs: list[Document], size=1500, overlap=250, min_len=150):
 
 def clean_doc(doc: Document):
     """ clean document in place """
-    text = doc.page_content
-    text = re.sub(r'(?<!\n)\n(?!\n)', ' ', text)
-    text = re.sub(r'\s+', ' ', text)
-    doc.page_content = text
+    doc.page_content = re.sub(r'\s+', ' ', doc.page_content)

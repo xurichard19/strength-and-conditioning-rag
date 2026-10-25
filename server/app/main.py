@@ -2,13 +2,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.httpx import HttpxIntegration
-from sentry_sdk.integrations.starlette import StarletteIntegration
-
-# database spans use stable action names instead of outgoing urls/filters
-from sentry_sdk.integrations.stdlib import StdlibIntegration
 
 # import env variables
 from dotenv import load_dotenv
@@ -16,6 +9,7 @@ load_dotenv()
 
 from app.config import get_settings
 from app.http import http_lifespan
+from app.observability import init_sentry
 
 # import routers
 from app.api.routers import calendar, chat, health, onboarding, planning, profile, sports_workouts, workouts
@@ -33,25 +27,7 @@ def build_chat_workflow():
 
     return build()
 
-if settings.sentry_dsn:
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        environment=settings.environment,
-        send_default_pii=False,
-        max_request_body_size="never",
-        include_local_variables=False,
-        traces_sample_rate=settings.sentry_traces_sample_rate,
-        # langsmith owns detailed ai traces; only enable the explicit web integrations
-        auto_enabling_integrations=False,
-        integrations=[
-            StarletteIntegration(transaction_style="endpoint"),
-            FastApiIntegration(transaction_style="endpoint"),
-        ],
-        disabled_integrations=[
-            StdlibIntegration(),
-            HttpxIntegration(),
-        ],
-    )
+init_sentry("api", settings)
 
 
 @asynccontextmanager

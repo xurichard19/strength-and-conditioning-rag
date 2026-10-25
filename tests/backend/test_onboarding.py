@@ -96,7 +96,7 @@ class OnboardingRouteTests(unittest.TestCase):
         for upstream, expected in ((None, 502), (500, 502), (403, 403), (409, 409)):
             with self.subTest(status=upstream):
                 handler.side_effect = SupabaseDataError('private-database-detail', status_code=upstream)
-                with self.assertLogs('app.api.errors'):
+                with (self.assertLogs('app.api.errors') if expected >= 500 else self.assertNoLogs('app.api.errors')):
                     response = self.client.post('/onboarding/complete')
                 self.assertEqual(response.status_code, expected)
                 self.assertNotIn('private-database-detail', response.text)

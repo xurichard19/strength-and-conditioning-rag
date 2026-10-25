@@ -1,23 +1,17 @@
 import json
+from datetime import timedelta
 from itertools import chain
 
 from langgraph.runtime import Runtime
 
+from app.ai.services.user_context import compact_training
 from app.ai.workflows.plan.state import MAX_CONTEXT_CHARS, PlanState, WorkflowContext
-from app.services.planning import workout_has_results
+from app.services.planning import training_weekdays, workout_has_results
 
 
 def compact_record(record, *, keep_id: bool = False) -> dict:
     """omit storage metadata and nested ids while retaining prescriptions and results"""
-    def compact(value):
-        if isinstance(value, list):
-            return [compact(item) for item in value]
-        if isinstance(value, dict):
-            return {key: compact(item) for key, item in value.items()
-                if key not in {"id", "created_at", "updated_at"} and not key.endswith("_id")}
-        return value
-
-    data = compact(record.model_dump(mode="json", exclude_none=True))
+    data = compact_training(record.model_dump(mode="json", exclude_none=True))
     if keep_id:
         data["id"] = str(record.id)
     return data
@@ -44,10 +38,14 @@ async def context_node(state: PlanState, runtime: Runtime[WorkflowContext]) -> d
 
     task = "adjustment" if claim.job.kind == "adjustment" else (
         "first_fill" if data.schedule.horizon_end is None else "extension")
+    weekdays = training_weekdays(data)
+    workout_dates = [claim.effective_from + timedelta(days=index)
+        for index in range(max(0, (claim.effective_through - claim.effective_from).days + 1))]
     packet = json.dumps({
         "task": {"kind": task, "reason": claim.job.reason,
             "effective_from": str(claim.effective_from), "effective_through": str(claim.effective_through),
-            "horizon_end": str(claim.horizon_end), "claimed_on": str(claim.job.claimed_on)},
+            "horizon_end": str(claim.horizon_end), "claimed_on": str(claim.job.claimed_on),
+            "workout_dates": [str(day) for day in workout_dates if weekdays is None or day.weekday() in weekdays]},
         "timezone": data.profile.timezone,
         "onboarding": data.onboarding.answers if data.onboarding else None,
         "editable_workout_ids": [str(workout.id) for workout in data.calendar.workouts

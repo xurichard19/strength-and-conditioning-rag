@@ -13,6 +13,7 @@ from app.api.parameters import message_cursor
 from app.api.schemas import ConversationUpdate, ConversationResponse, ChatSavedEvent, ChatDoneEvent, ChatErrorEvent, ChatRequest, ChatSourcesEvent, ChatStatusEvent, ChatTextEvent, MessageResponse
 from app.auth.supabase import AuthUser, require_user
 from app.db.supabase import messages
+from app.observability import capture_failure
 
 
 router = APIRouter(prefix="/chat", tags=["chat"], dependencies=[Depends(private_response)])
@@ -157,7 +158,7 @@ async def chat_reply(
             yield ChatDoneEvent(message_id=saved.id, message=MessageResponse.model_validate(saved)).model_dump_json() + "\n"
         except Exception as exc:
             # streaming already returned http 200, so automatic 5xx reporting cannot see this failure
-            sentry_sdk.capture_exception(exc)
+            await asyncio.to_thread(capture_failure, exc, "chat.response")
             logger.warning("chat failed user_id=%s error_type=%s", user.id, type(exc).__name__)
             yield ChatErrorEvent(message="chat response could not be completed").model_dump_json() + "\n"
 

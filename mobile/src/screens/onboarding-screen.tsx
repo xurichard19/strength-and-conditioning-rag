@@ -2,7 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Check, ChevronLeft, ChevronRight, Send, ShieldCheck, X } from 'lucide-react-native';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
 import Animated, { FadeInLeft, FadeInRight, ReduceMotion } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -49,7 +49,7 @@ function OnboardingFlow() {
   const [saving, setSaving] = useState(false);
   const [validation, setValidation] = useState<string | null>(null);
   const saveInFlight = useRef(false);
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
   const question = QUESTION_IDS[step - 1];
   const reviewing = step === QUESTION_IDS.length + 1;
   const shouldRedirect = accountReady && profile.onboardingComplete && !editing && step === 0;

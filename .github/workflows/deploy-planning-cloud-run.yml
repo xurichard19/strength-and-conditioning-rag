@@ -89,6 +89,9 @@ jobs:
           image: ${{ inputs.image }}
           env_vars: |-
             ENVIRONMENT=production
+            SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+            SENTRY_TRACES_SAMPLE_RATE=0
+            SENTRY_RELEASE=${{ github.sha }}
             CHROMA_TENANT=${{ secrets.CHROMA_TENANT }}
             CHROMA_DATABASE=${{ secrets.CHROMA_DATABASE }}
             CHROMA_API_KEY=${{ secrets.CHROMA_API_KEY }}
@@ -121,6 +124,10 @@ jobs:
           service: planning-dispatcher
           image: ${{ inputs.image }}
           env_vars: |-
+            ENVIRONMENT=production
+            SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+            SENTRY_TRACES_SAMPLE_RATE=0
+            SENTRY_RELEASE=${{ github.sha }}
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}
             SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
             SUPABASE_SECRET_KEY=${{ secrets.SUPABASE_SECRET_KEY }}

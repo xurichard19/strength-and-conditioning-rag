@@ -29,10 +29,11 @@ def main() -> int:
         "LANGSMITH_TRACING": "false", "LANGCHAIN_TRACING_V2": "false", "LANGCHAIN_TRACING": "false",
         "LANGSMITH_API_KEY": "test", "LANGCHAIN_API_KEY": "test", "SENTRY_DSN": "",
     })
-    from app.config import DatabaseSettings, Settings
+    from app.config import DatabaseSettings, RuntimeSettings, Settings
 
     Settings.model_config["env_file"] = None
     DatabaseSettings.model_config["env_file"] = None
+    RuntimeSettings.model_config["env_file"] = None
     with patch("dotenv.load_dotenv", return_value=False), \
             patch("socket.socket.connect", new=local_connect), \
             patch("socket.socket.connect_ex", side_effect=AssertionError("network access is disabled in backend tests")), \
