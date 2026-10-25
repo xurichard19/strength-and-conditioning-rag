@@ -36,14 +36,6 @@ def _chunk_tokenizer():
     return tokenizer
 
 
-def _normalize_prefix(prefix: str) -> str:
-    return prefix.strip("/")
-
-
-def _gcs_uri(bucket: str, blob_name: str) -> str:
-    return f"gs://{bucket}/{blob_name}"
-
-
 def load_system_docs(data_dir: str | None = None) -> list[Document]:
     settings = get_settings()
     if settings.doc_source.lower() == 'gcs':
@@ -73,7 +65,7 @@ def load_system_docs_from_local(data_dir: str | None = None) -> list[Document]:
 
 def load_system_docs_from_gcs(bucket: str, prefix: str) -> list[Document]:
     """ load system docs from gcs by downloading each blob to a temp file and parsing """
-    prefix = _normalize_prefix(prefix)
+    prefix = prefix.strip("/")
 
     docs: list[Document] = []
 
@@ -94,15 +86,12 @@ def load_system_docs_from_gcs(bucket: str, prefix: str) -> list[Document]:
         if suffix not in ALLOWED_EXTENSIONS:
             continue
 
-        gcs_source = _gcs_uri(bucket, blob.name)
+        gcs_source = f"gs://{bucket}/{blob.name}"
 
-        tmp_path = None
         try: 
-            with tempfile.NamedTemporaryFile(suffix = suffix, delete=False) as tmp:
-                tmp_path = tmp.name
-            
-            blob.download_to_filename(tmp_path)
-            file_docs = load_single_doc(tmp_path)
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete_on_close=False) as tmp:
+                blob.download_to_filename(tmp.name)
+                file_docs = load_single_doc(tmp.name)
             if not any(doc.page_content.strip() for doc in file_docs):
                 raise ValueError("document contains no readable text")
 
@@ -115,9 +104,6 @@ def load_system_docs_from_gcs(bucket: str, prefix: str) -> list[Document]:
             docs.extend(file_docs)
         except Exception as exc:
             raise RuntimeError(f"failed to load {gcs_source}: {exc}") from exc
-        finally:
-            if tmp_path and os.path.exists(tmp_path):
-                os.remove(tmp_path)
     
     if not docs:
         raise Exception(
@@ -255,7 +241,4 @@ def split_docs(docs: list[Document], size=MAX_CHUNK_TOKENS, overlap=80, min_len=
 
 def clean_doc(doc: Document):
     """ clean document in place """
-    text = doc.page_content
-    text = re.sub(r'(?<!\n)\n(?!\n)', ' ', text)
-    text = re.sub(r'\s+', ' ', text)
-    doc.page_content = text
+    doc.page_content = re.sub(r'\s+', ' ', doc.page_content)

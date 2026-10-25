@@ -4,14 +4,10 @@ import unittest
 from unittest.mock import patch
 from uuid import UUID
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from app.api.routers import calendar, chat, health, onboarding, planning, profile, sports_workouts, workouts
-from app.auth.supabase import require_user
 from app.contracts import MessageRecord, PlanningHistoryPage, PlanningScheduleRecord, ReplanJobRecord, SportsWorkoutInput, SportsWorkoutRecord, SportsWorkoutUpdate, WorkoutWriteResult
 from app.db.supabase import SupabaseDataError
-from tests.backend.test_profile import NOW, USER
+from tests.backend.test_profile import NOW, USER, api_client
 
 
 ID = UUID('22222222-2222-4222-8222-222222222222')
@@ -24,13 +20,10 @@ SCHEDULE = PlanningScheduleRecord(user_id=USER.id, next_refresh_at=NOW, created_
 
 
 def client(auth=True):
-    app = FastAPI()
-    for module in (calendar, chat, health, onboarding, planning, profile, sports_workouts, workouts):
-        app.include_router(module.router)
-    app.state.chat_graph = object()
-    if auth:
-        app.dependency_overrides[require_user] = lambda: USER
-    return TestClient(app)
+    api = api_client(auth, routers=[module.router for module in
+        (calendar, chat, health, onboarding, planning, profile, sports_workouts, workouts)])
+    api.app.state.chat_graph = object()
+    return api
 
 
 class EndpointTests(unittest.TestCase):

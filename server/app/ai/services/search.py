@@ -31,6 +31,11 @@ class SearchResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+def search_key(query: str) -> str:
+    """ignore casing and punctuation while preserving meaningful word order"""
+    return " ".join("".join(char if char.isalnum() else " " for char in query.casefold()).split())
+
+
 async def research_collection():
     """initialize async chroma client, lock connection window then cache collection"""
     global _collection

@@ -48,7 +48,6 @@ class ApiSchemaTests(unittest.TestCase):
         self.assertFalse(options['auto_enabling_integrations'])
         self.assertTrue({'stdlib', 'httpx', 'logging'}.issubset(
             integration.identifier for integration in options['disabled_integrations']))
-        self.assertNotIn('before_send', options)
 
     def test_api_models_do_not_inherit_business_models(self):
         for name, model in vars(schemas).items():

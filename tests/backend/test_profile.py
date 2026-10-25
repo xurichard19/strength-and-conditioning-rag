@@ -16,10 +16,10 @@ NOW = "2026-09-14T12:00:00Z"
 PROFILE = ProfileRecord(id=USER.id, email=USER.email, display_name="Ada", timezone="UTC", created_at=NOW, updated_at=NOW)
 
 
-def api_client(authenticated=True):
+def api_client(authenticated=True, routers=(profile.router, onboarding.router)):
     app = FastAPI()
-    app.include_router(profile.router)
-    app.include_router(onboarding.router)
+    for router in routers:
+        app.include_router(router)
     if authenticated:
         app.dependency_overrides[require_user] = lambda: USER
     return TestClient(app)

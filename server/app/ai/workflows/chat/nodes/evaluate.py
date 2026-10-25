@@ -6,19 +6,14 @@ from time import monotonic
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import ValidationError
 
-from app.ai.services.search import SEARCH_PROVIDERS, SEARCH_TIMEOUT_SECONDS, format_sources_for_prompt
+from app.ai.services.search import SEARCH_PROVIDERS, SEARCH_TIMEOUT_SECONDS, format_sources_for_prompt, search_key
 from app.ai.workflows.chat.models import DECISION_TIMEOUT_SECONDS, decision_model
 from app.ai.workflows.chat.prompts import EVALUATE_PROMPT
-from app.ai.workflows.chat.state import ChatState, EvidenceReview, SearchQuery
+from app.ai.workflows.chat.state import ChatState, EvidenceReview
 from app.observability import capture_failure
 
 
 logger = logging.getLogger(__name__)
-
-
-def search_key(query: SearchQuery) -> str:
-    """ignore casing and punctuation without discarding meaningful word order"""
-    return " ".join("".join(char if char.isalnum() else " " for char in query.query.casefold()).split())
 
 
 async def evaluate_node(state: ChatState) -> dict:
@@ -50,8 +45,8 @@ async def evaluate_node(state: ChatState) -> dict:
         return {"retry_search": False, "warnings": [*state.get("warnings", []), "evidence adequacy could not be checked"]}
 
     next_query = review.next_search
-    key = search_key(next_query)
-    attempted = {(search_key(query), provider) for query in state["searches"] for provider in SEARCH_PROVIDERS[query.providers]}
+    key = search_key(next_query.query)
+    attempted = {(search_key(query.query), provider) for query in state["searches"] for provider in SEARCH_PROVIDERS[query.providers]}
     providers = [provider for provider in SEARCH_PROVIDERS[next_query.providers] if (key, provider) not in attempted]
     stop = review.sufficient or not review.gap.strip() or not key or not providers
     out_of_time = monotonic() + SEARCH_TIMEOUT_SECONDS > deadline
