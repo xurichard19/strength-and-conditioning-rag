@@ -2,14 +2,16 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from functools import partial
 import logging
 
 from fastapi import FastAPI, HTTPException
 
 from app.contracts import ClaimedReplanJob, ReplanResult
-from app.db.supabase import calendar, replan_jobs
+from app.db.supabase import SupabaseDataError, calendar, replan_jobs
 from app.http import http_lifespan
 from app.jobs.cloud_tasks import ReplanTask
+from app.observability import capture_failure
 
 
 logger = logging.getLogger(__name__)
@@ -58,13 +60,14 @@ async def execute(job: ReplanTask, generate_plan: PlanHandler) -> dict:
         failed = await asyncio.to_thread(replan_jobs.fail_replan_job,
             job.job_id, claim.job.lease_token, type(exc).__name__, True)
         if failed.status == "failed":
+            await asyncio.to_thread(capture_failure, exc, "planning.execute")
             return {"status": "failed"}
         raise HTTPException(503, "planning attempt needs retry") from exc
 
 
 def create_app(generate_plan: PlanHandler | None = None) -> FastAPI:
     """build a private worker; without a plan handler reject delivery before claiming any job"""
-    worker = FastAPI(title="planning worker", lifespan=http_lifespan)
+    worker = FastAPI(title="planning worker", lifespan=partial(http_lifespan, service="planning-worker"))
 
     @worker.get("/health")
     def health():
@@ -80,6 +83,8 @@ def create_app(generate_plan: PlanHandler | None = None) -> FastAPI:
         except HTTPException:
             raise
         except Exception as exc:
+            if not isinstance(exc, SupabaseDataError) or exc.status_code not in (404, 409):
+                await asyncio.to_thread(capture_failure, exc, "planning.worker")
             logger.warning("planning worker unavailable error_type=%s", type(exc).__name__)
             raise HTTPException(503, "planning worker unavailable") from exc
 

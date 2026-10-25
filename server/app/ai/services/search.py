@@ -9,12 +9,14 @@ from typing import Literal
 import chromadb
 from chromadb import K, Knn, Rrf, Search
 import cohere
+import httpx
 from langchain_tavily import TavilySearch
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.contracts import RESEARCH_METADATA_FIELDS, Source, metadata_text
 from app.db.vector.embeddings import MODEL_NAME, embed_research_queries as _research_embeddings
+from app.observability import capture_failure
 
 
 logger = logging.getLogger(__name__)
@@ -172,6 +174,8 @@ async def _retrieve(provider: str, query: str, top_k: int) -> SearchResponse:
                 if provider == "research" else web_search(query, top_k))
         return SearchResponse(results=sources)
     except Exception as exc:
+        if not isinstance(exc, (TimeoutError, httpx.TimeoutException)):
+            await asyncio.to_thread(capture_failure, exc, f"retrieval.{provider}")
         logger.warning("retrieval failed provider=%s error_type=%s", provider, type(exc).__name__)
         return SearchResponse(warnings=[f"{provider} search unavailable; no evidence from this attempt"])
 

@@ -46,7 +46,7 @@ class ApiSchemaTests(unittest.TestCase):
         self.assertFalse(options['include_local_variables'])
         self.assertEqual(options['max_request_body_size'], 'never')
         self.assertFalse(options['auto_enabling_integrations'])
-        self.assertTrue({'stdlib', 'httpx'}.issubset(
+        self.assertTrue({'stdlib', 'httpx', 'logging'}.issubset(
             integration.identifier for integration in options['disabled_integrations']))
         self.assertNotIn('before_send', options)
 

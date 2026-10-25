@@ -1,6 +1,7 @@
 """Bounded scheduling and durable task dispatch; deploy separately with Cloud Run IAM."""
 
 import logging
+from functools import partial
 from time import monotonic
 
 from fastapi import FastAPI, HTTPException
@@ -10,10 +11,11 @@ from app.db.supabase import replan_jobs
 from app.http import http_lifespan
 from app.jobs.cloud_tasks import ReplanTask, enqueue_replan, task_exists
 from app.jobs.settings import TaskSettings, get_task_settings
+from app.observability import capture_failure
 
 
 logger = logging.getLogger(__name__)
-app = FastAPI(title="planning dispatcher", lifespan=http_lifespan)
+app = FastAPI(title="planning dispatcher", lifespan=partial(http_lifespan, service="planning-dispatcher"))
 
 
 def dispatch_job(job: ReplanJobRecord, settings: TaskSettings) -> None:
@@ -43,6 +45,7 @@ def dispatch_due(settings: TaskSettings, limit: int = 20) -> dict:
     """
     deadline = monotonic() + 45
     counts = {"created": replan_jobs.enqueue_due_replans(limit), "dispatched": 0, "errors": 0}
+    first_error = None
 
     for job in replan_jobs.list_replan_deliveries(limit):
         if monotonic() >= deadline:
@@ -54,6 +57,8 @@ def dispatch_due(settings: TaskSettings, limit: int = 20) -> dict:
                     replan_jobs.mark_replan_dispatched(job.id, task.delivery_token)
                     continue
                 job = replan_jobs.recover_replan_delivery(job.id, task.delivery_token)
+                if job is not None and job.status == "failed":
+                    capture_failure(RuntimeError("planning task delivery exhausted"), "planning.delivery")
                 if job is None or job.status != "pending":
                     continue
 
@@ -61,8 +66,12 @@ def dispatch_due(settings: TaskSettings, limit: int = 20) -> dict:
             counts["dispatched"] += 1
         except Exception as exc:
             counts["errors"] += 1
-            logger.warning("planning reconciliation deferred error_type=%s", type(exc).__name__)
+            if first_error is None:
+                first_error = exc
 
+    if first_error is not None:
+        logger.warning("planning reconciliation deferred failures=%s error_type=%s", counts["errors"], type(first_error).__name__)
+        capture_failure(first_error, "planning.dispatch")
     return counts
 
 
@@ -80,6 +89,7 @@ def dispatch():
     try:
         result = dispatch_due(settings)
     except Exception as exc:
+        capture_failure(exc, "planning.dispatcher")
         logger.warning("planning dispatcher failed error_type=%s", type(exc).__name__)
         raise HTTPException(503, "planning dispatcher unavailable") from exc
     if result["errors"]:
