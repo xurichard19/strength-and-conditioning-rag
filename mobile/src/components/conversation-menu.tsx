@@ -98,8 +98,8 @@ export function ConversationSidebar({ onClose, onSelect }: { onClose: () => void
             <AppText weight={item.id === activeConversationId ? 'medium' : 'regular'} style={styles.conversationTitle}>{item.title}</AppText>
             {item.id === activeConversationId ? <View style={[styles.activeDot, { backgroundColor: colors.tint }]} /> : null}
           </Pressable>}
-          ListHeaderComponent={conversationsError ? <Pressable accessibilityRole="button" onPress={() => void refresh()} style={styles.notice}><AppText style={styles.noticeText}>{conversationsError} Tap to retry.</AppText></Pressable> : null}
-          ListEmptyComponent={!conversationsLoading && !conversationsError ? <AppText tone="secondary" style={[styles.notice, styles.noticeText]}>Your conversations appear here after your first message.</AppText> : null}
+          ListHeaderComponent={conversationsError ? <Pressable accessibilityRole="button" onPress={() => void refresh()} style={styles.notice}><AppText style={styles.noticeText}>{conversationsError} Tap to retry.</AppText></Pressable> : undefined}
+          ListEmptyComponent={!conversationsLoading && !conversationsError ? <AppText tone="secondary" style={[styles.notice, styles.noticeText]}>Your conversations appear here after your first message.</AppText> : undefined}
           ListFooterComponent={<>
             {conversationsLoading && !refreshing ? <ActivityIndicator color={colors.tint} /> : null}
             {hasOlderConversations ? <Pressable accessibilityRole="button" disabled={conversationsLoading} onPress={() => void refreshConversations(true)} style={styles.notice}><AppText tone="tint" style={styles.noticeText}>Load older conversations</AppText></Pressable> : null}
