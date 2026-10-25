@@ -52,5 +52,6 @@ def update_profile(user_id: str | UUID, values: ProfileUpdate, access_token: str
             ZoneInfo(payload["timezone"])
         except (ZoneInfoNotFoundError, ValueError) as exc:
             raise ValueError("invalid timezone") from exc
+
     rows = update_rows("profiles", payload, [("id", f"eq.{identifier(user_id)}")], access_token)
     return ProfileRecord.model_validate(rows[0]) if rows else None

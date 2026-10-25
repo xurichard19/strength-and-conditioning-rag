@@ -104,7 +104,7 @@ def page_limit(limit: int) -> None:
         raise ValueError("limit must be between 1 and 100")
 
 
-def all_rows(table: str, filters: list[tuple[str, str]], access_token: str | None) -> list[dict]:
+def all_rows(table: str, filters: list[tuple[str, str]], access_token: str | None, *, max_rows: int | None = None) -> list[dict]:
     """
     read all matching rows without silently hitting the server row cap
 
@@ -113,19 +113,22 @@ def all_rows(table: str, filters: list[tuple[str, str]], access_token: str | Non
     the caller must include owner scoping and deterministic ordering with a unique
     tie-breaker, and must not supply its own limit/offset.
 
-    collects the full result in memory with no total-row cap. concurrent inserts,
+    stops when an optional known maximum is reached, avoiding an empty final read.
+    otherwise collects the full result in memory with no total-row cap. concurrent inserts,
     deletes, or version switches can cause skips/duplicates across pages; use the
     worker's revision checks for planning, not this helper as a snapshot guarantee.
 
     - **table**: supabase table name
     - **filters**: ordered query filters with deterministic ordering for pagination
     - **access_token**: verified user jwt for rls; none uses backend service-role credentials
+    - **max_rows**: known upper bound from the query, such as its unique requested ids
     - **returns**: all matching rows across server pages; concurrent writes can change results between pages
     """
 
     rows = []
-    while True:
+    while max_rows is None or len(rows) < max_rows:
         page = select_rows(table, [*filters, ("limit", "200"), ("offset", str(len(rows)))], access_token)
         if not page:
             return rows
         rows.extend(page)
+    return rows

@@ -4,11 +4,15 @@ note: web client depreciated, mobile client currently in development
 
 Arcel is a full-stack assistant for hybrid athletes building strength and conditioning programs around sport-specific demands. It answers conversational and research-backed training questions using more than 300 CC BY 4.0 research papers, live web search, and streamed LLM generation.
 
-The Expo/React Native mobile client connects to the containerized FastAPI backend running on Google Cloud Run behind Google Cloud Load Balancing and Cloud Armor. The backend uses LangGraph for request-level workflow orchestration, deterministic evidence retrieval with bounded chat search retries, OpenAI for model inference, Chroma Cloud for research retrieval, Tavily for web search, and Supabase for authentication and application data. Cohere reranking and hybrid retrieval are available separately but are not part of the active chat workflow. GitHub Actions builds and pushes backend images to Google Artifact Registry, deploys them to Cloud Run, and verifies backend health.
+Adaptive workout programming turns onboarding responses, existing workouts, and scheduled sports sessions into a three-week training plan with exercise- and set-level prescriptions. Completing onboarding triggers the initial plan, and weekly refreshes extend its coverage. Changes to onboarding responses or sports commitments adjust upcoming workouts within the existing horizon while preserving completed training. The mobile Plan Manager shows the current plan, background job status, and a history of published changes.
+
+The Expo/React Native mobile client connects to the containerized FastAPI backend running on Google Cloud Run. LangGraph orchestrates separate chat and planning workflows, using OpenAI for model inference, Chroma Cloud for research retrieval, Tavily for web search, and Supabase for authentication and application data. Chat uses deterministic evidence retrieval with bounded search retries; planning evaluates evidence, generates structured workouts, and validates proposed changes before publishing them atomically. Cloud Scheduler discovers due refreshes, and Cloud Tasks delivers durable jobs to a private Cloud Run planning worker so generation can finish independently of the mobile connection. Research retrieval combines dense similarity and BM25 keyword results through reciprocal rank fusion. GitHub Actions runs the tests before building and pushing backend images to Google Artifact Registry, deploying them to Cloud Run, and verifying backend health.
 
 #### Table of Contents
 
+- [Mobile App Demo](#mobile-app-demo)
 - [App Infrastructure](#app-infrastructure)
+- [Workout Programming Infrastructure](#workout-programming-infrastructure)
 - [Chat LangGraph Workflow](#chat-langgraph-workflow)
 - [Workout Programming LangGraph Workflow](#workout-programming-langgraph-workflow)
 - [Database Infrastructure](#database-infrastructure)
@@ -18,27 +22,82 @@ The Expo/React Native mobile client connects to the containerized FastAPI backen
 
 ---
 
+#### Mobile App Demo
+
+https://github.com/user-attachments/assets/b91a3d4c-24e4-497a-b0c3-b5eb1353975a
+
 #### App Infrastructure
 ```mermaid
+---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    nodeSpacing: 30
+    rankSpacing: 30
+    padding: 10
+---
 flowchart TB
-    User(["User"]) --> FE["React Native mobile client<br/>Expo"]
+    User(["User"]) --> FE["React Native<br/>mobile client · Expo"]
     FE --> Edge["Google Cloud edge<br/>Load Balancer and<br/>Cloud Armor"]
     Edge --> API["FastAPI backend<br/>Cloud Run"]
-    API --> Workflows["LangGraph workflows<br/>chat and plan"]
+    API -->|chat| Workflows["LangGraph workflows<br/>chat and plan"]
+    API -.->|Cloud Tasks| Worker["Planning worker<br/>Cloud Run"]
+    Worker -->|plan| Workflows
     API --> Supabase[("Supabase<br/>authentication<br/>and data")]
     API --> Sentry["Sentry<br/>monitoring"]
     Workflows --> OpenAI["OpenAI"]
     Workflows --> Chroma[("Chroma Cloud<br/>research index")]
-    Workflows --> SearchServices["Tavily and<br/>Cohere"]
+    Workflows --> SearchServices["Tavily<br/>web search"]
     Workflows --> LangSmith["LangSmith<br/>tracing"]
     Docs[("GCS source<br/>documents")] --> Index["Offline<br/>indexing"]
     Index --> Chroma
     API -.- ci["GitHub Actions<br/>deployment"]
 ```
 
+##### Workout Programming Infrastructure
+
+```mermaid
+---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    nodeSpacing: 30
+    rankSpacing: 30
+    padding: 10
+---
+flowchart TB
+    Inputs["Onboarding completion<br/>or edits · Sports changes"] --> API["FastAPI backend<br/>Cloud Run"]
+    API -->|save inputs and schedule| DB[("Supabase<br/>21-day coverage<br/>7-day refreshes<br/>Durable jobs<br/>Calendar and history")]
+    Clock["Cloud Scheduler<br/>Every minute"] -->|OIDC POST /dispatch| Dispatcher["Private dispatcher<br/>Cloud Run"]
+    Dispatcher <-->|due jobs and recovery| DB
+    Dispatcher --> Queue["Cloud Tasks<br/>Deduplicated delivery<br/>and retries"]
+    API -.->|adjust / retry after commit| Queue
+    Queue -->|OIDC POST /run| Claim
+
+    subgraph Worker["Private planning worker"]
+        Claim["Cloud Run<br/>Claim delivery lease<br/>Load authoritative context"] --> Graph["Planning LangGraph"]
+        Graph --> Publish["Publish atomically<br/>Check lease and revision"]
+    end
+
+    Claim <-->|job and athlete context| DB
+    Publish -->|workouts, history and job completion| DB
+    DB -->|calendar, job status and history| API
+```
+
 #### Chat LangGraph Workflow
 
 ```mermaid
+---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    nodeSpacing: 30
+    rankSpacing: 30
+    padding: 10
+---
 flowchart TB
     Request["Chat request"] --> History["Load history node<br/>Supabase"]
     History --> Route["GPT-5 nano router"]
@@ -61,21 +120,39 @@ flowchart TB
 #### Workout Programming LangGraph Workflow
 
 ```mermaid
+---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    nodeSpacing: 30
+    rankSpacing: 30
+    padding: 10
+---
 flowchart TB
-    Request["Plan request<br/>and user profile"] --> Rewrite["Rewrite node<br/>OpenAI"]
-    Rewrite --> Search["Search node"]
-    Search --> Agent["LangChain agent<br/>OpenAI search"]
-    Agent --> Chroma[("Chroma Cloud<br/>research index")]
-    Agent --> Tavily["Tavily<br/>web search"]
-    Agent --> Cohere["Cohere reranker<br/>research only"]
-    Agent --> Evidence["Selected<br/>evidence"]
-    Evidence --> Generate["Plan generation<br/>OpenAI"]
-    Generate --> Plan["Structured<br/>WorkoutPlan"]
+    Request["Claimed job + athlete context<br/>Initial plan / weekly extension<br/>or adjustment"] --> Context["Context node<br/>Fixed dates and editable workouts<br/>Athlete inputs"]
+    Context --> Prepare["Prepare node · OpenAI<br/>Focused research query"]
+    Prepare --> Search["Search node<br/>Chroma first<br/>Tavily available on retry"]
+    Search --> Evaluate["Evaluate node · OpenAI<br/>Sufficient evidence?"]
+    Evaluate -->|yes| Generate["Generate node · OpenAI<br/>Structured PlanningProposal"]
+    Evaluate -->|one research retry| Search
+    Evaluate -->|still insufficient / budget exhausted| Fail["Raise error<br/>No publication"]
+    Generate --> Validate["Validate node<br/>Dates, coverage and prescriptions<br/>Protected workouts"]
+    Validate -->|one repair with feedback| Generate
+    Validate -->|still invalid / budget exhausted| Fail
+    Validate -->|valid| Plan["Return validated proposal<br/>Worker publishes<br/>outside the graph"]
 ```
 
 #### Database Infrastructure
 
 ```mermaid
+---
+config:
+  er:
+    nodeSpacing: 80
+    rankSpacing: 80
+    entityPadding: 10
+---
 erDiagram
     direction LR
 
@@ -276,4 +353,12 @@ npx expo start --dev-client --port 8081
 
 See [mobile setup](mobile/README.md) for environment values, native development builds, and physical-phone networking. RevenueCat billing is **disabled by default** in the mobile client and backend; [configure and verify billing](docs/REVENUECAT.md) before enabling it.
 
-Offline reindexing remains `docker compose run --rm index`; it replaces the configured research collection. The backend deployment workflow applies pending Supabase migrations before deploying Cloud Run on matching `main` pushes or a manual run. Neither starting local services nor configuring billing requires a deployment.
+To build and install the release app on a device, run from `mobile/`:
+
+```sh
+npx expo run:ios --configuration Release --device
+```
+
+To run the public website locally, run `npm run dev` from `client/`.
+
+Offline reindexing remains `docker compose run --build --rm index`; it replaces the configured research collection. The backend deployment workflow applies pending Supabase migrations before deploying Cloud Run on matching `main` pushes or a manual run. Neither starting local services nor configuring billing requires a deployment.

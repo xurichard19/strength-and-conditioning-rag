@@ -4,19 +4,23 @@ import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { useApp } from '@/state/app-context';
+import { GlassBackdrop } from './glass-surface';
 import { AppText } from './ui';
 
 /** A dismissible bottom menu; its own safe area keeps controls above the home indicator. */
-export function ActionSheet({ title, onClose, children, headerAction }: {
-  title: string; onClose: () => void; children: ReactNode; headerAction?: ReactNode;
+export function ActionSheet({ title, onClose, children, headerAction, glass = false }: {
+  title: string; onClose: () => void; children: ReactNode; headerAction?: ReactNode; glass?: boolean;
 }) {
   const { colors } = useApp();
-  return <Modal transparent visible animationType="fade" onRequestClose={onClose}>
-    <SafeAreaProvider style={styles.backdrop}>
+  return <Modal transparent visible animationType={glass ? 'slide' : 'fade'} onRequestClose={onClose}>
+    <SafeAreaProvider style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
       <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={onClose} style={StyleSheet.absoluteFill} />
-      <SafeAreaView edges={['bottom']} style={[styles.panel, { backgroundColor: colors.elevated }]} accessibilityViewIsModal>
-        <View style={styles.header}>
-          <AppText weight="semibold" style={styles.title}>{title}</AppText>
+      <SafeAreaView edges={['bottom']} style={[styles.panel, !glass && { backgroundColor: colors.card,
+        borderColor: colors.separator, borderWidth: StyleSheet.hairlineWidth }]} accessibilityViewIsModal>
+        {glass ? <GlassBackdrop style={styles.surface} /> : null}
+        <View style={[styles.handle, { backgroundColor: colors.controlBorder }]} />
+        <View style={[styles.header, { borderBottomColor: colors.separator }]}>
+          <AppText weight="medium" style={styles.title}>{title}</AppText>
           {headerAction}
           <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={onClose} style={styles.close}>
             <X color={colors.textSecondary} size={22} />
@@ -29,9 +33,11 @@ export function ActionSheet({ title, onClose, children, headerAction }: {
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#0008' },
-  panel: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, maxHeight: '85%' },
-  header: { flexDirection: 'row', alignItems: 'center', minHeight: 56, gap: 8 },
-  title: { flex: 1, fontSize: 18, lineHeight: 24 },
+  backdrop: { flex: 1, justifyContent: 'flex-end' },
+  panel: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 22, paddingTop: 10, paddingBottom: 20, maxHeight: '85%' },
+  surface: { borderRadius: 0, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  handle: { width: 32, height: 3, borderRadius: 2, alignSelf: 'center', marginBottom: 8 },
+  header: { flexDirection: 'row', alignItems: 'center', minHeight: 64, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, marginBottom: 8 },
+  title: { flex: 1, fontSize: 20, lineHeight: 27, letterSpacing: -0.6 },
   close: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
 });

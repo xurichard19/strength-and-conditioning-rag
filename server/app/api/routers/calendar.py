@@ -18,7 +18,7 @@ def get_calendar(dates: tuple[date, date] = Depends(calendar_range), user: AuthU
     load current generated workouts and non-cancelled sports for the calendar
 
     use the returned revision for guarded mutations. none means planning has not
-    been configured; it is not revision zero. retry the read on a 409 conflict.
+    been configured; it is not revision zero. all data shares one database snapshot.
 
     - **dates**: inclusive local start_date/end_date query parameters
     - **user**: verified owner and caller jwt

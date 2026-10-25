@@ -18,9 +18,9 @@ export function SelectionField({ label, value, options, onChange, wheel = false,
   const [open, setOpen] = useState(false);
   const index = Math.max(0, options.findIndex(option => option.value === value));
   return <>
-    <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${options[index].label}`} disabled={disabled}
+    <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${options[index].label}`} accessibilityState={{ disabled }} disabled={disabled}
       onPress={() => { Keyboard.dismiss(); setOpen(true); }}
-      style={[styles.field, !last && { borderBottomColor: colors.separator, borderBottomWidth: StyleSheet.hairlineWidth }]}>
+      style={({ pressed }) => [styles.field, !last && { borderBottomColor: colors.separator, borderBottomWidth: StyleSheet.hairlineWidth }, (pressed || disabled) && styles.muted]}>
       <AppText style={styles.label}>{label}</AppText>
       <AppText tone="secondary" style={styles.value}>{options[index].label}</AppText>
       <ChevronDown color={colors.textTertiary} size={17} />
@@ -34,20 +34,21 @@ export function SelectionField({ label, value, options, onChange, wheel = false,
       </> : <FlatList data={options} keyExtractor={option => option.value} style={styles.list}
         initialScrollIndex={index} getItemLayout={(_, itemIndex) => ({ length: 52, offset: itemIndex * 52, index: itemIndex })}
         renderItem={({ item }) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: item.value === value }}
-          accessibilityLabel={item.label} onPress={() => { onChange(item.value); setOpen(false); }} style={styles.option}>
+          accessibilityLabel={item.label} onPress={() => { onChange(item.value); setOpen(false); }} style={({ pressed }) => [styles.option, item.value === value && { backgroundColor: colors.tintSoft }, pressed && styles.muted]}>
           <AppText style={styles.label}>{item.label}</AppText>
-          {item.value === value ? <Check color={colors.tintText} size={20} /> : <View style={styles.checkSpace} />}
+          {item.value === value ? <Check color={colors.tintText} size={18} strokeWidth={1.7} /> : <View style={styles.checkSpace} />}
         </Pressable>} />}
     </ActionSheet> : null}
   </>;
 }
 
 const styles = StyleSheet.create({
-  field: { minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  label: { flex: 1, fontSize: 15 },
-  value: { fontSize: 15 },
+  field: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  label: { flex: 1, fontSize: 14, lineHeight: 21 },
+  value: { flexShrink: 1, fontSize: 14, lineHeight: 21, textAlign: 'right' },
   wheel: { width: '100%' },
   list: { maxHeight: 312, marginBottom: 8 },
-  option: { height: 52, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  option: { height: 52, paddingHorizontal: 12, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  muted: { opacity: 0.6 },
   checkSpace: { width: 20 },
 });

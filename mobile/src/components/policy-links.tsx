@@ -9,6 +9,7 @@ const policies = [
   { path: 'about', label: 'About Us' },
   { path: 'privacy', label: 'Privacy Policy' },
   { path: 'terms', label: 'Terms of Service' },
+  { path: 'health-privacy', label: 'Consumer Health Privacy' },
 ] as const;
 
 /** Open About and public policies in a browser sheet, before or after sign-in. */
@@ -22,7 +23,7 @@ export function PolicyLinks() {
   return <View>
     <View style={styles.row}>
       {policies.map(({ path, label }) => <Pressable key={path} accessibilityRole="link"
-        accessibilityLabel={label} onPress={() => void openPolicy(path)} style={styles.link}>
+        accessibilityLabel={label} onPress={() => void openPolicy(path)} style={({ pressed }) => [styles.link, pressed && styles.pressed]}>
         <AppText tone="secondary" style={styles.label}>{label}</AppText>
       </Pressable>)}
     </View>
@@ -31,8 +32,9 @@ export function PolicyLinks() {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 12 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 8 },
   link: { minHeight: 44, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
-  label: { fontSize: 12, textDecorationLine: 'underline' },
+  label: { fontSize: 11, lineHeight: 16, textDecorationLine: 'underline' },
+  pressed: { opacity: 0.6 },
   error: { fontSize: 12, textAlign: 'center' },
 });

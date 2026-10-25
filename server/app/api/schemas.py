@@ -111,7 +111,7 @@ class WorkoutResultsRequest(RevisionRequest):
 
 class ScheduleRequest(RequestModel):
     next_refresh_at: datetime.datetime
-    horizon_days: int = Field(default=7, ge=1, le=366)
+    horizon_days: int = Field(default=21, ge=1, le=366)
     refresh_interval_days: int = Field(default=7, ge=1, le=366)
 
     @model_validator(mode="after")
@@ -161,6 +161,7 @@ class JobResponse(ResponseModel):
 # -------------------- sports --------------------
 
 class SportsCreateRequest(RequestModel):
+    id: UUID
     sport: str = Field(min_length=1)
     scheduled_date: datetime.date
     start_time: datetime.time | None = None
@@ -365,7 +366,7 @@ class SportsWorkoutResponse(ResponseModel):
 
 class ScheduleResponse(ResponseModel):
     user_id: UUID
-    horizon_days: int = Field(default=7, gt=0)
+    horizon_days: int = Field(default=21, gt=0)
     refresh_interval_days: int = Field(default=7, gt=0)
     horizon_end: datetime.date | None = None
     next_refresh_at: datetime.datetime
@@ -448,6 +449,15 @@ class SourceResponse(ResponseModel):
     doi: str | None = None
     url: str | None = None
     document_id: str | None = None
+    chunk_id: str | None = None
+    author: str | None = None
+    publication_year: str | None = None
+    journal: str | None = None
+    publisher: str | None = None
+    license: str | None = None
+    license_url: str | None = None
+    copyright_notice: str | None = None
+    page: int | None = Field(default=None, ge=1)
     source_type: Literal["research", "web"]
     content: str = Field(min_length=1)
     score: float | None = None

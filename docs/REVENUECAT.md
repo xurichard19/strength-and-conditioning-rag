@@ -74,7 +74,9 @@ When billing is enabled, these operations require verified `arcel_pro` access:
 - `POST /planning/adjustments`
 - `POST /planning/jobs/{id}/retry`
 
-Existing profile, workout/history, and subscription-management access remains available. Inactive paid access returns `403 subscription_required`; verification failure returns `503 billing_unavailable` rather than claiming the user needs to buy again. This does not implement the still-separate planning worker.
+Existing profile, workout/history, and subscription-management access remains available. Inactive paid access returns `403 subscription_required`; verification failure returns `503 billing_unavailable` rather than claiming the user needs to buy again.
+
+The planning infrastructure now creates initial plans and background refreshes automatically. Those jobs currently run independently of billing status; the four paid API operations above retain their entitlement checks. Define and implement the entitlement policy for automatic planning before enabling production billing, including how initial generation resumes after a purchase.
 
 ## Local workflow
 
@@ -252,7 +254,7 @@ Stop foreground API/proxy/tunnel processes with Ctrl+C. For the initial backgrou
 
 Before enabling billing:
 
-1. Run backend tests and mobile typecheck, lint, tests, and web export. Confirm billing-disabled startup works without RevenueCat secrets.
+1. Run `python tests/run.py backend`, `python tests/run.py mobile`, and `python tests/run.py database` from the repository root with the project Python environment and Node 22.18+. The centralized suites include the payment tests and billing concurrency checks. Run the mobile web export as well. Confirm billing-disabled startup works without RevenueCat secrets.
 2. Verify monthly/yearly purchase success, cancellation, failure, restore, account switch, expiration, and Customer Center. Check both app display and backend access; a successful SDK callback alone is insufficient.
 3. Verify webhook authorization/HMAC, app filtering, duplicate/delayed delivery, transfer invalidation, and provider unavailability. Confirm ordinary production accounts cannot gain access from sandbox purchases.
 4. Run native Apple sandbox tests with the `appl_` key and real Apple products. Finalize prices, trial policy, legal URLs, support details, and the paywall configuration.

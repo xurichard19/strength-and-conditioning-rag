@@ -21,19 +21,45 @@ export class BackendError extends Error {
   }
 }
 export type SportsWorkoutInput = {
-  sport: string; scheduled_date: string; start_time: string; planned_duration_minutes: number;
+  id: string; sport: string; scheduled_date: string; start_time: string; planned_duration_minutes: number;
   intensity: 'easy' | 'moderate' | 'hard' | 'variable'; notes: string | null;
 };
 export type SportsWorkout = Omit<SportsWorkoutInput, 'start_time' | 'planned_duration_minutes' | 'intensity'> & {
-  id: string; user_id: string; status: 'planned' | 'completed' | 'cancelled';
+  user_id: string; status: 'planned' | 'completed' | 'cancelled';
   start_time: string | null; planned_duration_minutes: number | null; intensity: SportsWorkoutInput['intensity'] | null;
 };
 export type CalendarWorkout = {
   id: string; scheduled_date: string; name: string; notes: string | null;
   status: 'planned' | 'in_progress' | 'completed' | 'skipped'; superseded_at: string | null;
-  exercises: { id: string; name: string }[];
+  exercises: {
+    id: string; name: string; notes?: string | null; reps_per_side?: boolean;
+    weight_unit?: 'kg' | 'lb' | null; distance_unit?: 'm' | 'km' | 'mi' | null;
+    sets?: {
+      planned_reps?: number | null; planned_weight?: number | null; planned_distance?: number | null;
+      planned_duration_seconds?: number | null; planned_rpe?: number | null;
+      planned_rest_seconds?: number | null; planned_notes?: string | null;
+    }[];
+  }[];
 };
 export type CalendarResponse = { workouts: CalendarWorkout[]; sports_workouts: SportsWorkout[]; revision: number | null };
+export type PlanningJob = {
+  id: string; kind: 'adjustment' | 'refresh'; status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+  reason: string; effective_from: string | null; effective_through: string | null;
+  scheduled_for: string | null; change_id: string | null; created_at: string; completed_at: string | null;
+};
+export type PlanningChange = {
+  id: string; user_id: string; revision: number; kind: PlanningJob['kind']; status: 'applied' | 'undone' | 'discarded';
+  reason: string; effective_from: string; effective_through: string;
+  horizon_end_before: string | null; horizon_end_after: string; created_at: string;
+};
+export type PlanningHistory = { changes: PlanningChange[]; revision: number | null };
+export type PlanningSchedule = {
+  user_id: string; horizon_days: number; refresh_interval_days: number; horizon_end: string | null;
+  next_refresh_at: string; revision: number; created_at: string; updated_at: string;
+};
+export type PlanningChangePreview = {
+  change: PlanningChange; before: CalendarWorkout[]; after: CalendarWorkout[]; revision: number | null;
+};
 
 /** Use the device's named timezone, never a guessed UTC offset. */
 export function deviceTimezone(): string | undefined {
@@ -73,7 +99,7 @@ export function profileFromApi(profile: ApiProfile, onboarding: Onboarding | nul
   return result;
 }
 
-/** HTTP shapes only. Auth is supplied by the mobile adapter; this module never calls planning. */
+/** HTTP shapes only; auth is supplied by the mobile adapter. */
 export function createBackend(request: ApiRequest, onSubscriptionRequired?: () => void) {
   async function check(response: Response): Promise<Response> {
     try { return await checked(response); }
@@ -82,8 +108,22 @@ export function createBackend(request: ApiRequest, onSubscriptionRequired?: () =
       throw error;
     }
   }
-  async function json<T>(path: string, options?: RequestInit): Promise<T> {
-    return (await check(await request(path, options))).json();
+  async function json<T>(path: string, options?: RequestInit, retryConflict = false): Promise<T> {
+    if (options?.method && options.method !== 'GET') return (await check(await request(path, options))).json();
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Bound the whole read, including auth and response decoding, even if a transport ignores abort.
+    const deadline = new Promise<T>((_, reject) => {
+      timer = setTimeout(() => { reject(new Error('Request timed out. Please try again.')); controller.abort(); }, 15_000);
+    });
+    try {
+      return await Promise.race([deadline, (async () => {
+        const config = { ...options, signal: controller.signal };
+        let response = await request(path, config);
+        if (retryConflict && response.status === 409 && !controller.signal.aborted) response = await request(path, config);
+        return (await check(response)).json() as Promise<T>;
+      })()]);
+    } finally { clearTimeout(timer); }
   }
   return {
     getBillingStatus: () => json<BillingStatus>('/billing/status'),
@@ -100,13 +140,18 @@ export function createBackend(request: ApiRequest, onSubscriptionRequired?: () =
       method: 'PUT', body: JSON.stringify({ answers }),
     }),
     completeOnboarding: () => json<Onboarding>('/onboarding/complete', { method: 'POST' }),
+    getPlanningJobs: () => json<PlanningJob[]>('/planning/jobs?limit=20'),
+    getPlanningSchedule: () => json<PlanningSchedule | null>('/planning/schedule'),
+    getPlanningHistory: (beforeRevision?: number) => {
+      const query = new URLSearchParams({ limit: '20' });
+      if (beforeRevision !== undefined) query.set('before_revision', String(beforeRevision));
+      return json<PlanningHistory>(`/planning/changes?${query}`);
+    },
+    getPlanningChange: (id: string) => json<PlanningChangePreview>(`/planning/changes/${encodeURIComponent(id)}`),
     /** Inclusive local dates, at most 31 days. Retry one read-only revision conflict. */
-    getCalendarRange: async (startDate: string, endDate: string) => {
+    getCalendarRange: (startDate: string, endDate: string) => {
       const query = new URLSearchParams({ start_date: startDate, end_date: endDate });
-      const path = `/calendar?${query}`;
-      let response = await request(path);
-      if (response.status === 409) response = await request(path);
-      return (await check(response)).json() as Promise<CalendarResponse>;
+      return json<CalendarResponse>(`/calendar?${query}`, undefined, true);
     },
     createSportsWorkout: (workout: SportsWorkoutInput) => json<SportsWorkout>('/sports-workouts', {
       method: 'POST', body: JSON.stringify(workout),

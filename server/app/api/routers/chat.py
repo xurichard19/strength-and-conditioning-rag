@@ -122,8 +122,10 @@ async def chat_reply(
     graph = getattr(request.app.state, "chat_graph", None)
     if graph is None:
         raise HTTPException(503, "chat unavailable", headers=PRIVATE_HEADERS)
+
     with database_errors("chat.save_user"):
         human = await asyncio.to_thread(messages.append_message, user.id, "user", payload.text, user.access_token, conversation_id=payload.conversation_id)
+
     context = WorkflowContext(user_id=user.id, access_token=user.access_token,
         conversation_id=human.conversation_id, message_id=human.id, message_created_at=human.created_at)
 
@@ -132,6 +134,7 @@ async def chat_reply(
         try:
             if x_chat_saved_events == "1":
                 yield ChatSavedEvent(message=MessageResponse.model_validate(human)).model_dump_json() + "\n"
+
             async for event in stream_workflow(graph, message=payload.text, context=context, mode=payload.mode):
                 if event["type"] == "done":
                     continue
@@ -145,9 +148,11 @@ async def chat_reply(
                 else:
                     outgoing = ChatSourcesEvent.model_validate(event)
                 yield outgoing.model_dump_json() + "\n"
+
             text = "".join(chunks)
             if not text.strip():
                 raise ValueError("empty assistant reply")
+
             with sentry_sdk.start_span(op="db", name="chat.save_assistant"):
                 saved = await asyncio.to_thread(messages.append_message, user.id, "assistant", text, None, conversation_id=payload.conversation_id)
             yield ChatDoneEvent(message_id=saved.id, message=MessageResponse.model_validate(saved)).model_dump_json() + "\n"

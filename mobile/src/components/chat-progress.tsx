@@ -7,7 +7,7 @@ import { useApp } from '@/state/app-context';
 import { AppText } from './ui';
 
 const labels: Record<ChatStage, string> = {
-  fetching_user_context: 'Fetching user context', researching: 'Researching', thinking: 'Thinking',
+  fetching_user_context: 'Reading your training context', researching: 'Reviewing the research', thinking: 'Thinking',
 };
 
 /** Show pre-answer work with one native animation; pause off-screen and respect reduced motion. */
@@ -35,7 +35,7 @@ export function ChatProgress({ stage }: { stage?: ChatStage }) {
     <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.dots}>
       {[0, 1, 2].map(index => {
         const inputRange = [0, 0.1 + index * 0.15, 0.25 + index * 0.15, 0.4 + index * 0.15, 1];
-        return <Animated.View key={index} style={[styles.dot, { backgroundColor: colors.textSecondary,
+        return <Animated.View key={index} style={[styles.dot, { backgroundColor: colors.tint,
           transform: [{ translateY: phase.interpolate({ inputRange, outputRange: [0, 0, -3, 0, 0] }) }],
         }]} />;
       })}
@@ -44,8 +44,8 @@ export function ChatProgress({ stage }: { stage?: ChatStage }) {
 }
 
 const styles = StyleSheet.create({
-  progress: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  label: { fontSize: 13, lineHeight: 19, flexShrink: 1 },
-  dots: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, paddingBottom: 4, height: 19 },
+  progress: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  label: { fontSize: 13, lineHeight: 21, flexShrink: 1 },
+  dots: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, paddingBottom: 4, height: 19 },
   dot: { width: 3, height: 3, borderRadius: 2 },
 });

@@ -4,20 +4,17 @@ from functools import lru_cache
 from hashlib import sha256
 from itertools import chain
 import logging
-from pathlib import PurePosixPath
-import re
 from typing import Literal
 
 import chromadb
 from chromadb import K, Knn, Rrf, Search
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 import cohere
-from langchain_core.documents import Document
 from langchain_tavily import TavilySearch
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
-from app.contracts import Source
+from app.contracts import RESEARCH_METADATA_FIELDS, Source, metadata_text
 
 
 logger = logging.getLogger(__name__)
@@ -37,6 +34,7 @@ async def research_collection():
     """initialize async chroma client, lock connection window then cache collection"""
     global _collection
     if _collection: return _collection
+
     async with _collection_lock:
         if _collection is None:
             settings = get_settings()
@@ -44,6 +42,7 @@ async def research_collection():
                 headers={"x-chroma-token": settings.chroma_api_key},
                 tenant=settings.chroma_tenant, database=settings.chroma_database)
             _collection = await client.get_collection(settings.system_collection_name)
+
     return _collection
 
 
@@ -61,57 +60,65 @@ def rerank_client():
     return cohere.AsyncClientV2(api_key=get_settings().cohere_api_key, timeout=20)
 
 
+def _research_source(identifier: str, text: str, metadata: dict | None, score: float | None = None) -> Source:
+    """map research results to citation fields and chunk identifiers"""
+    metadata = metadata or {}
+    citation = {field: metadata_text(metadata.get(field)) for field in RESEARCH_METADATA_FIELDS}
+    page = metadata.get("page")
+    return Source(source_type="research", chunk_id=str(identifier), score=score,
+        page=page if isinstance(page, int) and page > 0 else None,
+        content=text.strip(), **citation)
+
+
 async def search_research_docs(query: str, top_k: int) -> list[Source]:
     """
-    dense research rag retrieval
+    deprecated: dense research retrieval; use hybrid_search_research_docs instead
+
+    chat and planning workflows do not call this helper.
 
     - **query**: standalone retrieval question
     - **top_k**: bounded number of chunks
-    - **returns**: original excerpts and real chunk identifiers
+    - **returns**: original excerpts with citation metadata and chunk identifiers
     """
     collection = await research_collection()
     embeddings = await asyncio.to_thread(_research_embeddings, [query])
     result = await collection.query(query_embeddings=embeddings, n_results=top_k,
         include=["documents", "metadatas"])
-    sources = []
-    for identifier, text, metadata in zip(result["ids"][0], result["documents"][0], result["metadatas"][0]):
-        if not text.strip():
-            continue
-        metadata = metadata or {}
-        filename = PurePosixPath(str(metadata.get("source", "research document")).replace("\\", "/")).name
-        # research filenames encode doi slashes as colons; remove only the file extension
-        candidate = re.sub(r"\.(pdf|txt|md|docx|html)$", "", filename, flags=re.IGNORECASE)
-        doi = metadata.get("doi") or (candidate.replace(":", "/") if re.fullmatch(r"10\.\d{4,9}:\S+", candidate) else None)
-        title = metadata.get("title") or doi or filename
-        sources.append(Source(source_type="research", document_id=str(identifier),
-            doi=doi, title=str(title), content=text.strip()))
-    return sources
+
+    return [_research_source(identifier, text, metadata)
+        for identifier, text, metadata in zip(result["ids"][0], result["documents"][0], result["metadatas"][0])
+        if text and text.strip()]
 
 
-async def hybrid_search_research_docs(query: str, top_k: int = 10) -> list[Document]:
+async def hybrid_search_research_docs(query: str, top_k: int = 10) -> list[Source]:
     """
     hybrid research retrieval using rrf with 2:1 dense-to-sparse rank weights
 
     - **query**: research question
     - **top_k**: result count
-    - **returns**: full research documents in fused rank order, retaining chunk ids,
+    - **returns**: research sources in fused rank order, retaining chunk ids,
       available citation metadata and rrf scores
     """
     collection = await research_collection()
     index = collection.schema.keys["sparse_embedding"].sparse_vector.sparse_vector_index
-    sparse_embeddings = index.config.embedding_function # move to cache during prod
+    sparse_embeddings = index.config.embedding_function
+
     dense, sparse = await asyncio.gather(
         asyncio.to_thread(_research_embeddings, [query]),
         asyncio.to_thread(sparse_embeddings.embed_query, [query]),
     )
+    if not sparse[0].indices:
+        return []
+
     rank = Rrf(ranks=[
         Knn(query=dense[0], return_rank=True, limit=max(75, top_k), default=1000),
         Knn(query=sparse[0], key="sparse_embedding", return_rank=True, limit=max(75, top_k), default=1000),
     ], weights=[2.0, 1.0], k=60)
-    result = await collection.search(Search().rank(rank).limit(top_k).select(K.DOCUMENT, K.SCORE, "title", "source", "doi"))
-    return [Document(id=row["id"], page_content=row["document"],
-        metadata={**(row["metadata"] or {}), "source_type": "research", "score": row["score"]})
-        for row in result.rows()[0] if row["document"] and row["document"].strip()]
+    result = await collection.search(Search().rank(rank).limit(top_k).select(
+        K.DOCUMENT, K.SCORE, *RESEARCH_METADATA_FIELDS, "source", "page"))
+
+    return [_research_source(row["id"], row["document"], row.get("metadata"), row.get("score"))
+        for row in result.rows()[0] if row.get("document") and row["document"].strip()]
 
 
 async def rerank_research_results(query: str, research_documents: list[str], top_n: int = 5) -> list[str]:
@@ -125,6 +132,7 @@ async def rerank_research_results(query: str, research_documents: list[str], top
     """
     if not research_documents:
         return []
+
     result = await rerank_client().rerank(model="rerank-v4.0-fast", query=query,
         documents=research_documents, top_n=min(top_n, len(research_documents)), request_options={"max_retries": 0})
     return [research_documents[item.index] for item in result.results]
@@ -142,6 +150,7 @@ async def web_search(query: str, top_k: int) -> list[Source]:
     result = await web_search_client(top_k).ainvoke({"query": query})
     if not isinstance(result, dict) or "results" not in result:
         raise ValueError("web search returned no result envelope")
+
     sources = []
     for item in result["results"]:
         text = item.get("content") or ""
@@ -149,6 +158,7 @@ async def web_search(query: str, top_k: int) -> list[Source]:
             continue
         sources.append(Source(source_type="web", url=item["url"], title=str(item.get("title") or "web source"),
             content=text.strip()))
+
     return sources
 
 
@@ -156,7 +166,7 @@ async def _retrieve(provider: str, query: str, top_k: int) -> SearchResponse:
     """search wrapper, isolate provider failures"""
     try:
         async with asyncio.timeout(SEARCH_TIMEOUT_SECONDS):
-            sources = await (search_research_docs(query, top_k)
+            sources = await (hybrid_search_research_docs(query, top_k)
                 if provider == "research" else web_search(query, top_k))
         return SearchResponse(results=sources)
     except Exception as exc:
@@ -178,8 +188,10 @@ async def search_sources(
     """
     if not query.strip() or top_k < 1:
         raise ValueError("invalid search query or result limit")
+
     selected = SEARCH_PROVIDERS[providers]
     responses = await asyncio.gather(*(_retrieve(provider, query, top_k) for provider in selected))
+
     return SearchResponse(results=merge_sources([], [source for response in responses for source in response.results]),
         warnings=[note for response in responses for note in response.warnings])
 
@@ -203,6 +215,6 @@ def format_sources_for_prompt(sources: Sequence[Source]) -> str:
     """format sources as numbered excerpts with titles and citation identifiers"""
     return "\n\n".join(
         f"[{index}] {source.source_type}; {source.title or 'untitled'}; "
-        f"{source.doi or source.url or source.document_id}\n{source.content}"
+        f"{source.doi or source.url or source.document_id or source.chunk_id}\n{source.content}"
         for index, source in enumerate(sources, 1)
     ) or "no relevant evidence was retrieved"

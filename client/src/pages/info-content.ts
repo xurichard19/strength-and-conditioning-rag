@@ -1,108 +1,35 @@
 import type { InfoPageName } from '../routing'
+import { legalContent, type InfoContent } from './legal-content'
 
-export const pageContent: Record<InfoPageName, {
-    eyebrow: string
-    title: string
-    sections: Array<{
-        heading: string
-        body: string
-    }>
-}> = {
+export const pageContent: Record<InfoPageName, InfoContent> = {
     about: {
         eyebrow: "Company",
         title: "About Arcel",
         sections: [
             {
-                heading: "Research-backed programming",
-                body: "Arcel is being built to turn relevant research into structured strength and conditioning for hybrid athletes: scheduled workouts, exercises, and set targets shaped around your profile, goals, and sport commitments. Our AI draws on more than 300 openly licensed papers and live web search—not just its general knowledge.",
+                heading: "Research behind the recommendations",
+                body: "We’re building Arcel for people who combine strength training with conditioning or another sport. Its planning tools shape workouts and set targets around your goals, experience, equipment, and sport commitments. Relevant research and web evidence inform the plan alongside the model’s general knowledge.",
             },
             {
-                heading: "A rolling plan, not a static template",
-                body: "Your calendar should keep moving forward without restarting your program from scratch. Rolling programming is designed to regularly extend your upcoming training, with concrete sessions to follow and targets to record. The aim is continuity toward your goal, with room for the plan to evolve.",
+                heading: "A program that carries forward",
+                body: "Completing onboarding starts your first three-week plan. Weekly refreshes add the next week of training, while the Plans overview shows your coverage, weekly session counts, and next refresh. Generation runs in the background, so an accepted plan update can continue after you leave the app.",
             },
             {
-                heading: "Adapt what’s ahead",
-                body: "Poor sleep, a missed workout, changing performance, or an added sport session can change what training makes sense next. Arcel is being designed to use those signals to adjust affected upcoming workouts without resetting the regular planning rhythm. Chat will help you understand recommendations and communicate changes.",
+                heading: "Room for the week to change",
+                body: "Adding or removing a sports session prompts a review of upcoming workouts. Redoing onboarding applies your new preferences within the existing plan window. These adjustments keep the current horizon and refresh cadence in place. Handling missed workouts, recovery changes, and recorded performance is future work.",
             },
             {
-                heading: "Keep the work you’ve done",
-                body: "What you were prescribed and what you actually did both matter. The rolling design keeps completed workouts and recorded results intact as future sessions change. Planning history is intended to show what changed and why, so an evolving program doesn’t mean losing your training record.",
+                heading: "A clear record of plan changes",
+                body: "The timeline records plan updates, their reasons, and their status. Open an entry to inspect the affected workouts before and after the change, including exercises and set targets. Your general chat stays separate: use Quick or Deep responses for training questions, review sources when evidence is used, and return to saved conversations.",
             },
         ],
     },
-    terms: {
-        eyebrow: "Legal",
-        title: "Terms of Service",
-        sections: [
-            {
-                heading: "Acceptance of terms",
-                body: "Placeholder copy. By using Arcel, users agree to follow these terms and any additional policies referenced here.",
-            },
-            {
-                heading: "Accounts and subscriptions",
-                body: "Placeholder copy. Users are responsible for their accounts, payment information, subscription choices, and cancellation requests.",
-            },
-            {
-                heading: "Limitations",
-                body: "Placeholder copy. Arcel is provided as-is, without guarantees of availability, accuracy, performance outcomes, or fitness results.",
-            },
-        ],
-    },
-    privacy: {
-        eyebrow: "Legal",
-        title: "Privacy Policy",
-        sections: [
-            {
-                heading: "Information collected",
-                body: "Placeholder copy. Arcel may collect account information, authentication data, prompts, generated outputs, usage data, and billing-related information.",
-            },
-            {
-                heading: "Service providers",
-                body: "Placeholder copy. Arcel may use third-party providers for authentication, hosting, payments, analytics, AI generation, and document retrieval.",
-            },
-            {
-                heading: "User choices",
-                body: "Placeholder copy. Users may request access, correction, deletion, or other privacy actions by contacting the operator.",
-            },
-        ],
-    },
-    disclaimer: {
-        eyebrow: "Safety",
-        title: "Fitness Disclaimer",
-        sections: [
-            {
-                heading: "Educational information",
-                body: "Arcel provides educational training information for hybrid athletes and does not provide medical advice, diagnosis, or treatment.",
-            },
-            {
-                heading: "Exercise risk",
-                body: "Placeholder copy. Exercise involves risk. Users should stop if they experience pain, dizziness, or unusual symptoms and should consult a qualified professional when appropriate.",
-            },
-            {
-                heading: "No guaranteed results",
-                body: "Placeholder copy. Training outcomes vary by person, context, consistency, health status, and many other factors.",
-            },
-        ],
-    },
-    accessibility: {
-        eyebrow: "Policy",
-        title: "Accessibility",
-        sections: [
-            {
-                heading: "Commitment",
-                body: "Placeholder copy. Arcel aims to provide a usable experience for people with diverse access needs.",
-            },
-            {
-                heading: "Feedback",
-                body: "Placeholder copy. Users who encounter accessibility issues should contact the operator with details about the issue, device, browser, and assistive technology used.",
-            },
-        ],
-    },
+    ...legalContent,
 }
 
 export const teamIntroductions = [
     {
-        name: "richard xu",
+        name: "rick xu",
         body: "AI/Cloud/Backend/DevOps",
         linkedinUrl: "https://www.linkedin.com/in/richardrxu/",
     },
@@ -118,14 +45,6 @@ export const teamIntroductions = [
     }
 ]
 
-export const architectureSteps = [
-    { label: "Mobile", detail: "Expo + React Native" },
-    { label: "Edge", detail: "Cloud Load Balancing + Cloud Armor" },
-    { label: "API", detail: "FastAPI on Cloud Run" },
-    { label: "Workflow", detail: "LangGraph orchestration" },
-    { label: "Search", detail: "LangChain + source tools (Chroma/Tavily/Cohere)" },
-]
-
 export const technologyGroups = [
     {
         heading: "Mobile experience",
@@ -133,11 +52,11 @@ export const technologyGroups = [
     },
     {
         heading: "API and workflows",
-        body: "Python and FastAPI, with LangGraph coordinating chat and workout planning. LangChain agents gather evidence; OpenAI models generate responses.",
+        body: "Python and FastAPI, with LangGraph coordinating chat and workout planning. OpenAI models generate responses using retrieved evidence.",
     },
     {
         heading: "Research and retrieval",
-        body: "Chroma Cloud indexes research, Tavily searches the web, and Cohere reranks research results. Source documents are stored in Google Cloud Storage.",
+        body: "Chroma Cloud indexes research, and Tavily supplies web search results. Source documents are stored in Google Cloud Storage.",
     },
     {
         heading: "Accounts and data",
@@ -145,7 +64,7 @@ export const technologyGroups = [
     },
     {
         heading: "Cloud and delivery",
-        body: "Docker on Google Cloud Run, behind Cloud Load Balancing and Cloud Armor. GitHub Actions builds images in Artifact Registry and deploys the backend.",
+        body: "Cloud Scheduler discovers due refreshes, Cloud Tasks delivers planning jobs, and private Cloud Run workers process them. Supabase keeps job status and published plans. GitHub Actions builds and deploys the services.",
     },
     {
         heading: "Web and observability",

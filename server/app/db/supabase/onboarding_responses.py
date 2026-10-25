@@ -6,7 +6,7 @@ from uuid import UUID
 
 from app.contracts import OnboardingResponseRecord
 from app.db.supabase._queries import identifier
-from app.db.supabase.transport import SupabaseDataError, select_rows, update_rows, upsert_rows
+from app.db.supabase.transport import SupabaseDataError, call_rpc, select_rows, upsert_rows
 
 
 ONBOARDING_COLUMNS = "user_id,answers,completed_at,created_at,updated_at"
@@ -49,9 +49,10 @@ def save_onboarding_response(
     individual answers. supply the full desired object when saving an edit. omitted
     completed_at preserves the previous timestamp; this interface cannot clear it.
     a supplied timestamp must be timezone-aware. the database trigger bumps the
-    planning revision once for actual changes, not identical saves; no job is queued.
-    concurrent saves are last-write-wins,
-    so repeating an old save can overwrite a newer response.
+    planning revision once for actual changes, not identical saves. changed answers
+    after completion atomically queue an adjustment from the user's local today
+    through existing coverage, without moving the horizon or cadence. concurrent
+    saves are last-write-wins, so an old save can overwrite a newer response.
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **answers**: complete onboarding answer object, replacing the previous answers
@@ -80,21 +81,18 @@ def save_onboarding_response(
     return OnboardingResponseRecord.model_validate(rows[0])
 
 
-def complete_onboarding_response(user_id: str | UUID, access_token: str) -> OnboardingResponseRecord | None:
+def complete_onboarding_response(user_id: str | UUID) -> OnboardingResponseRecord | None:
     """
-    set completion time only when the saved response has not already been completed
+    complete saved onboarding and initialize due planning in one backend transaction
 
-    the conditional update preserves the first timestamp under concurrent calls
-    and never copies or replaces answers. if nothing was updated, read the current
-    row to distinguish an already-completed response from a missing one. the
-    database trigger increments planning revision only for a matching update;
-    this handler does not enqueue a job. no fixed question schema is required.
+    preserves answers, the first completion timestamp, and any existing schedule.
+    a missing schedule requests three-week coverage with weekly refreshes; the
+    dispatcher discovers it on its next tick when planning is enabled. retries
+    cannot reset cadence or duplicate initial generation. no model call runs here.
 
-    - **user_id**: authenticated owner's id
-    - **access_token**: verified caller jwt for owner-scoped rls
-    - **returns**: completed response or none if no visible saved response exists
+    - **user_id**: verified owner's id; the caller must authorize backend access
+    - **returns**: completed response or none if no saved response exists
     """
 
-    rows = update_rows("onboarding_responses", {"completed_at": datetime.datetime.now(datetime.UTC).isoformat()},
-        [("user_id", f"eq.{identifier(user_id)}"), ("completed_at", "is.null")], access_token)
-    return OnboardingResponseRecord.model_validate(rows[0]) if rows else get_onboarding_response(user_id, access_token)
+    result = call_rpc("complete_onboarding", {"p_user_id": identifier(user_id)}, None)
+    return OnboardingResponseRecord.model_validate(result) if result is not None else None

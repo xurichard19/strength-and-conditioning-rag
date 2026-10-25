@@ -39,13 +39,14 @@ def create_sport(payload: SportsCreateRequest, user: AuthUser = Depends(require_
     """
     create a preplanned sports commitment, separate from generated workouts
 
-    this invalidates planning inputs, but does not choose/enqueue an adjustment.
-    use an explicit planning adjustment until trigger orchestration is implemented.
-    inserts have no request key: do not blindly retry after a lost response.
+    the database atomically queues an adjustment when the session affects existing
+    planning coverage. the dispatcher delivers it; no separate adjustment call is needed.
+    reuse the same client id and creation fields after a lost response. an exact
+    replay returns the saved commitment; conflicting reuse returns 409.
 
-    - **payload**: sport, local date/time, and optional duration/intensity/notes
+    - **payload**: stable client uuid, sport, local date/time, and optional duration/intensity/notes
     - **user**: verified owner; owner/status fields are not accepted in the payload
-    - **returns**: new planned commitment with generated id
+    - **returns**: created or previously saved commitment with the requested id
     """
 
     with database_errors("sports_workouts.create_sport"):
@@ -61,7 +62,7 @@ def update_sport(workout_id: UUID, payload: SportsUpdateRequest, user: AuthUser 
     - **workout_id**: owned commitment id
     - **payload**: nonempty field patch; status changes use the status endpoint
     - **user**: verified owner and caller jwt
-    - **returns**: updated commitment or 404; edits invalidate inputs but do not enqueue work
+    - **returns**: updated commitment or 404; relevant changes atomically queue covered adjustments
     """
 
     with database_errors("sports_workouts.update_sport"):
@@ -76,11 +77,12 @@ def set_sport_status(workout_id: UUID, payload: SportsStatusRequest, user: AuthU
 
     cancellation retains the row but hides it from the calendar. repeated status
     writes reset their status timestamp; this is not an idempotent event recorder.
+    cancelling or reinstating queues a covered adjustment; completion only invalidates inputs.
 
     - **workout_id**: owned commitment id
     - **payload**: desired status
     - **user**: verified owner and caller jwt
-    - **returns**: updated commitment or 404; generated workouts are not modified
+    - **returns**: updated commitment or 404; any queued adjustment runs asynchronously
     """
 
     with database_errors("sports_workouts.set_sport_status"):
@@ -91,6 +93,8 @@ def set_sport_status(workout_id: UUID, payload: SportsStatusRequest, user: AuthU
 def delete_sport(workout_id: UUID, user: AuthUser = Depends(require_user)) -> SportsWorkoutResponse:
     """
     permanently delete a commitment; use cancelled status if it must remain inspectable
+
+    the database queues an adjustment when the removed session affects existing coverage.
 
     - **workout_id**: owned commitment to remove
     - **user**: verified owner and caller jwt

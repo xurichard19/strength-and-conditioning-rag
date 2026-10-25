@@ -11,7 +11,7 @@ export type SubscriptionState = {
   message: string | null;
   confirming: boolean;
 };
-export type SubscriptionDestination = '/(tabs)/today' | '/(tabs)/chat' | '/(tabs)/you';
+export type SubscriptionDestination = '/(tabs)/today' | '/chat' | '/(tabs)/you';
 const empty = (owner: string | null = null): SubscriptionState => ({ owner, status: null,
   loading: Boolean(owner), busy: null, error: null, message: null, confirming: false });
 const message = (error: unknown, fallback: string) => error && typeof error === 'object'

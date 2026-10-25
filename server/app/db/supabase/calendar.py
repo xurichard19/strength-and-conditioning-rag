@@ -4,12 +4,12 @@ from datetime import date, timedelta
 from uuid import UUID
 
 from app.contracts import CalendarRecords, CalendarSnapshot, ClaimedReplanJob, ReplanContext
-from app.db.supabase._queries import read_with_revision
+from app.db.supabase._queries import identifier
 from app.db.supabase.onboarding_responses import get_onboarding_response
 from app.db.supabase.planning_schedules import get_planning_schedule
 from app.db.supabase.profiles import get_profile
 from app.db.supabase.sports_workouts import get_sports_workouts_in_range
-from app.db.supabase.transport import SupabaseDataError
+from app.db.supabase.transport import SupabaseDataError, call_rpc
 from app.db.supabase.workouts import get_recent_workouts, get_workouts_in_range
 
 
@@ -41,29 +41,30 @@ def get_calendar(user_id: str | UUID, start_date: date, end_date: date, access_t
 
 def get_calendar_snapshot(user_id: str | UUID, start_date: date, end_date: date, access_token: str | None) -> CalendarSnapshot:
     """
-    read frontend calendar data with the revision to use for later guarded writes
+    read frontend calendar data and revision from one database snapshot
 
     - **user_id**: authenticated owner
     - **start_date**: inclusive first local date
-    - **end_date**: inclusive last local date
+    - **end_date**: inclusive last local date, at most 30 days after start_date
     - **access_token**: caller jwt, or none for backend access
-    - **returns**: current workouts, sports, and revision; 409 if inputs changed during reading
+    - **returns**: current workouts, sports, and revision for later guarded writes
     """
 
-    data, revision = read_with_revision(user_id, access_token,
-        lambda: get_calendar(user_id, start_date, end_date, access_token))
-    return CalendarSnapshot(workouts=data.workouts, sports_workouts=data.sports_workouts, revision=revision)
+    if not 0 <= (end_date - start_date).days < 31:
+        raise ValueError("calendar range must contain 1 to 31 days")
+    return CalendarSnapshot.model_validate(call_rpc("get_calendar_snapshot", {
+        "p_user_id": identifier(user_id), "p_start_date": start_date.isoformat(), "p_end_date": end_date.isoformat(),
+    }, access_token))
 
 
 def get_replan_context(claim: ClaimedReplanJob, history_days: int = 30) -> ReplanContext:
     """
     load worker context through the horizon and reject input changes during the reads
 
-    backend-only context loader after claim_replan_job. verifies the schedule
-    matches claim.job.expected_revision, loads profile/onboarding, history ending
-    the day before effective_from, and the calendar through horizon_end, then checks
-    revision again. the broader calendar gives context beyond a short adjustment;
-    it does not authorize editing beyond claim.effective_through.
+    verifies the claim revision, loads profile/onboarding, thirty-day history before
+    claimed_on and the whole remaining calendar, then checks revision again.
+    sport reads include three neighboring days for recovery context. these broader
+    reads never authorize edits outside the claim's window.
 
     missing onboarding is allowed; missing profile raises a 404. missing/stale
     schedule or a revision change during reads raises a 409. discard that context
@@ -77,19 +78,29 @@ def get_replan_context(claim: ClaimedReplanJob, history_days: int = 30) -> Repla
     """
 
     user_id = claim.job.user_id
+    today = claim.job.claimed_on
+    if today is None:
+        raise ValueError("planning context requires a frozen claim date")
+
     schedule = get_planning_schedule(user_id, None)
     if schedule is None or schedule.revision != claim.job.expected_revision:
         raise SupabaseDataError("planning inputs changed; reload the job", status_code=409)
     profile = get_profile(user_id, None)
     if profile is None:
         raise SupabaseDataError("profile not found", status_code=404)
+
     context = ReplanContext(
         schedule=schedule,
         profile=profile,
         onboarding=get_onboarding_response(user_id, None),
-        recent_workouts=get_recent_workouts(user_id, claim.effective_from - timedelta(days=1), None, history_days),
-        calendar=get_calendar(user_id, claim.effective_from, claim.horizon_end, None),
+        recent_workouts=get_recent_workouts(user_id, today - timedelta(days=1), None, history_days),
+        calendar=CalendarRecords(
+            workouts=get_workouts_in_range(user_id, today, claim.horizon_end, None),
+            sports_workouts=get_sports_workouts_in_range(user_id,
+                today - timedelta(days=3), claim.horizon_end + timedelta(days=3), None),
+        ),
     )
+
     current = get_planning_schedule(user_id, None)
     if current is None or current.revision != schedule.revision:
         raise SupabaseDataError("planning inputs changed during context read", status_code=409)

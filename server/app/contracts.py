@@ -61,11 +61,34 @@ class BillingAccessDecision(BaseModel):
 
 # -------------------- retrieval --------------------
 
+RESEARCH_METADATA_FIELDS = (
+    "document_id", "title", "author", "doi", "publication_year", "journal",
+    "publisher", "license", "license_url", "copyright_notice",
+)
+
+
+def metadata_text(value: str | None) -> str | None:
+    """treat the bucket's missing-value marker as absent"""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value if value and value.casefold() != "none" else None
+
+
 class Source(BaseModel):
     title: str | None = None
     doi: str | None = None
     url: str | None = None
     document_id: str | None = None
+    chunk_id: str | None = None
+    author: str | None = None
+    publication_year: str | None = None
+    journal: str | None = None
+    publisher: str | None = None
+    license: str | None = None
+    license_url: str | None = None
+    copyright_notice: str | None = None
+    page: int | None = Field(default=None, ge=1)
     source_type: Literal["research", "web"]
     content: str = Field(min_length=1)
     score: float | None = None
@@ -73,9 +96,9 @@ class Source(BaseModel):
     @model_validator(mode="after")
     def check_source_identifier(self):
         if self.source_type == "research":
-            if not (self.doi or self.document_id) or self.url:
-                raise ValueError("research sources require a doi or document id and no url")
-        elif not self.url or self.doi or self.document_id:
+            if not (self.doi or self.document_id or self.chunk_id) or self.url:
+                raise ValueError("research sources require a doi, document id or chunk id and no url")
+        elif not self.url or self.doi or self.document_id or self.chunk_id:
             raise ValueError("web sources require a url and no research identifiers")
         return self
 
@@ -114,13 +137,6 @@ class PlannedWorkout(BaseModel):
     notes: str | None = None
 
 
-class PlannedWorkoutPlan(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    workouts: list[PlannedWorkout]
-    notes: str | None = None
-
-
 # -------------------- profile records --------------------
 
 class ProfileRecord(BaseModel):
@@ -146,7 +162,7 @@ class PlanningScheduleRecord(BaseModel):
     """coverage and fixed local refresh cadence; revision covers all planning inputs"""
 
     user_id: UUID
-    horizon_days: int = Field(default=7, gt=0)
+    horizon_days: int = Field(default=21, gt=0)
     refresh_interval_days: int = Field(default=7, gt=0)
     horizon_end: datetime.date | None = None
     next_refresh_at: datetime.datetime
@@ -218,6 +234,10 @@ class ReplanJobRecord(BaseModel):
     completed_at: datetime.datetime | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    delivery_token: UUID | None = None
+    dispatched_at: datetime.datetime | None = None
+    dispatch_recoveries: int = Field(default=0, ge=0, le=1)
+    claimed_on: datetime.date | None = None
 
     @model_validator(mode="after")
     def check_adjustment_window(self):
@@ -304,6 +324,41 @@ class ClaimedReplanJob(BaseModel):
     horizon_end: datetime.date
 
 
+class ReplanDeliveryClaim(BaseModel):
+    status: Literal["claimed", "missing", "obsolete", "terminal", "busy", "not_ready"]
+    claim: ClaimedReplanJob | None = None
+
+    @model_validator(mode="after")
+    def check_claim(self):
+        if (self.status == "claimed") != (self.claim is not None):
+            raise ValueError("only a claimed delivery must contain a job claim")
+        return self
+
+
+class ReplanResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    before_ids: list[UUID]
+    workouts: list[PlannedWorkout]
+
+
+class PlanningDayDecision(BaseModel):
+    """account for each date without saving empty rest-day workouts"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scheduled_date: datetime.date
+    rest: bool
+
+
+class PlanningProposal(ReplanResult):
+    """bounded changes and explicit coverage, validated before publication"""
+
+    before_ids: list[UUID] = Field(max_length=100)
+    workouts: list[PlannedWorkout] = Field(max_length=100)
+    day_decisions: list[PlanningDayDecision] = Field(max_length=366)
+
+
 # -------------------- database write inputs --------------------
 
 class ProfileUpdate(BaseModel):
@@ -367,6 +422,7 @@ class SportsWorkoutRecord(BaseModel):
 class SportsWorkoutInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    id: UUID
     sport: str = Field(min_length=1)
     scheduled_date: datetime.date
     start_time: datetime.time | None = None

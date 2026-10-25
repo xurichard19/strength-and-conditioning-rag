@@ -6,9 +6,12 @@ on:
       - main
     paths:
       - ".github/workflows/deploy-backend-cloud-run.yml"
+      - ".github/workflows/deploy-planning-cloud-run.yml"
+      - ".github/workflows/tests.yml"
       - ".dockerignore"
       - "server/**"
       - "supabase/**"
+      - "tests/**"
       - "pyproject.toml"
   workflow_dispatch:
 
@@ -26,8 +29,14 @@ env:
   CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE || 'arcel-backend' }}
 
 jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
   deploy:
+    needs: tests
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.uri }}
 
     steps:
       - name: check out repository
@@ -152,6 +161,7 @@ jobs:
           region: ${{ env.GCP_REGION }}
           service: ${{ env.CLOUD_RUN_SERVICE }}
           image: ${{ steps.image.outputs.uri }}
+          env_vars_update_strategy: merge
           env_vars: |-
             ENVIRONMENT=production
             CHROMA_TENANT=${{ secrets.CHROMA_TENANT }}
@@ -180,6 +190,7 @@ jobs:
             REVENUECAT_WEBHOOK_SIGNING_SECRET=${{ vars.BILLING_ENABLED == 'true' && secrets.REVENUECAT_WEBHOOK_SIGNING_SECRET || '' }}
             REVENUECAT_APP_IDS='${{ vars.BILLING_ENABLED == 'true' && vars.REVENUECAT_APP_IDS || '[]' }}'
             BILLING_SANDBOX_USER_IDS='${{ vars.BILLING_ENABLED == 'true' && vars.BILLING_SANDBOX_USER_IDS || '[]' }}'
+            PLANNING_ENABLED=false
           flags: >-
             --port=8000
             --memory=2Gi
@@ -190,3 +201,10 @@ jobs:
         env:
           SERVICE_URL: ${{ steps.deploy.outputs.url }}
         run: curl --fail --show-error --silent --retry 5 --retry-delay 5 --max-time 30 "${SERVICE_URL}/health"
+
+  planning:
+    needs: deploy
+    uses: ./.github/workflows/deploy-planning-cloud-run.yml
+    with:
+      image: ${{ needs.deploy.outputs.image }}
+    secrets: inherit

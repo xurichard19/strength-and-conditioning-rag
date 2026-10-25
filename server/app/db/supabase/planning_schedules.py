@@ -30,7 +30,7 @@ def get_planning_schedule(user_id: str | UUID, access_token: str | None) -> Plan
 
 
 def configure_planning_schedule(
-    user_id: str | UUID, next_refresh_at: datetime, horizon_days: int = 7, refresh_interval_days: int = 7,
+    user_id: str | UUID, next_refresh_at: datetime, horizon_days: int = 21, refresh_interval_days: int = 7,
 ) -> PlanningScheduleRecord:
     """
     initialize or explicitly change cadence without generating workouts

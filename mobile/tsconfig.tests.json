@@ -2,9 +2,17 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "types": ["node"],
+    "typeRoots": ["./node_modules/@types"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/assets/*": ["./assets/*"],
+      "typescript": ["./node_modules/typescript"],
+      "react-native-purchases": ["./node_modules/react-native-purchases"],
+      "react-native-purchases-ui": ["./node_modules/react-native-purchases-ui"]
+    },
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["tests/**/*.ts", "types/**/*.d.ts", "eslint.config.ts"],
+  "include": ["../tests/mobile/**/*.ts", "types/**/*.d.ts", "eslint.config.ts"],
   "exclude": ["node_modules"]
 }

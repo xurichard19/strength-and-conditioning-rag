@@ -10,6 +10,9 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import ChatLauncher from '@/components/chat-launcher';
+import { GlassProvider } from '@/components/glass-surface';
 import { AppText, PrimaryButton, SecondaryButton } from '@/components/ui';
 
 import { AppProvider, useApp } from '@/state/app-context';
@@ -26,7 +29,7 @@ function Navigation() {
   const baseTheme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
   const theme = {
     ...baseTheme,
-    colors: { ...baseTheme.colors, background: colors.background, card: colors.card, text: colors.text },
+    colors: { ...baseTheme.colors, background: colors.background, card: colors.card, text: colors.text, primary: colors.tint, border: colors.separator, notification: colors.danger },
   };
 
   useEffect(() => {
@@ -50,20 +53,24 @@ function Navigation() {
   return (
     <ThemeProvider value={theme}>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="auth" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="reset-password" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="paywall" options={{ gestureEnabled: false }} />
-        <Stack.Protected guard={paidScreensAvailable}>
-          <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
-          <Stack.Screen name="session/[id]" />
-          <Stack.Screen name="sports-workout" />
-          <Stack.Screen name="workout/[id]" options={{ gestureEnabled: false }} />
-        </Stack.Protected>
-        <Stack.Screen name="account" options={{ presentation: 'modal' }} />
-      </Stack>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="auth" options={{ gestureEnabled: false }} />
+          <Stack.Screen name="reset-password" options={{ gestureEnabled: false }} />
+          <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
+          <Stack.Screen name="paywall" options={{ gestureEnabled: false }} />
+          <Stack.Protected guard={paidScreensAvailable}>
+            <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="session/[id]" />
+            <Stack.Screen name="sports-workout" />
+            <Stack.Screen name="workout/[id]" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="chat" options={{ presentation: 'transparentModal', animation: 'fade', gestureEnabled: false, contentStyle: { backgroundColor: 'transparent' } }} />
+          </Stack.Protected>
+          <Stack.Screen name="account" options={{ presentation: 'modal' }} />
+        </Stack>
+        {paidScreensAvailable ? <ChatLauncher /> : null}
+      </GestureHandlerRootView>
     </ThemeProvider>
   );
 }
@@ -76,5 +83,5 @@ export default function RootLayout() {
   }, [error, loaded]);
 
   if (!loaded && !error) return null;
-  return <AppProvider><SubscriptionProvider><Navigation /></SubscriptionProvider></AppProvider>;
+  return <AppProvider><SubscriptionProvider><GlassProvider><Navigation /></GlassProvider></SubscriptionProvider></AppProvider>;
 }

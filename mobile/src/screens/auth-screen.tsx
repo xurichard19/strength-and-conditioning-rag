@@ -1,6 +1,5 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ShieldCheck, Sparkles } from 'lucide-react-native';
+import { ShieldCheck } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -83,16 +82,16 @@ export default function AuthScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
-      <LinearGradient pointerEvents="none" colors={colors.washYou} style={styles.wash} />
       <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
           <View style={styles.brandRow}>
-            <View style={[styles.mark, { backgroundColor: colors.tintSoft }]}><Sparkles color={colors.tintText} size={25} /></View>
-            <AppText weight="bold" style={styles.brand}>Arcel</AppText>
+            <AppText weight="medium" style={styles.brand}>Arcel</AppText>
+            <View style={[styles.brandRule, { backgroundColor: colors.separator }]} />
+            <AppText tone="secondary" style={styles.brandDescriptor}>TRAINING, IN CONTEXT</AppText>
           </View>
 
           <View style={styles.intro}>
-            <AppText weight="bold" style={styles.title}>{content.title}</AppText>
+            <AppText style={styles.title}>{content.title}</AppText>
             <AppText tone="secondary" style={styles.copy}>{content.copy}</AppText>
           </View>
 
@@ -104,7 +103,7 @@ export default function AuthScreen() {
             <ShieldCheck color={colors.textTertiary} size={15} />
             <AppText tone="secondary" style={styles.trustText}>Your account keeps your plan and training history in sync.</AppText>
           </View>
-          <AppText tone="secondary" style={styles.legal}>By continuing, you agree to Arcel’s Terms and Privacy Policy.</AppText>
+          <AppText tone="secondary" style={styles.legal}>By continuing, you agree to Arcel’s Terms of Service. See our privacy policies for how we handle your information.</AppText>
           <PolicyLinks />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -114,15 +113,15 @@ export default function AuthScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  wash: { position: 'absolute', top: 0, left: 0, right: 0, height: 390 },
-  content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 34, paddingBottom: 24, justifyContent: 'center' },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
-  mark: { width: 48, height: 48, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  brand: { fontSize: 17, lineHeight: 21, letterSpacing: 1.7, textTransform: 'uppercase' },
-  intro: { marginTop: 28, marginBottom: 22 },
-  title: { fontSize: 34, lineHeight: 39, letterSpacing: -1.15 },
-  copy: { marginTop: 9, fontSize: 15, lineHeight: 22, maxWidth: 330 },
-  trustRow: { marginTop: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
-  trustText: { fontSize: 11, lineHeight: 16 },
+  content: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 36, paddingBottom: 24, justifyContent: 'center' },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  brand: { fontSize: 15, lineHeight: 20, letterSpacing: 3, textTransform: 'uppercase' },
+  brandRule: { height: 16, width: StyleSheet.hairlineWidth },
+  brandDescriptor: { fontSize: 8, lineHeight: 12, letterSpacing: 1.1 },
+  intro: { marginTop: 44, marginBottom: 30 },
+  title: { fontSize: 38, lineHeight: 43, letterSpacing: -1.5 },
+  copy: { marginTop: 12, fontSize: 15, lineHeight: 24, maxWidth: 330 },
+  trustRow: { marginTop: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  trustText: { flexShrink: 1, fontSize: 11, lineHeight: 17 },
   legal: { marginTop: 10, textAlign: 'center', fontSize: 10, lineHeight: 15 },
 });

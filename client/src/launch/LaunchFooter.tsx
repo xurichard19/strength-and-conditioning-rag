@@ -4,6 +4,7 @@ const links = [
   { page: 'about', label: 'About us' },
   { page: 'terms', label: 'Terms' },
   { page: 'privacy', label: 'Privacy Policy' },
+  { page: 'health-privacy', label: 'Consumer Health Privacy' },
   { page: 'disclaimer', label: 'Disclaimer' },
   { page: 'accessibility', label: 'Accessibility' },
 ] as const
@@ -19,7 +20,7 @@ export function LaunchFooter({ currentPage }: { currentPage?: InfoPageName }) {
           </a>
         ))}
       </nav>
-      <span className="footer-note"><span aria-hidden="true" /> Built for real schedules.</span>
+      <span className="footer-note">Mobile app in development.</span>
     </footer>
   )
 }

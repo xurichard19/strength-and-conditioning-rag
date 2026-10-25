@@ -57,23 +57,35 @@ def get_sports_workouts_in_range(
 
 def create_sports_workout(user_id: str | UUID, values: SportsWorkoutInput, access_token: str) -> SportsWorkoutRecord:
     """
-    save a sports commitment and invalidate in-flight planning through the database trigger
+    save a sports commitment and atomically request any covered planning adjustment
 
-    inserts one user-owned commitment with planned status supplied by the database.
+    inserts one user-owned commitment with a stable client id and planned status.
     the input contains sport, local calendar date/time, and optional duration,
     intensity, and notes; no generated plan workout is created here.
 
-    the database trigger invalidates planning inputs by bumping revision. enqueue
-    any warranted adjustment separately after this succeeds. no request key is used:
-    retrying after a timeout may duplicate the commitment.
+    the database trigger bumps the planning revision and queues an adjustment for
+    affected covered dates in the same transaction. it does not create a planning
+    schedule. retry the same id and creation fields after a lost response; a unique
+    conflict reads only the owner's matching record. an exact replay returns it
+    without changing status or queuing another adjustment. changed fields or an
+    inaccessible id raise a 409; existing records are never overwritten.
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
-    - **values**: validated sport, date, and optional commitment details
+    - **values**: stable client uuid, sport, date, and optional commitment details
     - **access_token**: verified user jwt used to enforce rls
     - **returns**: saved commitment including its id and database timestamps
     """
 
-    rows = insert_rows("sports_workouts", {"user_id": identifier(user_id), **values.model_dump(mode="json")}, access_token)
+    try:
+        rows = insert_rows("sports_workouts", {"user_id": identifier(user_id), **values.model_dump(mode="json")}, access_token)
+    except SupabaseDataError as exc:
+        if exc.code != "23505":
+            raise
+        existing = get_sports_workout(user_id, values.id, access_token)
+        if existing is not None and existing.model_dump(include=set(SportsWorkoutInput.model_fields)) == values.model_dump():
+            return existing
+        raise SupabaseDataError("sports workout id already used", status_code=409) from exc
+
     if not rows:
         raise SupabaseDataError("sports workout write returned no rows")
     return SportsWorkoutRecord.model_validate(rows[0])
@@ -89,9 +101,10 @@ def update_sports_workout(
     explicit null clears nullable fields. sport and scheduled_date cannot be null.
     status is deliberately excluded; use set_sports_workout_status for timestamps.
 
-    an empty patch raises valueerror before writing. a database trigger invalidates
-    planning inputs, but no replan is enqueued. updates have no expected-revision
-    guard: concurrent edits are last-write-wins, including a replay after a timeout.
+    an empty patch raises valueerror before writing. meaningful changes invalidate
+    planning inputs and atomically queue an adjustment around the old/new dates
+    within existing coverage; identical values do neither. updates have no
+    expected-revision guard: concurrent edits are last-write-wins.
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **workout_id**: id of the user-owned workout
@@ -103,6 +116,7 @@ def update_sports_workout(
     payload = values.model_dump(mode="json", exclude_unset=True)
     if not payload:
         raise ValueError("sports workout update is empty")
+
     rows = update_rows("sports_workouts", payload, [("id", f"eq.{identifier(workout_id)}"),
         ("user_id", f"eq.{identifier(user_id)}")], access_token)
     return SportsWorkoutRecord.model_validate(rows[0]) if rows else None
@@ -119,9 +133,10 @@ def set_sports_workout_status(
     planned clears both. repeated writes reset timestamps, so this is not an
     idempotent event recorder.
 
-    the database trigger bumps planning revision; enqueue any adjustment separately.
-    invalid status raises valueerror before writing. this does not update an app
-    workout or save exercise-set results.
+    changed status/results invalidate planning inputs. cancellation or reinstatement
+    also queues an adjustment for affected covered dates; completion alone does
+    not. invalid status raises valueerror before writing. this does not update a
+    generated workout or save exercise-set results.
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **workout_id**: id of the user-owned workout
@@ -132,6 +147,7 @@ def set_sports_workout_status(
 
     if status not in ("planned", "completed", "cancelled"):
         raise ValueError("invalid sports workout status")
+
     now = datetime.now(UTC).isoformat()
     rows = update_rows("sports_workouts", {"status": status,
         "completed_at": now if status == "completed" else None,
@@ -146,9 +162,10 @@ def delete_sports_workout(user_id: str | UUID, workout_id: str | UUID, access_to
 
     permanently deletes the commitment and returns its last stored values; use
     cancelled status instead when it should remain available for later inspection.
-    the database trigger invalidates planning inputs, but does not enqueue a replan.
-    a repeated delete returns none once the row is gone. planning-change undo only
-    switches generated workout versions; it cannot restore this deleted sports row.
+    the database trigger invalidates planning inputs and atomically queues an
+    adjustment when removing an active commitment affects covered dates. a repeated
+    delete returns none once the row is gone. planning-change undo only switches
+    generated workout versions; it cannot restore this deleted sports row.
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **workout_id**: id of the user-owned workout

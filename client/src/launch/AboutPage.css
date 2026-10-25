@@ -1,0 +1,262 @@
+/* Hallmark · macrostructure: Long Document (open rows, team cards) · tone: quietly confident · anchor hue: 250
+ * theme: studied-DNA (source: https://superpower.com/the-grove) · studied: yes
+ * user override: retain dark identity and match the accepted landing page
+ * canvas: oklch(17% 0.012 250) · accent: oklch(84% 0.08 250)
+ * genre: modern-minimal · display/body: Rubik 400 · shared tokens: ../../tokens.css
+ * nav: N9 Edge-aligned · footer: Ft5 Statement · enrichment: existing team portraits
+ * content: four programming principles, team, architecture, six technology groups
+ * pre-emit critique: P5 H5 E4 S5 R5 V4
+ */
+
+.arcel-about {
+  min-height: 100svh;
+}
+
+.arcel-about :where(section[id]) {
+  scroll-margin-top: var(--space-8);
+}
+
+.about-intro {
+  padding-block: clamp(9rem, 16vw, 14rem) var(--space-16);
+}
+
+.about-page-label {
+  margin-block-end: var(--space-8);
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+
+.about-intro h1 {
+  max-width: 1000px;
+  font-size: var(--text-display);
+  line-height: 1.08;
+}
+
+.about-intro h1 span,
+.about-close h2 span {
+  color: var(--color-muted);
+}
+
+.about-intro-bottom {
+  display: grid;
+  gap: var(--space-10);
+  margin-block-start: var(--space-10);
+}
+
+.about-intro-bottom > p {
+  max-width: 60ch;
+  color: var(--color-muted);
+  font-size: clamp(1.0625rem, 1.4vw, 1.25rem);
+  line-height: 1.7;
+}
+
+.about-contents {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: var(--space-2) var(--space-6);
+}
+
+.about-contents a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 44px;
+  white-space: nowrap;
+  font-size: var(--text-small);
+}
+
+.about-contents svg {
+  color: var(--color-accent);
+}
+
+.about-approach {
+  padding-block-end: var(--space-section);
+}
+
+.about-principle {
+  display: grid;
+  gap: var(--space-6);
+  padding-block: var(--space-10);
+  border-top: var(--rule-width) solid var(--color-line);
+}
+
+.about-principle h2 {
+  max-width: 19ch;
+  font-size: var(--text-subheading);
+}
+
+.about-principle > p {
+  max-width: 65ch;
+  color: var(--color-muted);
+}
+
+.about-team-band {
+  padding-block: var(--space-section);
+  background: var(--color-surface);
+}
+
+.about-section-heading {
+  display: grid;
+  gap: var(--space-6);
+  margin-block-end: var(--space-12);
+}
+
+.about-section-heading > p {
+  max-width: 46ch;
+  color: var(--color-muted);
+}
+
+.about-team-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+}
+
+.about-person {
+  min-width: 0;
+  padding: var(--space-6);
+  background: var(--color-canvas);
+  border: var(--rule-width) solid var(--color-line);
+  border-radius: calc(var(--radius-panel) * 2);
+}
+
+.about-portrait {
+  display: block;
+  flex-shrink: 0;
+  width: var(--space-20);
+  height: var(--space-20);
+  margin-block-end: var(--space-6);
+  object-fit: cover;
+  border: var(--rule-width) solid var(--color-line);
+  border-radius: var(--radius-pill);
+}
+
+.about-person h3 {
+  font-size: 1.25rem;
+  text-wrap: initial;
+}
+
+.about-person p {
+  margin-block-start: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+
+.about-person .landing-text-link {
+  margin-block-start: var(--space-3);
+}
+
+.about-technology {
+  padding-block: var(--space-section);
+}
+
+.about-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin-block-start: var(--space-12);
+}
+
+.about-stack-item {
+  border-top: var(--rule-width) solid var(--color-line);
+  padding-block: var(--space-8);
+}
+
+.about-stack-item h3 {
+  margin-block-end: var(--space-4);
+  font-size: 1.375rem;
+  letter-spacing: -0.025em;
+}
+
+.about-stack-item p {
+  max-width: 60ch;
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+
+.about-release {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-block-start: var(--space-8);
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+
+.about-release > span {
+  flex-shrink: 0;
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+}
+
+.about-close {
+  padding-block-start: var(--space-10);
+}
+
+@media (hover: hover) {
+  .about-contents a:hover {
+    color: var(--color-accent);
+  }
+}
+
+@media (min-width: 40rem) {
+  .about-stack {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-12);
+  }
+
+}
+
+@media (min-width: 50rem) {
+  .about-team-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 60rem) {
+  .about-intro-bottom {
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    align-items: end;
+    column-gap: var(--space-20);
+    margin-block-start: var(--space-12);
+  }
+
+  .about-contents {
+    justify-self: end;
+    flex-direction: column;
+    width: min(100%, 240px);
+    gap: 0;
+  }
+
+  .about-contents a {
+    width: 100%;
+    border-bottom: var(--rule-width) solid var(--color-line);
+    padding-block: var(--space-3);
+  }
+
+  .about-principle,
+  .about-section-heading {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: var(--space-20);
+  }
+
+  .about-principle {
+    padding-block: var(--space-12);
+  }
+
+  .about-section-heading {
+    align-items: end;
+    margin-block-end: var(--space-16);
+  }
+
+  .about-team-grid {
+    gap: var(--space-8);
+  }
+
+  .about-stack {
+    column-gap: var(--space-20);
+  }
+}

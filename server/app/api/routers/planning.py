@@ -10,6 +10,7 @@ from app.api.schemas import (
 from app.auth.supabase import AuthUser, require_user
 from app.auth.billing import require_paid_user
 from app.db.supabase import planning_changes, planning_schedules, replan_jobs
+from app.jobs.scheduler import dispatch_after_commit
 
 
 router = APIRouter(prefix="/planning", tags=["planning"], dependencies=[Depends(private_response)])
@@ -64,8 +65,11 @@ def request_adjustment(payload: AdjustmentRequest, user: AuthUser = Depends(requ
     """
 
     with database_errors("planning.request_adjustment"):
-        return JobResponse.model_validate(replan_jobs.enqueue_adjustment(user.id, payload.deduplication_key,
-            payload.reason, payload.effective_from, payload.effective_through))
+        job = replan_jobs.enqueue_adjustment(user.id, payload.deduplication_key,
+            payload.reason, payload.effective_from, payload.effective_through)
+
+    dispatch_after_commit(job)
+    return JobResponse.model_validate(job)
 
 
 @router.get("/jobs", response_model=list[JobResponse])
@@ -124,7 +128,10 @@ def retry_job(job_id: UUID, user: AuthUser = Depends(require_paid_user)) -> JobR
     """
 
     with database_errors("planning.retry_job"):
-        return JobResponse.model_validate(replan_jobs.retry_replan_job(user.id, job_id))
+        job = replan_jobs.retry_replan_job(user.id, job_id)
+
+    dispatch_after_commit(job)
+    return JobResponse.model_validate(job)
 
 
 @router.get("/changes", response_model=HistoryResponse)

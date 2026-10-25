@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import TypeAdapter
 
-from app.contracts import ClaimedReplanJob, PlannedWorkout, ReplanJobRecord, WorkoutWriteResult
+from app.contracts import ClaimedReplanJob, PlannedWorkout, ReplanDeliveryClaim, ReplanJobRecord, WorkoutWriteResult
 from app.db.supabase._queries import date_range, identifier, page_limit, rpc_row
 from app.db.supabase.transport import call_rpc, select_rows
 
@@ -128,6 +128,33 @@ def claim_replan_job(lease_seconds: int = 300) -> ClaimedReplanJob | None:
 
     payload = call_rpc("claim_replan_job", {"p_lease_seconds": lease_seconds}, None)
     return ClaimedReplanJob.model_validate(payload) if payload is not None else None
+
+
+def list_replan_deliveries(limit: int = 20) -> list[ReplanJobRecord]:
+    """read a bounded page of ready jobs needing submission or delivery reconciliation"""
+    page_limit(limit)
+    rows = call_rpc("list_replan_deliveries", {"p_limit": limit}, None)
+    return TypeAdapter(list[ReplanJobRecord]).validate_python(rows)
+
+
+def mark_replan_dispatched(job_id: UUID, delivery_token: UUID) -> None:
+    """confirm this generation's task exists; a stale or terminal job is a harmless no-op"""
+    call_rpc("mark_replan_dispatched", {"p_job_id": identifier(job_id),
+        "p_delivery_token": identifier(delivery_token)}, None)
+
+
+def recover_replan_delivery(job_id: UUID, delivery_token: UUID) -> ReplanJobRecord | None:
+    """replace a confirmed-missing task once; recheck token, lease, and outcome atomically"""
+    row = call_rpc("recover_replan_delivery", {"p_job_id": identifier(job_id),
+        "p_delivery_token": identifier(delivery_token)}, None)
+    return ReplanJobRecord.model_validate(row) if row else None
+
+
+def claim_replan_delivery(job_id: UUID, delivery_token: UUID, lease_seconds: int = 300) -> ReplanDeliveryClaim:
+    """claim exactly this delivery under the user's schedule lock; never take another job"""
+    return ReplanDeliveryClaim.model_validate(call_rpc("claim_replan_delivery", {
+        "p_job_id": identifier(job_id), "p_delivery_token": identifier(delivery_token),
+        "p_lease_seconds": lease_seconds}, None))
 
 
 def renew_replan_lease(job_id: str | UUID, lease_token: str | UUID, lease_seconds: int = 300) -> datetime:

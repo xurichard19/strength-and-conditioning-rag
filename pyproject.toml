@@ -12,6 +12,8 @@ dependencies = [
     "cohere==6.1.0",
     "fastapi==0.135.3",
     "google-cloud-storage==3.2.0",
+    "google-cloud-tasks>=2.20,<3",
+    "httpx>=0.28,<1",
     "langchain==1.2.15",
     "langchain-chroma",
     "langchain-community==0.4.1",
@@ -27,11 +29,15 @@ dependencies = [
     "pytesseract==0.3.13",
     "python-dotenv==1.2.2",
     "sentry-sdk[fastapi]",
+    "snowballstemmer==3.1.1",
     "supabase",
     "tqdm==4.67.3",
     "tzdata>=2025.2",
     "uvicorn==0.44.0",
 ]
+
+[project.optional-dependencies]
+test = []
 
 [tool.setuptools.packages.find]
 where = ["server"]

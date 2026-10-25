@@ -92,10 +92,19 @@ export type ProgressMetric = {
 
 export type ChatSource = {
   content?: string;
-  title?: string;
-  doi?: string;
-  document_id?: string;
-  url?: string;
+  title?: string | null;
+  doi?: string | null;
+  document_id?: string | null;
+  chunk_id?: string | null;
+  author?: string | null;
+  publication_year?: string | null;
+  journal?: string | null;
+  publisher?: string | null;
+  license?: string | null;
+  license_url?: string | null;
+  copyright_notice?: string | null;
+  page?: number | null;
+  url?: string | null;
   source_type?: string;
 };
 

@@ -1,171 +1,195 @@
-import {
-  Check,
-  Sparkles,
-  Dumbbell,
-  Moon,
-  MoveRight,
-  Smartphone,
-  Timer,
-} from 'lucide-react'
-
+import { ArrowDown, ArrowRight, ArrowUpRight, Check, Plus } from 'lucide-react'
 import appIcon from '../../../mobile/assets/images/splash-icon.png'
+import richardPortrait from '../assets/richard-xu.jpg'
+import dimitriosPortrait from '../assets/dimitrios-mahairas.jpg'
+import aaronPortrait from '../assets/aaron-jiang.jpg'
 import { LaunchFooter } from './LaunchFooter'
-import './ComingSoonPage.css'
+import TrainingCalendarPreview from './TrainingCalendarPreview'
+import PhonePreview from './PhonePreview'
+import { useScrollReveal } from './useScrollReveal'
+import './LandingPage.css'
 
-const trainingModes = [
-  { label: 'Strength', icon: Dumbbell, tone: 'strength' },
-  { label: 'Conditioning', icon: Timer, tone: 'conditioning' },
-  { label: 'Recovery', icon: Moon, tone: 'recovery' },
-] as const
+const questions = [
+  {
+    question: 'Who is it for?',
+    answer: 'We’re building Arcel for people who combine strength training with running or another sport. Your program starts with your goals and experience, the equipment you have, and the time you can train.',
+  },
+  {
+    question: 'How does it adapt?',
+    answer: 'Arcel plans three weeks ahead and refreshes the plan each week. Adding or removing a sports session triggers a review of upcoming workouts within your existing plan window. Redoing onboarding updates that same window using your new preferences. Adjustments for missed workouts, recovery, and recorded performance are still to come.',
+  },
+  {
+    question: 'What can I see in Plans?',
+    answer: 'Your overview shows planned coverage, weekly session counts, the next refresh, and any update in progress. Open the timeline to see earlier updates, their reasons, and the affected workouts before and after each change. Each entry shows the part of the plan that changed.',
+  },
+  {
+    question: 'Can I ask questions about training?',
+    answer: 'Open the chat bubble from any main screen for training questions. Expand it for a full conversation and your chat history. Choose Quick for a shorter response or Deep for a more thorough look, with sources when research or web evidence is used. Chat answers questions; it does not edit your plan.',
+  },
+  {
+    question: 'When can I try it?',
+    answer: 'We’re developing the mobile app and plan to release it on the App Store. We don’t have a launch date yet. The previews on this page use sample data to show features in the current development build.',
+  },
+]
+
+const sampleExercises = [
+  { name: 'Back squat', target: '3 × 5', rest: '2 min' },
+  { name: 'Romanian deadlift', target: '3 × 8', rest: '2 min' },
+  { name: 'Split squat', target: '2 × 8 / side', rest: '90 sec' },
+]
 
 export function ComingSoonPage() {
+  const landingRef = useScrollReveal()
+
   return (
-    <main className="launch-page">
-      <div className="launch-wash launch-wash-blue" aria-hidden="true" />
-      <div className="launch-wash launch-wash-violet" aria-hidden="true" />
-      <div className="launch-grid" aria-hidden="true" />
+    <div className="arcel-landing" ref={landingRef}>
+      <a className="landing-skip" href="#main-content">Skip to content</a>
+      <header className="landing-nav landing-container">
+        <a className="landing-wordmark" href="/" aria-label="Arcel home">
+          <img src={appIcon} width="36" height="36" alt="" />
+          <span>Arcel</span>
+        </a>
+        <nav aria-label="Main navigation">
+          <a className="landing-nav-link" href="/about">About us <ArrowUpRight size={16} aria-hidden="true" /></a>
+        </nav>
+      </header>
 
-      <div className="launch-shell">
-        <header className="launch-header">
-          <div className="brand-lockup" aria-label="Arcel">
-            <span className="brand-icon-wrap">
-              <img src={appIcon} alt="" className="brand-icon" />
-            </span>
-            <span className="brand-name">Arcel</span>
-          </div>
-
-          <div className="build-status" aria-label="Mobile app in progress">
-            <span className="build-status-dot" aria-hidden="true" />
-            <span>Mobile first</span>
-            <span className="build-status-divider" aria-hidden="true" />
-            <span>In progress</span>
-          </div>
-        </header>
-
-        <section className="launch-hero" aria-labelledby="launch-title">
-          <div className="hero-copy">
-            <h1 id="launch-title">
-              AI-powered
-              <span className="title-accent"> S&amp;C programming.</span>
-            </h1>
-
-            <p className="hero-description">
-              Turn training research into a plan you can follow. We’re building AI-powered
-              workouts, exercises, and set targets around your goals and sport—with rolling
-              programming designed to adapt to your readiness, results, and schedule.
-            </p>
-
-            <div className="app-store-notice" role="status">
-              <span className="app-store-icon" aria-hidden="true">
-                <Smartphone size={22} strokeWidth={1.8} />
-              </span>
-              <span className="app-store-copy">
-                <span>Coming to the</span>
-                <strong>App Store soon</strong>
-              </span>
-              <span className="app-store-pulse" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </span>
-            </div>
-
-            <div className="training-mode-list" aria-label="Training modes">
-              {trainingModes.map(({ label, icon: Icon, tone }) => (
-                <div className="training-mode" key={label}>
-                  <span className={`training-mode-icon training-mode-icon-${tone}`}>
-                    <Icon size={15} strokeWidth={1.9} aria-hidden="true" />
-                  </span>
-                  <span>{label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="app-preview" aria-label="Concept preview of Arcel’s upcoming AI-powered rolling programming">
-            <div className="preview-orbit preview-orbit-outer" aria-hidden="true" />
-            <div className="preview-orbit preview-orbit-inner" aria-hidden="true" />
-
-            <div className="preview-float-label preview-float-label-strength" aria-hidden="true">
-              <span /> Strength
-            </div>
-            <div className="preview-float-label preview-float-label-recovery" aria-hidden="true">
-              <span /> Recovery
-            </div>
-
-            <article className="session-card">
-              <div className="session-card-topline">
-                <div>
-                  <p className="preview-eyebrow">AI planning preview</p>
-                  <h2>Your AI-powered plan</h2>
-                </div>
-                <span className="session-icon">
-                  <Sparkles size={20} strokeWidth={1.9} aria-hidden="true" />
-                </span>
+      <main id="main-content">
+        <section className="landing-hero" aria-labelledby="landing-title">
+          <div className="landing-hero-content landing-container">
+            <div className="landing-hero-main">
+              <div className="landing-hero-copy">
+                <p className="landing-hero-intro">Arcel · Strength and conditioning</p>
+                <h1 id="landing-title">Train with purpose.<span>Plan for real life.</span></h1>
+                <p className="landing-hero-description">
+                  Three weeks of training, refreshed each week. Arcel brings research
+                  into workouts shaped by your goals and sport schedule, with every
+                  exercise ready to explore and plan updates you can follow.
+                </p>
+                <a className="landing-button" href="#the-plan">See how plans adapt <ArrowDown size={18} aria-hidden="true" /></a>
+                <p className="landing-release"><span aria-hidden="true" /> Mobile app in development</p>
               </div>
-
-              <div className="session-meta">
-                <span>Research-informed</span>
-                <span>Rolling programming</span>
-              </div>
-
-              <div className="exercise-list">
-                <div><span className="exercise-dot exercise-dot-blue" />Training research<strong>The evidence</strong></div>
-                <div><span className="exercise-dot exercise-dot-violet" />Your goals & history<strong>The context</strong></div>
-                <div><span className="exercise-dot exercise-dot-teal" />Upcoming workouts<strong>AI-planned</strong></div>
-              </div>
-
-              <div className="session-button" aria-hidden="true">
-                <span>Same goal. An evolving plan.</span>
-                <MoveRight size={18} />
-              </div>
-            </article>
-
-            <aside className="adjustment-card">
-              <span className="adjustment-check" aria-hidden="true">
-                <Check size={15} strokeWidth={2.4} />
-              </span>
-              <span>
-                <strong>AI-assisted adjustments</strong>
-                <small>Keep the work you’ve done.</small>
-              </span>
-            </aside>
+              <div className="landing-hero-product"><PhonePreview /></div>
+            </div>
+            <div className="landing-hero-bottom">
+              <p>Strength and conditioning for hybrid athletes.</p>
+              <span>How Arcel works <ArrowDown size={16} aria-hidden="true" /></span>
+            </div>
           </div>
         </section>
 
-        <div className="about-trail" aria-hidden="true">
-          <span>A little about us</span>
-          <svg viewBox="0 0 360 112" fill="none">
-            <path
-              className="about-trail-line"
-              d="M7 16C63 19 71 86 137 75C201 64 211 18 271 30C315 39 312 78 347 88"
-            />
-            <path className="about-trail-head" d="M332 89L348 89L345 73" />
-          </svg>
-        </div>
+        <section className="landing-thesis landing-container" aria-labelledby="thesis-title">
+          <h2 id="thesis-title" data-scroll-reveal>Keep your training moving<br /><span data-scroll-emphasis>when the week changes.</span></h2>
+          <p data-scroll-reveal data-scroll-delay="100">An extra swim or a new boxing session changes the demands of your week.
+            Add it to your calendar and Arcel reviews the upcoming training around it.
+            Weekly refreshes extend the plan, while your overview and timeline keep
+            the schedule and its changes easy to follow.</p>
+        </section>
 
-        <a className="about-card" href="/about" aria-label="About us — learn more about Arcel">
-          <div className="about-number" aria-hidden="true">01</div>
-          <div className="about-heading">
-            <p className="preview-eyebrow">About Arcel</p>
-            <h2 id="about-title">A long-term goal. A plan that keeps up.</h2>
-            <span className="about-link-label">More about us <MoveRight size={18} aria-hidden="true" /></span>
+        <section className="landing-plan-band" id="the-plan" aria-labelledby="plan-title">
+          <div className="landing-plan landing-container">
+            <div className="landing-plan-copy" data-scroll-reveal data-scroll-delay="100">
+              <h2 id="plan-title">A new session.<br />A revised week.</h2>
+              <p>Add a sports session and Arcel reviews your upcoming workouts.
+                Explore one possible adjustment: strength moves to Friday,
+                leaving room after Wednesday’s swim.</p>
+              <p className="landing-plan-principle"><Check size={18} aria-hidden="true" /> Follow the update in Plans.</p>
+              <p className="landing-caption">Illustrative example.<br />Actual changes depend on your training context.</p>
+            </div>
+            <TrainingCalendarPreview />
           </div>
-          <p className="about-copy">
-            More than a one-off workout or a chat answer. Arcel is being built around a
-            living training calendar: regular refreshes plan further ahead, while changes
-            in readiness, performance, or sport commitments reshape upcoming sessions.
-            Your completed workouts and results stay intact.
-          </p>
-          <div className="about-principles" aria-label="Arcel principles">
-            <span>Grounded in research</span>
-            <span>Adapt what’s ahead</span>
-            <span>Keep your history</span>
-          </div>
-        </a>
+        </section>
 
-        <LaunchFooter />
-      </div>
-    </main>
+        <section className="landing-workflow landing-container" aria-labelledby="workflow-title">
+          <h2 id="workflow-title" data-scroll-reveal>From your goals to your next session</h2>
+          <p className="landing-section-lede" data-scroll-reveal data-scroll-delay="100">Your starting point, a rolling plan, and the detail you need for each workout.</p>
+          <article className="landing-workflow-row">
+            <div className="landing-context-visual" aria-label="Illustrative athlete profile" data-scroll-reveal>
+              <div className="landing-visual-heading"><span>Your training profile</span><span className="landing-example">Example</span></div>
+              <p className="landing-context-goal">Get stronger while<br /><span>running regularly.</span></p>
+              <dl className="landing-context-data">
+                <div><dt>Training focus</dt><dd>Strength + conditioning</dd></div>
+                <div><dt>Time to train</dt><dd>Four sessions a week</dd></div>
+                <div><dt>Other commitments</dt><dd>Wednesday swimming</dd></div>
+                <div><dt>Equipment</dt><dd>Full gym access</dd></div>
+              </dl>
+              <p className="landing-context-note">Example profile used to plan the week.</p>
+            </div>
+            <div className="landing-workflow-copy" data-scroll-reveal data-scroll-delay="100">
+              <h3>Start with the athlete</h3>
+              <p>Tell Arcel about your goals, experience, equipment, and time to train.
+                Completing onboarding starts your first plan. Your sport commitments
+                help shape the work around it.</p>
+              <p>Relevant strength and conditioning research helps inform the exercises
+                and training targets recommended for you.</p>
+              <a className="landing-text-link" href="/about">Our approach to programming <ArrowUpRight size={17} aria-hidden="true" /></a>
+            </div>
+          </article>
+          <article className="landing-workflow-row">
+            <div className="landing-session-visual" aria-label="Illustrative workout details" data-scroll-reveal>
+              <div className="landing-visual-heading"><span>Friday · Lower-body foundation</span><span className="landing-example">Example</span></div>
+              <p className="landing-session-title">Every exercise.<br />Every set target.</p>
+              <p className="landing-session-intro">Open a workout to see its exercises, prescriptions, and session notes.</p>
+              <table>
+                <caption className="landing-sr-only">Example workout showing prescribed sets, reps, and rest</caption>
+                <thead><tr><th scope="col">Exercise</th><th scope="col">Sets × reps</th><th scope="col">Rest</th></tr></thead>
+                <tbody>{sampleExercises.map((exercise) => (
+                  <tr key={exercise.name}><th scope="row">{exercise.name}</th><td>{exercise.target}</td><td>{exercise.rest}</td></tr>
+                ))}</tbody>
+              </table>
+              <div className="landing-history-note"><Check size={16} aria-hidden="true" /><p>See what changed.<span>Review affected workouts before and after an update in your plan timeline.</span></p></div>
+              <p className="landing-caption">Illustrative workout prescription</p>
+            </div>
+            <div className="landing-workflow-copy" data-scroll-reveal data-scroll-delay="100">
+              <h3>Know what’s ahead.<br />See what changed.</h3>
+              <p>Go into each session with exercises and set targets ready to follow.
+                The Plans tab brings your three-week overview, refresh timing, and
+                current job status together.</p>
+              <p>Open the timeline for earlier updates and before-and-after details.
+                For questions about training, the chat bubble is always nearby,
+                with Quick and Deep responses and saved conversations.</p>
+            </div>
+          </article>
+        </section>
+
+        <section className="landing-about-band" aria-labelledby="people-title">
+          <div className="landing-about landing-container">
+            <div className="landing-people" data-scroll-reveal>
+              <div className="landing-portraits">
+                <img src={richardPortrait} width="80" height="96" alt="Rick Xu" loading="lazy" />
+                <img src={dimitriosPortrait} width="80" height="96" alt="Dimitrios Mahairas" loading="lazy" />
+                <img src={aaronPortrait} width="80" height="96" alt="Aaron Jiang" loading="lazy" />
+              </div>
+              <p>Rick, Dimitrios &amp; Aaron<br /><span>The people building Arcel</span></p>
+            </div>
+            <div className="landing-about-copy" data-scroll-reveal data-scroll-delay="100">
+              <h2 id="people-title">Meet the team</h2>
+              <p>All three of us are hybrid athletes, balancing strength and conditioning
+                in our own training. We’re building Arcel to bring research into everyday
+                programming, with the flexibility we look for in a plan.</p>
+              <a className="landing-text-link" href="/about">Meet the team <ArrowUpRight size={17} aria-hidden="true" /></a>
+            </div>
+          </div>
+        </section>
+
+        <section className="landing-faq landing-container" aria-labelledby="questions-title">
+          <div className="landing-faq-heading" data-scroll-reveal><h2 id="questions-title">Common questions</h2><p>What’s in the app and what’s coming next.</p></div>
+          <div className="landing-disclosures">
+            {questions.map(({ question, answer }, index) => (
+              <details className="landing-disclosure" key={question} name="arcel-questions" data-scroll-reveal data-scroll-delay={index * 60}>
+                <summary>{question}<Plus size={19} aria-hidden="true" /></summary>
+                <p>{answer}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <section className="landing-close landing-container" aria-labelledby="close-title">
+          <div data-scroll-reveal><h2 id="close-title">Get to know<br /><span data-scroll-emphasis>Arcel.</span></h2><p>Meet the team and read about the thinking behind the app.</p></div>
+          <a className="landing-button landing-button-outline" href="/about">About us <ArrowRight size={18} aria-hidden="true" /></a>
+        </section>
+      </main>
+      <div className="landing-container"><LaunchFooter /></div>
+    </div>
   )
 }

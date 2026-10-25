@@ -1,16 +1,14 @@
 import json
 import logging
+import httpx
 import sentry_sdk
 from dataclasses import dataclass
-from http.client import HTTPException as HTTPProtocolError
-from urllib.error import HTTPError
-from urllib.request import Request as UrlRequest
-from urllib.request import urlopen
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import get_settings
+from app.http import get_http_client
 
 bearer_scheme = HTTPBearer(auto_error=False)
 AUTH_CHALLENGE = {"WWW-Authenticate": "Bearer"}
@@ -43,31 +41,22 @@ def verify_supabase_token(access_token: str) -> AuthUser:
     supabase_url = settings.supabase_url.rstrip("/")
     url = f"{supabase_url}/auth/v1/user"
 
-    request = UrlRequest(
-        url,
-        headers={
-            "Authorization": f"Bearer {access_token}",
-            "apikey": settings.supabase_publishable_key,
-        },
-    )
+    headers = {"Authorization": f"Bearer {access_token}", "apikey": settings.supabase_publishable_key}
 
     try:
-        with sentry_sdk.start_span(op="auth", name="auth.verify_session"), urlopen(request, timeout=10) as response:
+        with sentry_sdk.start_span(op="auth", name="auth.verify_session"), \
+                get_http_client().stream("GET", url, headers=headers) as response:
+            if response.status_code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
+                logger.warning("authentication rejected reason=invalid_or_expired_session status=%s", response.status_code)
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="invalid or expired session",
+                    headers=AUTH_CHALLENGE,
+                )
+            if not response.is_success:
+                raise HTTPException(status.HTTP_502_BAD_GATEWAY, "supabase auth validation failed")
             payload = json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        if exc.code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
-            logger.warning("authentication rejected reason=invalid_or_expired_session status=%s", exc.code)
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="invalid or expired session",
-                headers=AUTH_CHALLENGE,
-            ) from exc
-
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="supabase auth validation failed",
-        ) from exc
-    except (OSError, HTTPProtocolError) as exc:
+    except httpx.RequestError as exc:
         logger.warning("authentication unavailable reason=supabase_auth_unreachable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

@@ -55,12 +55,12 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "test": "node --test tests/*.test.ts",
+    "test": "node --test ../tests/mobile/*.test.ts",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "eslint .",
+    "lint": "cd .. && eslint --config mobile/eslint.config.ts mobile tests/mobile",
     "typecheck": "tsc --noEmit && tsc --project tsconfig.tests.json",
     "export:web": "expo export --platform web"
   },

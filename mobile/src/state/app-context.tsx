@@ -2,7 +2,7 @@ import type { Session as AuthSession } from '@supabase/supabase-js';
 import { randomUUID } from 'expo-crypto';
 import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { AppState, Platform, useColorScheme } from 'react-native';
 
 import { palettes, type ColorScheme, type Palette, type ThemeMode } from '@/design/tokens';
@@ -20,11 +20,24 @@ import { createChatCache } from './chat-cache';
 import { createCalendarCache, type CalendarCache } from './calendar-cache';
 import type { Conversation } from '@/services/backend';
 
-type ChatRun = { controller: AbortController; rows: ChatMessage[]; title: string; error: string | null; confirmed: boolean };
+type ChatRun = { controller: AbortController; rows: ChatMessage[]; title: string; error: string | null; confirmed: boolean;
+  publishTimer?: ReturnType<typeof setTimeout> };
+
+function cancelChatPublish(run: ChatRun | undefined) {
+  if (run?.publishTimer === undefined) return;
+  clearTimeout(run.publishTimer);
+  run.publishTimer = undefined;
+}
+
+function stopChatRun(run: ChatRun) {
+  cancelChatPublish(run);
+  run.controller.abort();
+}
 
 type AuthActionResult = { ok: true; message?: string } | { ok: false; message: string };
 
 type AppContextValue = {
+  chatDraft: RefObject<string>;
   chatMode: ChatMode;
   setChatMode: (mode: ChatMode) => void;
   conversations: Conversation[];
@@ -63,7 +76,6 @@ type AppContextValue = {
   updateProfile: (update: Partial<Profile>) => void;
   acceptProposal: () => void;
   declineProposal: () => void;
-  shortenToday: () => void;
   updateSet: (sessionId: string, exerciseId: string, setId: string, update: { weight?: number | null; reps?: number | null; done?: boolean }) => void;
   addSet: (sessionId: string, exerciseId: string) => void;
   removeSet: (sessionId: string, exerciseId: string) => void;
@@ -125,6 +137,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [chatTitle, setChatTitle] = useState('Ask Arcel');
   const [chatMode, setChatMode] = useState<ChatMode>('quick');
+  const chatDraft = useRef('');
   const chatEpoch = useRef(0);
   const listRequest = useRef(0);
   const owner = useRef<string | null>(null);
@@ -143,6 +156,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const userId = session?.user.id ?? null;
     if (owner.current !== userId) {
       owner.current = userId;
+      chatDraft.current = '';
       conversation.current = null;
       setActiveConversationId(null);
       setChatTitle('Ask Arcel');
@@ -157,7 +171,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setHasOlderConversations(false);
       epoch.current += 1;
       accountRequest.current += 1;
-      runs.current.forEach(run => run.controller.abort());
+      runs.current.forEach(stopChatRun);
       runs.current.clear();
       historyBusy.current = false;
       setProfile(emptyProfile);
@@ -203,7 +217,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     void Linking.getInitialURL().then(handleLink).catch(() => undefined);
     const links = Linking.addEventListener('url', ({ url }) => { void handleLink(url); });
-    return () => { active = false; subscription?.data.subscription.unsubscribe(); links.remove(); activeRuns.forEach(run => run.controller.abort()); activeRuns.clear(); cache.clear(); calendarCache.clear(); };
+    return () => { active = false; subscription?.data.subscription.unsubscribe(); links.remove(); activeRuns.forEach(stopChatRun); activeRuns.clear(); cache.clear(); calendarCache.clear(); };
   }, [acceptSession, cache, calendarCache]);
 
   // Delayed writes from a previous account must not invalidate the current account's cache.
@@ -307,6 +321,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [authSession?.user.id, refreshChat]);
 
   const openConversation = useCallback((id?: string, title?: string) => {
+    chatDraft.current = '';
+    cancelChatPublish(conversation.current ? runs.current.get(conversation.current) : undefined);
     chatEpoch.current += 1;
     conversation.current = id ?? null;
     historyBusy.current = false;
@@ -378,6 +394,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await api.saveAnswers(answers);
       const saved = await api.completeOnboarding();
       if (epoch.current !== generation) return false;
+      calendarCache.invalidate();
       setProfile({ ...nextProfile, onboardingComplete: Boolean(saved.completed_at) });
       setOnboardingAnswers(saved.answers);
       setNotice(null);
@@ -415,28 +432,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const declineProposal = () => setProposal(null);
-
-  const shortenToday = () => {
-    setSessions((current) => current.map((session) => {
-      const isToday = session.id === 's-today' || session.date === new Date().toISOString().slice(0, 10);
-      if (!isToday) return session;
-      const exercises = session.exercises
-        .filter((item) => item.role !== 'accessory')
-        .map((item) => ({
-          ...item,
-          sets: item.kind === 'time' ? item.sets : item.sets.slice(0, Math.max(1, item.sets.length - 1)),
-          targetSeconds: item.kind === 'time' && item.targetSeconds ? Math.min(item.targetSeconds, 600) : item.targetSeconds,
-        }));
-      return {
-        ...session,
-        minutes: 25,
-        truncated: true,
-        repairedNote: 'Shortened to fit 25 minutes',
-        exercises,
-      };
-    }));
-    setNotice('Today now fits 25 minutes. The main lift stays at the same weight.');
-  };
 
   const updateSet = (
     sessionId: string,
@@ -566,7 +561,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     runs.current.set(id, run);
     cache.beginTurn(id, isNew);
     const current = () => epoch.current === generation && runs.current.get(id) === run;
-    const publish = () => { if (current() && conversation.current === id) publishChat(); };
+    // Accumulate every token immediately, but bound global context updates during a burst.
+    // First text, source/status changes, saved receipts, and terminal state remain immediate.
+    const publish = (immediate = true) => {
+      if (immediate) cancelChatPublish(run);
+      if (!current() || conversation.current !== id) return;
+      if (immediate) { publishChat(); return; }
+      if (run.publishTimer !== undefined) return;
+      run.publishTimer = setTimeout(() => {
+        run.publishTimer = undefined;
+        if (current() && conversation.current === id) publishChat();
+      }, 50);
+    };
     const savedMessage = (row: SavedMessage) => {
       if (!current()) return;
       run.confirmed = true;
@@ -579,9 +585,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let savedReply = false;
     try {
       const savedId = await client.streamChat(question, delta => {
-        if (!current()) return;
+        if (!current() || !delta) return;
+        const firstText = !run.rows[1].text;
         run.rows[1] = { ...run.rows[1], text: run.rows[1].text + delta, progress: undefined };
-        publish();
+        publish(firstText);
       }, sources => {
         if (!current()) return;
         run.rows[1] = { ...run.rows[1], sources };
@@ -608,14 +615,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const value: AppContextValue = {
-    chatMode, setChatMode,
+    chatDraft, chatMode, setChatMode,
     hydrated, accountReady, accountError, passwordRecovery, profile, onboardingAnswers,
     sessions, proposal, block: currentBlock, metrics: progressMetrics, authSession,
     previewMode: true, colors, colorScheme, notice, chatMessages, chatBusy, chatError,
     chatLoading, hasOlderMessages, refreshChat, finishOnboarding,
     conversations, conversationsLoading, conversationsError, hasOlderConversations, refreshConversations, openConversation,
     chatTitle, activeConversationId, renameConversation, deleteConversation,
-    setThemeMode, updateProfile, acceptProposal, declineProposal, shortenToday,
+    setThemeMode, updateProfile, acceptProposal, declineProposal,
     updateSet, addSet, removeSet, skipExercise, setEffort, finishSession,
     signIn, signInWithGoogle, signUp, requestPasswordReset, updatePassword,
     signOut, refreshLiveData, refreshPreview, calendarCache, invalidateCalendar, sendChat,

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.httpx import HttpxIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
 # database spans use stable action names instead of outgoing urls/filters
@@ -14,6 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app.config import get_settings
+from app.http import http_lifespan
 
 # import routers
 from app.api.routers import billing, calendar, chat, health, onboarding, planning, profile, sports_workouts, workouts
@@ -47,19 +49,19 @@ if settings.sentry_dsn:
         ],
         disabled_integrations=[
             StdlibIntegration(),
+            HttpxIntegration(),
         ],
     )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("app startup...")
-
-    app.state.chat_graph = build_chat_workflow()
-    logger.info("chat workflow successfully initialized")
-    yield
-
-    logger.info("app shutdown...")
+    async with http_lifespan(app):
+        logger.info("app startup...")
+        app.state.chat_graph = build_chat_workflow()
+        logger.info("chat workflow successfully initialized")
+        yield
+        logger.info("app shutdown...")
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
