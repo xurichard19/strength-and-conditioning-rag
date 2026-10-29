@@ -45,8 +45,8 @@ async def generate_plan(claim: ClaimedReplanJob, context: ReplanContext) -> Plan
 
     - **claim**: worker's job with fixed dates and expected input revision
     - **context**: authoritative athlete data loaded by the worker
-    - **returns**: validated changes within three minutes; reserve two generation calls
-      before further research and leave the worker time for publication
+    - **returns**: validated changes within three minutes; reserve one generation call
+      before further research, allowing a repair only when another full call fits
     """
     if claim.effective_from > claim.effective_through:
         return validate_proposal(claim, context, PlanningProposal(
@@ -55,7 +55,7 @@ async def generate_plan(claim: ClaimedReplanJob, context: ReplanContext) -> Plan
     deadline = monotonic() + PLAN_TIMEOUT_SECONDS
     async with asyncio.timeout(PLAN_TIMEOUT_SECONDS):
         result = await build_plan_workflow().ainvoke({
-            "deadline": deadline, "research_deadline": deadline - 2 * GENERATION_TIMEOUT_SECONDS,
+            "deadline": deadline, "research_deadline": deadline - GENERATION_TIMEOUT_SECONDS,
             "retries_left": 1, "repairs_left": 1,
             "sources": [], "searches": [], "warnings": [],
         }, context=WorkflowContext(claim, context), config={"recursion_limit": 20, "tags": ["Planning"]})
