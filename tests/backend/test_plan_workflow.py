@@ -359,7 +359,7 @@ class PlanWorkflowTests(unittest.IsolatedAsyncioTestCase):
     async def test_repair_feedback_has_explicit_character_limit_and_omission_marker(self):
         runtime = SimpleNamespace(context=SimpleNamespace(claim=self.claim, data=self.context))
         result = await validate_node({"proposal": None, "validation_error": "invalid field; " * 400,
-            "repairs_left": 1, "deadline": monotonic() + 120}, runtime)
+            "repairs_left": 1, "deadline": monotonic() + 180}, runtime)
         self.assertLessEqual(len(result["validation_error"]), 4000)
         self.assertTrue(result["validation_error"].endswith(
             "additional validation feedback omitted; check the complete proposal"))
@@ -380,9 +380,58 @@ class PlanWorkflowTests(unittest.IsolatedAsyncioTestCase):
             await evaluate_node(state)
 
     async def test_generation_checks_remaining_time_before_calling_provider(self):
-        with self.assertRaisesRegex(TimeoutError, "generation budget"):
-            await generate_node({"deadline": monotonic() + 1})
+        for remaining in (1, 119):
+            with self.subTest(remaining=remaining), self.assertRaisesRegex(TimeoutError, "generation budget"):
+                await generate_node({"deadline": monotonic() + remaining})
         self.generator.assert_not_awaited()
+
+    async def test_research_and_long_generation_fit_without_reserving_another_call(self):
+        now = [100.0]
+
+        async def prepare(*args, **kwargs):
+            now[0] += 10
+            return QUERY
+
+        async def search(*args, **kwargs):
+            now[0] += 25
+            return SearchResponse(results=[SOURCE])
+
+        async def evaluate(*args, **kwargs):
+            now[0] += 14
+            return review()
+
+        async def generate(*args, **kwargs):
+            now[0] += 70
+            return response(proposal([prescription()], active_days=[DAY]))
+
+        self.preparer.side_effect = prepare
+        self.search.side_effect = search
+        self.evaluator.side_effect = evaluate
+        self.generator.side_effect = generate
+        modules = ("graph", "nodes.prepare", "nodes.search", "nodes.evaluate", "nodes.generate", "nodes.validate")
+        for module in modules:
+            self.enterContext(patch(f"app.ai.workflows.plan.{module}.monotonic", side_effect=lambda: now[0]))
+
+        result = await self.run_plan()
+        self.assertEqual(len(result.workouts), 1)
+        self.assertEqual(now[0], 219.0)
+        self.generator.assert_awaited_once()
+
+    async def test_long_generation_does_not_start_repair_without_a_full_call_budget(self):
+        now = [100.0]
+
+        async def generate(*args, **kwargs):
+            now[0] += 80
+            return response(proposal([prescription()]))
+
+        self.generator.side_effect = generate
+        modules = ("graph", "nodes.prepare", "nodes.search", "nodes.evaluate", "nodes.generate", "nodes.validate")
+        for module in modules:
+            self.enterContext(patch(f"app.ai.workflows.plan.{module}.monotonic", side_effect=lambda: now[0]))
+
+        with self.assertRaisesRegex(ValueError, "repair budget"):
+            await self.run_plan()
+        self.generator.assert_awaited_once()
 
     async def test_deadline_cancels_stalled_graph(self):
         cancelled = asyncio.Event()
