@@ -2,7 +2,8 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    XDG_CACHE_HOME=/app/.cache
+    XDG_CACHE_HOME=/app/.cache \
+    HF_HOME=/app/.cache/huggingface
 
 WORKDIR /app
 
@@ -15,7 +16,8 @@ RUN apt-get update && apt-get install -y \
 
 COPY pyproject.toml .
 COPY server ./server
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir torch==2.11.0 --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir .
 
 RUN addgroup --system arcel \
     && adduser --system --ingroup arcel --home /app arcel \
@@ -23,6 +25,10 @@ RUN addgroup --system arcel \
     && chown -R arcel:arcel /app/.cache
 
 USER arcel
+
+RUN python -c "from app.db.vector.embeddings import research_model; research_model()"
+
+ENV HF_HUB_OFFLINE=1
 
 EXPOSE 8000
 

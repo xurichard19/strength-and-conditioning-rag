@@ -2,14 +2,10 @@ import unittest
 from unittest.mock import patch
 from uuid import UUID
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from app.api.routers import calendar, workouts
-from app.auth.supabase import require_user
 from app.contracts import CalendarSnapshot, ExerciseSetResult, WorkoutRecord, WorkoutSnapshot
 from app.db.supabase import SupabaseDataError
-from tests.backend.test_profile import USER, NOW
+from tests.backend.test_profile import USER, NOW, api_client
 
 
 ID = UUID("22222222-2222-4222-8222-222222222222")
@@ -19,11 +15,7 @@ WORKOUT = WorkoutRecord(id=ID, user_id=USER.id, created_by_change_id=ID, schedul
 
 class WorkoutRouteTests(unittest.TestCase):
     def setUp(self):
-        app = FastAPI()
-        app.include_router(calendar.router)
-        app.include_router(workouts.router)
-        app.dependency_overrides[require_user] = lambda: USER
-        self.client = TestClient(app)
+        self.client = api_client(routers=(calendar.router, workouts.router))
         self.addCleanup(self.client.close)
 
     @patch("app.api.routers.calendar.calendar.get_calendar_snapshot")

@@ -45,7 +45,7 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(CONTEXT.access_token, repr(CONTEXT))
 
     async def test_concurrent_cold_requests_initialize_only_one_collection(self):
-        collection = object()
+        collection = SimpleNamespace(metadata={'embedding_model': search.MODEL_NAME})
         async def get_collection(name):
             await asyncio.sleep(0)
             return collection
@@ -58,6 +58,19 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(results, [collection, collection])
         factory.assert_awaited_once()
         client.get_collection.assert_awaited_once_with('research')
+
+    async def test_collection_rejects_mismatched_model_without_caching_it(self):
+        collection = SimpleNamespace(metadata={'embedding_model': 'other-model'})
+        client = SimpleNamespace(get_collection=AsyncMock(return_value=collection))
+        settings = SimpleNamespace(chroma_api_key='test', chroma_tenant='test', chroma_database='test', system_collection_name='research')
+        with patch.object(search, '_collection', None), patch.object(search, '_collection_lock', asyncio.Lock()), \
+             patch.object(search, 'get_settings', return_value=settings), \
+             patch.object(search.chromadb, 'AsyncHttpClient', new=AsyncMock(return_value=client)):
+            with self.assertRaisesRegex(RuntimeError, 'reindexed'):
+                await search.research_collection()
+            self.assertIsNone(search._collection)
+            collection.metadata['embedding_model'] = search.MODEL_NAME
+            self.assertIs(await search.research_collection(), collection)
 
     async def test_research_uses_async_queries_with_original_chunk_ids_without_fabricated_doi(self):
         passage = 'finding ' * 250
@@ -219,28 +232,45 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({field: getattr(sources[0], field) for field in metadata}, metadata)
         self.assertEqual(sources[0].score, -.04)
 
-    async def test_hybrid_returns_no_matches_when_query_has_no_keyword_tokens(self):
+    async def test_hybrid_uses_dense_results_when_query_has_no_keyword_tokens(self):
         sparse = SimpleNamespace(embed_query=Mock(return_value=[SparseVector(indices=[], values=[])]))
         index = SimpleNamespace(enabled=True, config=SimpleNamespace(embedding_function=sparse))
         schema = SimpleNamespace(keys={'sparse_embedding': SimpleNamespace(sparse_vector=SimpleNamespace(sparse_vector_index=index))})
         result = SearchResult(ids=[['chunk-1']], documents=[['full passage']], metadatas=[[None]], scores=[[.2]])
         collection = SimpleNamespace(schema=schema, search=AsyncMock(return_value=result))
         with patch.object(search, 'research_collection', new=AsyncMock(return_value=collection)), \
-             patch.object(search, '_research_embeddings', return_value=[[.1, .2]]):
+             patch.object(search, '_research_embeddings', return_value=[[.1, .2]]) as dense, \
+             patch.object(search, 'Rrf', wraps=search.Rrf) as fusion:
             sources = await search.hybrid_search_research_docs('the and of', 5)
-        self.assertEqual(sources, [])
-        collection.search.assert_not_awaited()
+        self.assertEqual(sources, [Source(source_type='research', chunk_id='chunk-1', content='full passage', score=.2)])
+        dense.assert_called_once_with(['the and of'])
+        fusion.assert_not_called()
+        collection.search.assert_awaited_once()
+        payload = collection.search.call_args.args[0].to_dict()
+        self.assertEqual(payload['limit']['limit'], 5)
+        self.assertNotIn('sparse_embedding', json.dumps(payload))
 
-    async def test_research_requires_sparse_schema_without_running_dense_queries(self):
-        collection = SimpleNamespace(schema=None, search=AsyncMock(), query=AsyncMock())
-        with patch.object(search, 'research_collection', new=AsyncMock(return_value=collection)), \
-             patch.object(search, 'search_research_docs', new=AsyncMock()) as dense:
-            response = await search.search_sources('boxing', providers='research')
-        self.assertEqual(response.results, [])
-        self.assertEqual(response.warnings, ['research search unavailable; no evidence from this attempt'])
-        collection.search.assert_not_awaited()
-        collection.query.assert_not_awaited()
-        dense.assert_not_awaited()
+    async def test_research_does_not_retry_dense_queries_for_zero_results_or_provider_failures(self):
+        result = SearchResult(ids=[[]], documents=[[]], metadatas=[[]], scores=[[]])
+        for failure in ('none', 'schema', 'embedding', 'retrieval'):
+            with self.subTest(failure=failure):
+                collection = hybrid_collection(result)
+                if failure == 'schema':
+                    collection.schema = None
+                elif failure == 'embedding':
+                    index = collection.schema.keys['sparse_embedding'].sparse_vector.sparse_vector_index
+                    index.config.embedding_function.embed_query.side_effect = RuntimeError('provider error')
+                elif failure == 'retrieval':
+                    collection.search.side_effect = RuntimeError('provider error')
+                with patch.object(search, 'research_collection', new=AsyncMock(return_value=collection)), \
+                     patch.object(search, '_research_embeddings', return_value=[[.1, .2]]), \
+                     patch.object(search, 'search_research_docs', new=AsyncMock()) as dense:
+                    response = await search.search_sources('boxing', providers='research')
+                self.assertEqual(response.results, [])
+                self.assertEqual(response.warnings, [] if failure == 'none' else ['research search unavailable; no evidence from this attempt'])
+                self.assertEqual(collection.search.await_count, int(failure in ('none', 'retrieval')))
+                collection.query.assert_not_awaited()
+                dense.assert_not_awaited()
 
     async def test_optional_rerank_preserves_original_text_and_does_not_retry(self):
         client = SimpleNamespace(rerank=AsyncMock(return_value=SimpleNamespace(results=[SimpleNamespace(index=1), SimpleNamespace(index=0)])))

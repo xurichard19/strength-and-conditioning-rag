@@ -8,7 +8,7 @@ from app.contracts import PlanningProposal
 
 
 DECISION_TIMEOUT_SECONDS = 15
-GENERATION_TIMEOUT_SECONDS = 60
+GENERATION_TIMEOUT_SECONDS = 120
 
 
 @lru_cache
@@ -26,6 +26,6 @@ def generation_model():
     """cache structured generation with enough output for three weeks of prescriptions"""
     return ChatOpenAI(
         model="gpt-5.6-luna", api_key=get_settings().openai_api_key,
-        max_tokens=24000, timeout=GENERATION_TIMEOUT_SECONDS, max_retries=0,
+        reasoning_effort="low", max_tokens=24000, timeout=GENERATION_TIMEOUT_SECONDS, max_retries=0,
         disable_streaming=True,
     ).with_structured_output(PlanningProposal, method="json_schema", strict=True, include_raw=True)

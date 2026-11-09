@@ -7,7 +7,7 @@ from pydantic import AliasChoices, Field, SecretStr, ValidationInfo, field_valid
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class DatabaseSettings(BaseSettings):
+class RuntimeSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -15,6 +15,11 @@ class DatabaseSettings(BaseSettings):
     )
 
     environment: str = "development"
+    sentry_dsn: str | None = None
+    sentry_traces_sample_rate: float = Field(default=0.1, ge=0, le=1)
+
+
+class DatabaseSettings(RuntimeSettings):
     supabase_url: str
     supabase_publishable_key: str = Field(
         validation_alias=AliasChoices("SUPABASE_PUBLISHABLE_KEY", "SUPABASE_ANON_KEY")
@@ -69,8 +74,6 @@ class Settings(DatabaseSettings):
     openai_api_key: str
     cohere_api_key: str
     tavily_api_key: str
-    sentry_dsn: str | None = None
-    sentry_traces_sample_rate: float = Field(default=0.1, ge=0, le=1)
     system_collection_name: str = "system-docs"
     index_batch_size: int = 300
 
@@ -111,5 +114,5 @@ def get_settings() -> Settings:
 
 @lru_cache
 def get_database_settings() -> DatabaseSettings:
-    """load only database configuration in background processes; no AI credentials required"""
+    """load background configuration without ai credentials"""
     return DatabaseSettings()

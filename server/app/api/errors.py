@@ -40,7 +40,8 @@ def database_errors(operation: str = "database.operation"):
         detail = {401: "session expired", 403: "access denied", 404: "record not found",
             409: "data conflict; reload current state", 422: "invalid operation"}.get(code, "data service unavailable")
         headers = {**PRIVATE_HEADERS, **({"WWW-Authenticate": "Bearer"} if code == 401 else {})}
-        logger.warning("database operation failed status=%s code=%s", exc.status_code, exc.code)
+        if code >= 500:
+            logger.warning("database operation failed status=%s code=%s", exc.status_code, exc.code)
         raise HTTPException(code, detail, headers=headers) from exc
     except ValidationError as exc:
         logger.warning("database response failed contract validation")

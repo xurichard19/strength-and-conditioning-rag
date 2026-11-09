@@ -23,4 +23,4 @@ async def prepare_node(state: PlanState) -> dict:
         search = SearchQuery.model_validate(await decision_model(SearchQuery).ainvoke([
             SystemMessage(content=PREPARE_PROMPT), HumanMessage(content=state["context_packet"]),
         ]))
-    return {"search": search.model_copy(update={"providers": "research"})}
+    return {"search": search}

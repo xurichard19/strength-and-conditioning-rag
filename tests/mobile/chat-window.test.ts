@@ -35,7 +35,7 @@ function fixture(height = 844) {
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 47, bottom: 34, left: 0, right: 0 }) },
     'lucide-react-native': { MessageCircle: 'icon' }, '@/components/ui': { AppText: 'text' },
     './glass-surface': { GlassBackdrop: 'glass-backdrop' },
-    'react-native-gesture-handler': { GestureDetector: 'gesture', Pressable: 'button', Gesture: { Pan: gesture } },
+    'react-native-gesture-handler': { GestureDetector: 'gesture', LegacyPressable: 'button', Gesture: { Pan: gesture } },
     'react-native-reanimated': { default: { View: 'animated' }, __esModule: true,
       useAnimatedStyle: style => style(),
       useSharedValue: initial => {

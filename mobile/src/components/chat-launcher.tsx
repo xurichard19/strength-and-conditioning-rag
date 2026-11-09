@@ -2,7 +2,7 @@ import { router, useSegments } from 'expo-router';
 import { MessageCircle } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Keyboard, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { Gesture, GestureDetector, Pressable } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, LegacyPressable as Pressable } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, clamp, ReduceMotion, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';

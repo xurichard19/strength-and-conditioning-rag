@@ -11,7 +11,7 @@ export default function TabsLayout() {
   const { colors } = useApp();
   return (
     <TabDockContext value={true}>
-      <TopTabs initialRouteName="today" tabBarPosition="bottom" keyboardDismissMode="on-drag" tabBar={(props: MaterialTopTabBarProps) => <GlassTabBar {...props} />} screenOptions={{
+      <TopTabs tabBarPosition="bottom" keyboardDismissMode="on-drag" tabBar={(props: MaterialTopTabBarProps) => <GlassTabBar {...props} />} screenOptions={{
         swipeEnabled: true,
         lazy: true,
         tabBarShowIcon: true,

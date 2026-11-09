@@ -2,7 +2,7 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { ArrowLeft, ArrowUp, ArrowUpRight, BookOpen, ChevronRight, Globe2, Maximize2, Menu, MoreHorizontal, Quote, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui';
@@ -246,7 +246,7 @@ export default function ChatScreen({ compact, onExpand, onClose }: WindowControl
   const userId = authSession?.user.id;
   const busy = chatBusy || chatLoading;
   const hasMessages = chatMessages.length > 0;
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const focused = useRef(false);
   const following = useRef(true);
   const scrollContext = useRef({ activeConversationId, userId, hasMessages });

@@ -49,6 +49,7 @@ class Usage(BaseCallbackHandler):
 
 def instrument():
     """Observe the production graph and model calls without replacing their behavior."""
+    from app.ai.services import search
     from app.ai.workflows.plan import graph
     from app.ai.workflows.plan.nodes import evaluate, generate, prepare
 
@@ -74,6 +75,25 @@ def instrument():
     for module, name in ((prepare, "decision_model"), (evaluate, "decision_model"), (generate, "generation_model")):
         factory = getattr(module, name)
         setattr(module, name, lambda *args, factory=factory: factory(*args).with_config(callbacks=[Usage()]))
+    for name, provider in (("hybrid_search_research_docs", "research"), ("web_search", "web")):
+        original = getattr(search, name)
+
+        def observe_provider(operation, label):
+            @wraps(operation)
+            async def run(query, top_k):
+                started = monotonic()
+                try:
+                    result = await operation(query, top_k)
+                except Exception as error:
+                    events.get().append({"provider": label, "seconds": round(monotonic() - started, 2),
+                        "error": type(error).__name__})
+                    raise
+                events.get().append({"provider": label, "seconds": round(monotonic() - started, 2),
+                    "results": len(result)})
+                return result
+            return run
+
+        setattr(search, name, observe_provider(original, provider))
     graph.build_plan_workflow.cache_clear()
     return graph.generate_plan
 
@@ -114,12 +134,30 @@ async def run_case(name, inputs, output, semaphore, generate_plan, limits):
             report.update(seconds=round(monotonic() - started, 2), events=log)
             # Failed calls may omit usage; these totals are reported tokens, not a billing estimate.
             usages = [event["usage"] for event in log if event.get("usage")]
+            reviews = []
+            for event in log:
+                try:
+                    decision = json.loads(event.get("response", ""))
+                except (ValueError, TypeError):
+                    continue
+                if isinstance(decision, dict) and "sufficient" in decision:
+                    reviews.append(decision)
+            report["evidence_reviews"] = reviews
             searches = [event["result"] for event in log if event.get("node") == "search" and "result" in event]
             sources = searches[-1]["sources"] if searches else []
             report["metrics"] = {"model_calls": len(usages), "search_rounds": len(searches),
+                "generation_calls": sum(event.get("node") == "generate" for event in log),
+                "repairs": sum(bool(event.get("result", {}).get("retry_generation")) for event in log
+                    if event.get("node") == "validate"),
                 "input_tokens": sum(item.get("input_tokens", 0) for item in usages),
                 "output_tokens": sum(item.get("output_tokens", 0) for item in usages),
-                "evidence_count": len(sources), "evidence_chars": sum(len(item["content"]) for item in sources)}
+                "evidence_count": len(sources), "evidence_chars": sum(len(item["content"]) for item in sources),
+                "research_papers": len({item.get("document_id") or item.get("doi") or item.get("chunk_id")
+                    for item in sources if item["source_type"] == "research"}),
+                "sources_by_provider": {provider: sum(item["source_type"] == provider for item in sources)
+                    for provider in ("research", "web")},
+                "provider_seconds": {provider: round(sum(event["seconds"] for event in log
+                    if event.get("provider") == provider), 2) for provider in ("research", "web")}}
             events.reset(token)
             (output / f"{name}.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps({key: report[key] for key in ("scenario", "status", "seconds")}), flush=True)
@@ -157,7 +195,13 @@ async def main():
     configuration = {"limits": limits, "concurrency": args.concurrency,
         "versions": {name: version(name) for name in ("langgraph", "langchain-openai", "chromadb", "langchain-tavily")},
         "sha256": {path: sha256((ROOT / path).read_bytes()).hexdigest() for path in (
-            "server/app/ai/workflows/plan/prompts.py", "server/app/ai/workflows/plan/models.py", "tests/evals/planning_scenarios.py")}}
+            "server/app/ai/workflows/plan/prompts.py", "server/app/ai/workflows/plan/models.py",
+            "server/app/ai/workflows/plan/nodes/prepare.py", "server/app/ai/workflows/plan/nodes/evaluate.py",
+            "server/app/ai/workflows/plan/nodes/search.py", "server/app/ai/services/search.py",
+            "server/app/ai/workflows/plan/nodes/generate.py", "server/app/ai/workflows/plan/nodes/validate.py",
+            "server/app/ai/workflows/plan/nodes/context.py", "server/app/ai/workflows/plan/state.py",
+            "server/app/services/planning.py",
+            "tests/evals/planning_scenarios.py")}}
     (args.output / "configuration.json").write_text(json.dumps(configuration, indent=2), encoding="utf-8")
     generate_plan = instrument()
     semaphore = asyncio.Semaphore(args.concurrency)

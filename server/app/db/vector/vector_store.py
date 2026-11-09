@@ -4,6 +4,7 @@ from chromadb.errors import NotFoundError
 from chromadb.utils.embedding_functions import ChromaBm25EmbeddingFunction
 from app.config import get_settings
 from app.db.vector.ingestion import load_system_docs, split_docs
+from app.db.vector.embeddings import MODEL_NAME, MODEL_REVISION, embed_research_documents
 from tqdm import tqdm
 from uuid import uuid4
 
@@ -55,9 +56,11 @@ class VectorDB:
 
         for batch in tqdm(range(0, len(docs), batch_size), desc="submitting documents"):
             end = min(batch + batch_size, len(docs))
+            texts = [doc.page_content for doc in docs[batch:end]]
             system_db.add(
                 ids=[str(uuid4()) for _ in range(batch, end)],
-                documents=[doc.page_content for doc in docs[batch:end]],
+                documents=texts,
+                embeddings=embed_research_documents(texts),
                 metadatas=[doc.metadata for doc in docs[batch:end]]
             )
     
@@ -73,7 +76,8 @@ class VectorDB:
         except (ValueError, NotFoundError):
             pass
 
-        return self.client.create_collection(self.settings.system_collection_name, schema=schema)
+        return self.client.create_collection(self.settings.system_collection_name, schema=schema,
+            embedding_function=None, metadata={"embedding_model": MODEL_NAME, "embedding_revision": MODEL_REVISION})
     
 
     def get_system(self, id: str) -> dict:

@@ -1,3 +1,7 @@
+from app.observability import init_sentry
+
+init_sentry("indexer")
+
 from app.db.vector.vector_store import VectorDB
 
 

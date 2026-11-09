@@ -7,6 +7,8 @@ from threading import Lock
 
 import httpx
 
+from app.observability import init_sentry
+
 
 # Request URLs can contain private database filters; retain named application spans.
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -38,9 +40,11 @@ def close_http_client() -> None:
 
 
 @asynccontextmanager
-async def http_lifespan(app):
+async def http_lifespan(app, *, service: str | None = None):
     """close the lazily created pool on shutdown, including failed startup"""
     try:
+        if service is not None:
+            init_sentry(service)
         yield
     finally:
         close_http_client()

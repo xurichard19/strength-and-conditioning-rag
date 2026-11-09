@@ -17,4 +17,5 @@ async def search_node(state: PlanState) -> dict:
             top_k=RESULTS_PER_PROVIDER[provider]) for provider in SEARCH_PROVIDERS[query.providers]))
     return {"sources": merge_sources(state["sources"], [source for response in responses for source in response.results]),
         "searches": [*state["searches"], query],
-        "warnings": [*state["warnings"], *(note for response in responses for note in response.warnings)]}
+        "warnings": list(dict.fromkeys([*state["warnings"],
+            *(note for response in responses for note in response.warnings)]))}
