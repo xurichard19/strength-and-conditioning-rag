@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { load, plain, jsx, deferred, type TestValue, type TestModule, type TestNode, type Stubs } from './helpers.ts';
 import type { Profile, ChatSource, ChatStage } from '../../mobile/src/domain/types';
-import type { SavedMessage, Conversation } from '../../mobile/src/services/backend';
+import type { BillingStatus, SavedMessage, Conversation } from '../../mobile/src/services/backend';
+import type { CustomerInfo } from 'react-native-purchases';
 const backend = load<typeof import('../../mobile/src/services/backend')>('services/backend.ts');
 const memoryCache = load('state/memory-cache.ts');
 const { createChatCache: chatCache } = load<typeof import('../../mobile/src/state/chat-cache')>('state/chat-cache.ts', { './memory-cache': memoryCache });
@@ -711,6 +712,51 @@ test('access loss clears protected caches and fences old reads and writes withou
   assert.equal(f.value.conversations.length, 0); assert.equal(f.value.chatMessages.length, 0);
   assert.equal(f.value.chatTitle, 'Ask Arcel'); assert.equal(f.value.chatLoading, false);
   assert.equal(calendar.peek('2026-11-02', '2026-11-02'), undefined);
+});
+
+test('unavailable billing and renewal checks preserve drafts, cached workouts and running chat until confirmed denial', async () => {
+  const subscriptions = load<typeof import('../../mobile/src/state/subscription-store')>('state/subscription-store.ts');
+  for (const deny of [false, true]) {
+    const streamed = deferred<string>(); let signal!: AbortSignal; let delta!: (text: string) => void;
+    const f = providerFixture({ streamChat: (_text, onText, _sources, abort) => {
+      delta = onText; signal = abort; return streamed.promise;
+    } });
+    await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+    const paid: BillingStatus = { enabled: true, has_access: true, entitlement: 'arcel_pro', phase: 'paid',
+      product_id: 'annual', expires_at: '2099-01-01T00:00:00Z', will_renew: true, verified_at: '2026-11-10T00:00:00Z' };
+    let read = async (): Promise<BillingStatus> => paid;
+    const store = subscriptions.createSubscriptionStore({ enabled: true, onAccessLost: id => f.value.clearProtectedData(id),
+      api: () => ({ getBillingStatus: () => read(), syncBilling: () => read() }),
+      purchases: { identify: async () => {}, customerInfo: async () => ({ entitlements: { active: {} } }) as CustomerInfo,
+        subscribe: () => () => {}, offering: async () => { throw new Error('unexpected purchase'); },
+        paywall: async () => { throw new Error('unexpected purchase'); }, restore: async () => { throw new Error('unexpected restore'); },
+        manage: async () => {} } });
+    store.setUser('user-a'); await f.flush();
+    const running = f.value.sendChat('Question'); await f.flush();
+    f.value.chatDraft.current = 'Unsent follow-up';
+    await f.value.calendarCache.load({ getCalendarRange: async () => ({ revision: 1, workouts: [], sports_workouts: [] }) }, '2026-11-01', '2026-11-01');
+    read = async () => { throw new Error('billing_unavailable'); }; await store.refresh(); await f.flush();
+    assert.equal(subscriptions.subscriptionAllowsAccess(true, 'user-a', store.getSnapshot()), false);
+    assert.equal(signal.aborted, false); assert.equal(f.value.chatDraft.current, 'Unsent follow-up');
+    assert.ok(f.value.calendarCache.peek('2026-11-01', '2026-11-01'));
+    delta('Still running'); await f.flush(); assert.equal(f.value.chatMessages.at(-1)?.text, 'Still running');
+    const renewal = deferred<BillingStatus>(); read = () => renewal.promise;
+    store.invalidate('user-a'); await f.flush();
+    assert.equal(subscriptions.subscriptionAllowsAccess(true, 'user-a', store.getSnapshot()), false);
+    assert.equal(signal.aborted, false); assert.equal(f.value.chatDraft.current, 'Unsent follow-up');
+    renewal.resolve(paid); await f.flush();
+    assert.equal(subscriptions.subscriptionAllowsAccess(true, 'user-a', store.getSnapshot()), true);
+    if (deny) {
+      read = async () => ({ ...paid, has_access: false, phase: 'inactive' });
+      store.deny('user-a'); await f.flush();
+      assert.equal(signal.aborted, true); assert.equal(f.value.chatDraft.current, '');
+      assert.equal(f.value.calendarCache.peek('2026-11-01', '2026-11-01'), undefined);
+    }
+    delta(' late text'); streamed.resolve('saved-reply'); await running; await f.flush();
+    assert.equal(f.value.chatBusy, false);
+    if (deny) assert.equal(f.value.chatMessages.length, 0);
+    else { assert.equal(signal.aborted, false); assert.equal(f.value.chatDraft.current, 'Unsent follow-up'); }
+  }
 });
 
 test('an older account read cannot overwrite newly completed onboarding', async () => {

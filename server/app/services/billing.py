@@ -51,7 +51,9 @@ def billing_access(record: BillingEntitlementRecord, now: datetime | None = None
 
     now = now or datetime.now(UTC)
     phase = "inactive"
-    if record.active:
+    fully_expired = (record.expires_at is not None and record.expires_at <= now
+        and (record.grace_expires_at is None or record.grace_expires_at <= now))
+    if record.active and not fully_expired:
         if record.period_type not in {"normal", "intro", "trial"}:
             raise BillingUnavailable("unknown subscription period")
         if record.expires_at is not None and record.expires_at > now:

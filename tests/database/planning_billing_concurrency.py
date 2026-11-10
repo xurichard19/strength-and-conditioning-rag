@@ -85,5 +85,53 @@ try:
     assert sql(f"select attempts = 1 and status = 'running' from public.replan_jobs where id = '{job_id}';") == "t"
     assert sql(f"select sync_revision = 3 and verified_at is null from public.billing_entitlements where user_id = '{user_id}';") == "t"
     print("concurrent planning resume and payment/claim authorization fencing passed")
+
+    # Retire the running fixture so a rejected negative decision can be checked
+    # for accidental mutation of a pending delivery as well as of its schedule.
+    sql("set role service_role; "
+        f"update public.replan_jobs set status = 'pending', lease_token = null, lease_expires_at = null where id = '{job_id}'; "
+        "select count(*) from public.commit_billing_entitlement("
+        f"'{user_id}', 'sandbox', 'arcel_pro', 3, '{{\"active\":false}}'); "
+        f"select public.defer_planning_for_billing('{user_id}', 'subscription_required', null, 'sandbox', 3);")
+    original_token = sql(f"select delivery_token from public.replan_jobs where id = '{job_id}';")
+    sql("set role service_role; " + invalidate)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        purchase = pool.submit(sql, "begin; set local role service_role; "
+            "set local application_name = 'planning-purchase-first'; "
+            "select count(*) from public.commit_billing_entitlement("
+            f"'{user_id}', 'sandbox', 'arcel_pro', 4, '{snapshot}'::jsonb); "
+            "select pg_sleep(1); commit;")
+        held_transaction("planning-purchase-first")
+        late_negative = pool.submit(sql, "set role service_role; "
+            f"select public.defer_planning_for_billing('{user_id}', 'subscription_required', null, 'sandbox', 3);")
+        purchase.result()
+        assert late_negative.result().splitlines()[-1] == "f"
+    assert sql(f"select delivery_token from public.replan_jobs where id = '{job_id}';") == original_token
+    wake = sql(f"select billing_wake_token from public.planning_schedules where user_id = '{user_id}';")
+    assert wake, "accepted payment lost its wake without an application callback"
+    assert sql("set role service_role; select count(*) from public.list_planning_billing_work() "
+               f"where user_id = '{user_id}';").splitlines()[-1] == "1"
+
+    # A newer notification wins the schedule lock before an old reconciliation
+    # acknowledges its event; the newer UUID must remain ready after that resume.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        notification = pool.submit(sql, "begin; set local role service_role; "
+            "set local application_name = 'planning-new-wake-first'; "
+            f"select public.request_planning_billing_recheck(array['{user_id}'::uuid]); "
+            "select pg_sleep(1); commit;")
+        held_transaction("planning-new-wake-first")
+        old_ack = pool.submit(sql, "set role service_role; "
+            f"select public.resume_planning_after_billing('{user_id}', 'sandbox', 4, '{wake}');")
+        notification.result()
+        assert old_ack.result().splitlines()[-1] == "t"
+    current_wake = sql(f"select billing_wake_token from public.planning_schedules where user_id = '{user_id}';")
+    assert current_wake and current_wake != wake, "old acknowledgement consumed a newer wake"
+    sql("set role service_role; "
+        f"select public.resume_planning_after_billing('{user_id}', 'sandbox', 4, '{current_wake}');")
+    assert sql("set role service_role; "
+        f"select public.defer_planning_for_billing('{user_id}', 'subscription_required', null, 'sandbox', 3);").splitlines()[-1] == "f"
+    assert sql(f"select billing_wake_token is null and billing_pause_reason is null "
+               f"from public.planning_schedules where user_id = '{user_id}';") == "t"
+    print("paid commit wake durability, late-negative fencing, and concurrent wake acknowledgement passed")
 finally:
     sql(f"delete from auth.users where id = '{user_id}';")

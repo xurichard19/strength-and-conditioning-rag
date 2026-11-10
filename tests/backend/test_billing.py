@@ -73,6 +73,34 @@ class BillingProviderTests(unittest.TestCase):
         self.assertTrue(result.active)
         self.assertEqual(result.grace_expires_at, NOW + timedelta(hours=1))
 
+    def test_inactive_subscriptions_accept_missing_or_unsupported_historical_periods(self):
+        for period in (None, 'prepaid', 'unknown'):
+            for options in ({'expires_date': NOW.isoformat()},
+                            {'expires_date': (NOW - timedelta(days=1)).isoformat(),
+                             'grace_period_expires_date': NOW.isoformat()},
+                            {'refunded_at': NOW.isoformat()}):
+                with self.subTest(period=period, options=options):
+                    result = revenuecat.normalize_subscriber(customer(period_type=period, **options), 'sandbox', NOW)
+                    self.assertFalse(result.active)
+                    self.assertEqual(result.period_type, period)
+                    self.assertFalse(billing.billing_access(record(**result.model_dump()), NOW).has_access)
+
+    def test_live_or_grace_periods_with_unknown_types_remain_unavailable(self):
+        for period in (None, 'prepaid', 'unknown'):
+            for options in ({}, {'expires_date': (NOW - timedelta(hours=1)).isoformat(),
+                    'grace_period_expires_date': (NOW + timedelta(hours=1)).isoformat()}):
+                with self.subTest(period=period, options=options), self.assertRaises(revenuecat.RevenueCatError):
+                    revenuecat.normalize_subscriber(customer(period_type=period, **options), 'sandbox', NOW)
+
+    def test_inactive_records_still_reject_malformed_types_and_dates(self):
+        cases = [customer(expires_date=NOW.isoformat(), period_type=period) for period in ([], {}, True, 3)]
+        cases.extend(customer(refunded_at=NOW.isoformat(), **{field: 'invalid'})
+            for field in ('expires_date', 'grace_period_expires_date'))
+        cases.append(customer(expires_date=NOW.isoformat(), refunded_at='invalid'))
+        for payload in cases:
+            with self.subTest(payload=payload), self.assertRaises(revenuecat.RevenueCatError):
+                revenuecat.normalize_subscriber(payload, 'sandbox', NOW)
+
     def test_missing_entitlement_is_inactive_and_sandbox_never_grants_production(self):
         self.assertFalse(revenuecat.normalize_subscriber({'subscriber': {'entitlements': {}, 'subscriptions': {}}}, 'production', NOW).active)
         self.assertFalse(revenuecat.normalize_subscriber(customer(), 'production', NOW).active)
@@ -169,6 +197,18 @@ class BillingServiceTests(unittest.TestCase):
         for period in (None, 'unknown'):
             with self.subTest(period=period), self.assertRaises(billing.BillingUnavailable):
                 billing.billing_access(record(period_type=period), NOW)
+
+    def test_historical_active_flag_cannot_override_elapsed_expiry_and_grace(self):
+        for period in (None, 'prepaid', 'unknown'):
+            for grace in (None, NOW - timedelta(seconds=1), NOW):
+                with self.subTest(period=period, grace=grace):
+                    result = billing.billing_access(record(active=True, period_type=period,
+                        expires_at=NOW - timedelta(hours=1), grace_expires_at=grace), NOW)
+                    self.assertEqual(result.phase, 'inactive')
+                    self.assertFalse(result.has_access)
+            with self.subTest(period=period, grace='current'), self.assertRaises(billing.BillingUnavailable):
+                billing.billing_access(record(period_type=period, expires_at=NOW - timedelta(hours=1),
+                    grace_expires_at=NOW + timedelta(hours=1)), NOW)
 
     def test_verified_proof_preserves_environment_and_revision(self):
         saved = record()
@@ -267,16 +307,59 @@ class BillingRouteTests(unittest.TestCase):
 
     def test_status_and_sync_never_accept_client_ownership_or_paid_claims(self):
         result = BillingAccessDecision(enabled=True, has_access=False)
-        with patch.object(billing, 'get_billing_status', return_value=result) as status:
+        with patch.object(billing, 'get_billing_status', return_value=result) as status, \
+             patch.object(billing, 'get_verified_entitlement', return_value=record(active=False)) as verify:
             self.assertEqual(self.client.get('/billing/status').status_code, 200)
+            status.assert_called_once_with(USER.id)
             self.assertEqual(self.client.post('/billing/sync').status_code, 200)
             self.assertEqual(self.client.post('/billing/sync', json={}).status_code, 200)
-            self.assertEqual(status.call_args.args, (USER.id,))
-            self.assertEqual(status.call_args.kwargs, {'force': True})
-            count = status.call_count
+            self.assertEqual(verify.call_count, 2)
+            verify.assert_called_with(USER.id, force=True)
             for body in ({'user_id': str(SECOND)}, {'has_access': True}, {'environment': 'sandbox'}):
                 self.assertEqual(self.client.post('/billing/sync', json=body).status_code, 422)
-            self.assertEqual(status.call_count, count)
+            self.assertEqual(verify.call_count, 2)
+
+    def test_healthy_paid_status_does_not_activate_or_wake_planning(self):
+        with patch.object(billing, 'get_billing_status', return_value=billing.billing_access(record(), NOW)), \
+             patch.object(routes.planning_access, 'after_verification') as activate, \
+             patch.object(routes.planning_schedules, 'request_billing_recheck') as wake:
+            response = self.client.get('/billing/status')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['has_access'])
+        activate.assert_not_called()
+        wake.assert_not_called()
+
+    def test_sync_reuses_the_verified_revision_for_optional_activation(self):
+        saved = record()
+        with patch.object(billing, 'get_verified_entitlement', return_value=saved) as verify, \
+             patch.object(billing, 'get_billing_status') as status, \
+             patch.object(routes.planning_access, 'after_verification') as activate:
+            response = self.client.post('/billing/sync')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['has_access'])
+        verify.assert_called_once_with(USER.id, force=True)
+        status.assert_not_called()
+        activate.assert_called_once_with(USER.id,
+            routes.planning_access.PlanningPermission(saved.environment, saved.sync_revision))
+
+    def test_confirmed_purchase_survives_optional_activation_failure(self):
+        with patch.object(billing, 'get_verified_entitlement', return_value=record()), \
+             patch.object(billing, 'billing_enabled', return_value=True), \
+             patch.object(routes.planning_schedules, 'get_planning_schedule', side_effect=SupabaseDataError('private')), \
+             self.assertLogs(routes.planning_access.logger):
+            response = self.client.post('/billing/sync')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['has_access'])
+        self.assertNotIn('private', response.text)
+
+    def test_disabled_sync_preserves_legacy_access_without_activation(self):
+        with patch.object(billing, 'get_verified_entitlement', return_value=None), \
+             patch.object(routes.planning_access, 'after_verification') as activate:
+            response = self.client.post('/billing/sync')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['enabled'])
+        self.assertTrue(response.json()['has_access'])
+        activate.assert_not_called()
 
     def test_status_requires_auth_and_redacts_verification_failures(self):
         app = FastAPI()
@@ -284,11 +367,13 @@ class BillingRouteTests(unittest.TestCase):
         with TestClient(app) as anonymous:
             self.assertEqual(anonymous.get('/billing/status').status_code, 401)
             self.assertEqual(anonymous.post('/billing/sync').status_code, 401)
-        with patch.object(billing, 'get_billing_status', side_effect=billing.BillingUnavailable('private')):
-            response = self.client.get('/billing/status')
-            self.assertEqual(response.status_code, 503)
-            self.assertEqual(response.json(), {'detail': 'billing_unavailable'})
-            self.assertEqual(response.headers['cache-control'], 'private, no-store')
+        with patch.object(billing, 'get_billing_status', side_effect=billing.BillingUnavailable('private')), \
+             patch.object(billing, 'get_verified_entitlement', side_effect=billing.BillingUnavailable('private')):
+            for method, url in (('get', '/billing/status'), ('post', '/billing/sync')):
+                response = self.client.request(method, url)
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(response.json(), {'detail': 'billing_unavailable'})
+                self.assertEqual(response.headers['cache-control'], 'private, no-store')
 
     def test_paid_mutations_are_denied_before_chat_persistence(self):
         cases = [('/chat', {'conversation_id': str(ID), 'text': 'hi'}, 'post'),

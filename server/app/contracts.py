@@ -171,6 +171,7 @@ class PlanningScheduleRecord(BaseModel):
     revision: int = Field(default=0, ge=0)
     billing_pause_reason: PlanningPauseReason | None = None
     billing_recheck_at: datetime.datetime | None = None
+    billing_wake_token: UUID | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
@@ -326,6 +327,13 @@ class ClaimedReplanJob(BaseModel):
     effective_from: datetime.date
     effective_through: datetime.date
     horizon_end: datetime.date
+
+
+class PlanningBillingWork(BaseModel):
+    """One durable event or timed verification retry selected by the dispatcher."""
+
+    user_id: UUID
+    wake_token: UUID | None = None
 
 
 class ReplanDeliveryClaim(BaseModel):

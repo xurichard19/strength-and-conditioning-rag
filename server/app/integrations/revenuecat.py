@@ -88,11 +88,15 @@ def normalize_subscriber(payload: object, environment: BillingEnvironment, now: 
     subscription_grace = _date(subscription.get("grace_period_expires_date"))
     grace_values = [value for value in (entitlement_grace, subscription_grace) if value is not None]
     grace = max(grace_values) if grace_values else None
-    period_type = subscription.get("period_type")
-    if not isinstance(period_type, str) or period_type not in {"normal", "intro", "trial"}:
-        raise RevenueCatError("invalid provider period")
     refunded = _date(subscription.get("refunded_at")) is not None
     active = not refunded and max(expires_at, grace or expires_at) > now
+    period_type = subscription.get("period_type")
+    if period_type is not None and not isinstance(period_type, str):
+        raise RevenueCatError("invalid provider period")
+    # A refunded or fully expired subscription cannot grant access, even when its
+    # historical period is missing or unsupported. Live periods remain fail-closed.
+    if active and period_type not in {"normal", "intro", "trial"}:
+        raise RevenueCatError("invalid provider period")
     will_renew = subscription.get("unsubscribe_detected_at") is None if "unsubscribe_detected_at" in subscription else None
     return BillingSnapshot(product_id=product_id, store=store, period_type=period_type,
         active=active, expires_at=expires_at, grace_expires_at=grace, will_renew=will_renew)

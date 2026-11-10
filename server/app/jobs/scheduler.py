@@ -2,6 +2,7 @@
 
 import logging
 from functools import partial
+from itertools import zip_longest
 from time import monotonic
 
 from fastapi import FastAPI, HTTPException
@@ -23,7 +24,12 @@ def _eligible_delivery(job: ReplanJobRecord) -> ReplanJobRecord | None:
     """Verify before task lookup/recovery, which must not exhaust unpaid deliveries."""
     if not billing.billing_enabled():
         return job
-    if not planning_access.reconcile_user(job.user_id):
+    try:
+        planning_access.permission_for(job.user_id)
+    except planning_access.PlanningDeferred as exc:
+        if not planning_access.defer(job.user_id, exc.reason, permission=exc.permission):
+            # A newer payment superseded this denial. Keep the delivery retryable.
+            raise billing.BillingUnavailable("planning authorization changed") from exc
         return None
     current = replan_jobs.get_delivery_job(job.id, job.delivery_token)
     return current if current is not None and current.status in ("pending", "running") else None
@@ -52,6 +58,25 @@ def dispatch_after_commit(job: ReplanJobRecord) -> None:
         logger.warning("planning dispatch deferred job_id=%s error_type=%s", job.id, type(exc).__name__)
 
 
+def _dispatch_delivery(job: ReplanJobRecord, settings: TaskSettings) -> bool:
+    """Authorize before recovery, then submit only a current delivery generation."""
+    job = _eligible_delivery(job)
+    if job is None:
+        return False
+    if job.dispatched_at is not None:
+        task = ReplanTask(job_id=job.id, delivery_token=job.delivery_token)
+        if task_exists(task, settings.queue):
+            replan_jobs.mark_replan_dispatched(job.id, task.delivery_token)
+            return False
+        job = replan_jobs.recover_replan_delivery(job.id, task.delivery_token)
+        if job is not None and job.status == "failed":
+            capture_failure(RuntimeError("planning task delivery exhausted"), "planning.delivery")
+        if job is None or job.status != "pending":
+            return False
+    _submit_delivery(job, settings)
+    return True
+
+
 def dispatch_due(settings: TaskSettings, limit: int = 20) -> dict:
     """
     discover due refreshes and reconcile a bounded page of task deliveries
@@ -62,50 +87,39 @@ def dispatch_due(settings: TaskSettings, limit: int = 20) -> dict:
     """
     deadline = monotonic() + 45
     enabled = billing.billing_enabled()
-    # Enabled billing only enqueues through a verified, per-user resume operation.
-    counts = {"created": 0 if enabled else replan_jobs.enqueue_due_replans(limit, include_paused=True),
+    # Queuing durable intent spends no generation attempt. Paused accounts stay out;
+    # payment is still verified before delivery and atomically at the worker claim.
+    counts = {"created": replan_jobs.enqueue_due_replans(limit, include_paused=not enabled),
               "dispatched": 0, "errors": 0}
     first_error = None
-
-    for job in replan_jobs.list_replan_deliveries(limit, include_paused=not enabled):
-        if monotonic() >= deadline:
-            break
-        try:
-            job = _eligible_delivery(job)
-            if job is None:
-                continue
-            if job.dispatched_at is not None:
-                task = ReplanTask(job_id=job.id, delivery_token=job.delivery_token)
-                if task_exists(task, settings.queue):
-                    replan_jobs.mark_replan_dispatched(job.id, task.delivery_token)
-                    continue
-                job = replan_jobs.recover_replan_delivery(job.id, task.delivery_token)
-                if job is not None and job.status == "failed":
-                    capture_failure(RuntimeError("planning task delivery exhausted"), "planning.delivery")
-                if job is None or job.status != "pending":
-                    continue
-
-            _submit_delivery(job, settings)
-            counts["dispatched"] += 1
-        except Exception as exc:
-            counts["errors"] += 1
-            if first_error is None:
-                first_error = exc
-
-    # Dispatch ready work first. A slow provider or unpaid accounts must not take
-    # the entire tick from users whose jobs are already waiting to run.
+    work = planning_schedules.list_billing_work(limit) if enabled else []
+    deliveries = replan_jobs.list_replan_deliveries(limit, include_paused=not enabled)
     if enabled:
         counts["reconciled"] = 0
-        for user_id in planning_schedules.list_billing_rechecks(min(limit, 5)):
-            if monotonic() + 10 >= deadline:
+
+    # Alternate durable wake/retry work with deliveries so neither phase has to
+    # wait for an entire potentially slow provider batch. The deadline bounds new
+    # work admission; an operation already in progress retains its own timeout.
+    exhausted = False
+    for recheck, job in zip_longest(work, deliveries):
+        for kind, item in (("recheck", recheck), ("delivery", job)):
+            if item is None:
+                continue
+            if monotonic() >= deadline:
+                exhausted = True
                 break
             try:
-                if planning_access.reconcile_user(user_id):
-                    counts["reconciled"] += 1
+                if kind == "recheck":
+                    if planning_access.reconcile_user(item.user_id, wake_token=item.wake_token):
+                        counts["reconciled"] += 1
+                elif _dispatch_delivery(item, settings):
+                    counts["dispatched"] += 1
             except Exception as exc:
                 counts["errors"] += 1
                 if first_error is None:
                     first_error = exc
+        if exhausted:
+            break
 
     if first_error is not None:
         logger.warning("planning reconciliation deferred failures=%s error_type=%s", counts["errors"], type(first_error).__name__)

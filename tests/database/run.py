@@ -39,12 +39,20 @@ def main() -> None:
 
         migrations = sorted((ROOT / "supabase/migrations").glob("*.sql"))
         suites = sorted(path for path in TESTS.glob("*.sql") if path.name != "bootstrap.sql")
-        for path in [TESTS / "bootstrap.sql", *migrations, *suites]:
+        def check_sql(path: Path) -> None:
             print(f"Checking {path.relative_to(ROOT)}", flush=True)
             subprocess.run([
                 "docker", "exec", "-i", container, "psql", "-X", "-U", "postgres", "-d", "postgres",
                 "-v", "ON_ERROR_STOP=1", "--quiet",
             ], input=path.read_bytes(), check=True, timeout=120)
+
+        for path in [TESTS / "bootstrap.sql", *migrations, *suites]:
+            transition = path.name.endswith("_event_driven_planning_billing.sql")
+            if transition:
+                check_sql(TESTS / "migrations/event_driven_before.sql")
+            check_sql(path)
+            if transition:
+                check_sql(TESTS / "migrations/event_driven_after.sql")
         subprocess.run([sys.executable, "-u", str(TESTS / "concurrency.py"), container],
             cwd=ROOT, check=True, timeout=120)
         subprocess.run([sys.executable, "-u", str(TESTS / "billing_concurrency.py"), container],

@@ -6,11 +6,13 @@ import { PolicyLinks } from '@/components/policy-links';
 import { AppText, Card, PrimaryButton, SecondaryButton } from '@/components/ui';
 import { useApp } from '@/state/app-context';
 import { useSubscription } from '@/state/subscription-context';
+import { subscriptionRecoveryMessage } from '@/state/subscription-store';
 
 /** A dismissed native paywall returns here without granting access or reopening itself. */
 export default function PaywallScreen() {
   const { colors, authSession, accountReady, passwordRecovery, profile, signOut } = useApp();
   const subscription = useSubscription();
+  const recovery = subscriptionRecoveryMessage(subscription.status);
   const attempted = useRef<string | null>(null);
   const ready = Boolean(authSession && accountReady && profile.onboardingComplete && !passwordRecovery);
 
@@ -20,12 +22,12 @@ export default function PaywallScreen() {
       router.replace(subscription.destination);
       return;
     }
-    if (subscription.status && !subscription.loading && !subscription.busy && !subscription.error
+    if (!recovery && subscription.status && !subscription.loading && !subscription.busy && !subscription.error
       && !subscription.message && attempted.current !== authSession!.user.id) {
       attempted.current = authSession!.user.id;
       void subscription.purchase();
     }
-  }, [authSession, ready, subscription]);
+  }, [authSession, ready, recovery, subscription]);
 
   const busy = Boolean(subscription.busy);
   const choosePlan = () => {
@@ -36,15 +38,15 @@ export default function PaywallScreen() {
     <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.intro}>
         <AppText weight="bold" style={styles.title}>Continue with Arcel Pro</AppText>
-        <AppText tone="secondary">Choose a monthly or annual subscription to continue. Your setup is saved.</AppText>
+        <AppText tone="secondary">{recovery ?? 'Choose a monthly or annual subscription to continue. Your setup is saved.'}</AppText>
       </View>
       <Card>
         {subscription.loading ? <View style={styles.loading}><ActivityIndicator color={colors.tint} /><AppText>Checking your subscription…</AppText></View> : null}
         {subscription.error ? <AppText accessibilityRole="alert">{subscription.error}</AppText> : null}
-        {subscription.message ? <AppText accessibilityRole="alert">{subscription.message}</AppText> : null}
+        {subscription.message && subscription.message !== recovery ? <AppText accessibilityRole="alert">{subscription.message}</AppText> : null}
         <View style={styles.actions}>
           {subscription.error || subscription.message ? <PrimaryButton disabled={busy || subscription.loading} onPress={() => void subscription.refresh()}>Retry subscription check</PrimaryButton> : null}
-          <PrimaryButton disabled={!ready || busy || subscription.loading || subscription.confirming || Boolean(subscription.error)} loading={subscription.busy === 'purchase'} onPress={choosePlan}>Choose a plan</PrimaryButton>
+          {!recovery ? <PrimaryButton disabled={!ready || busy || subscription.loading || subscription.confirming || Boolean(subscription.error)} loading={subscription.busy === 'purchase'} onPress={choosePlan}>Choose a plan</PrimaryButton> : null}
           <SecondaryButton disabled={!ready || busy || subscription.loading} loading={subscription.busy === 'restore'} onPress={() => void subscription.restore()}>Restore purchases</SecondaryButton>
           <SecondaryButton disabled={!ready || busy || subscription.loading} loading={subscription.busy === 'manage'} onPress={() => void subscription.manage()}>Manage subscription</SecondaryButton>
         </View>

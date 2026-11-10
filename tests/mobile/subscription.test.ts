@@ -4,7 +4,7 @@ import type Purchases from 'react-native-purchases';
 import type { CustomerInfo, PurchasesOffering } from 'react-native-purchases';
 import type { BillingStatus } from '../../mobile/src/services/backend';
 import type { PurchasesAdapter } from '../../mobile/src/services/purchases';
-import { deferred, load, plain, jsx, type TestValue, type TestNode } from './helpers.ts';
+import { deferred, load, plain, jsx, nodes, type TestValue, type TestNode, type TestModule } from './helpers.ts';
 
 const logic = load<typeof import('../../mobile/src/state/subscription-store')>('state/subscription-store.ts');
 const adapterModule = load<typeof import('../../mobile/src/services/purchases')>('services/purchases.ts', {
@@ -73,7 +73,7 @@ test('backend status is authoritative even when the SDK has no active entitlemen
   assert.equal(logic.hasSDKEntitlement(info()), false);
 });
 
-test('access loss clears protected memory once; routine verification preserves it', async () => {
+test('only confirmed access loss clears protected memory; verification failures preserve the previous-grant latch', async () => {
   const f = fixture(); f.setStatus(status(true)); f.store.setUser('a'); await flush();
   const read = deferred<BillingStatus>(); f.setRead(() => read.promise);
   const refreshing = f.store.refresh();
@@ -85,11 +85,52 @@ test('access loss clears protected memory once; routine verification preserves i
   assert.deepEqual(f.lostAccess, ['a']);
   await f.store.refresh(); assert.deepEqual(f.lostAccess, ['a']);
   f.setRead(async () => status(true)); await f.store.refresh();
-  f.store.invalidate('other'); assert.deepEqual(f.lostAccess, ['a']);
-  f.store.invalidate('a'); assert.deepEqual(f.lostAccess, ['a', 'a']);
+  f.store.deny('other'); assert.deepEqual(f.lostAccess, ['a']);
+  f.store.deny('a'); assert.deepEqual(f.lostAccess, ['a', 'a']);
   await flush();
   f.setRead(async () => { throw new Error('offline'); }); await f.store.refresh();
+  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
+  assert.deepEqual(f.lostAccess, ['a', 'a']);
+  f.setRead(async () => status()); await f.store.refresh();
   assert.deepEqual(f.lostAccess, ['a', 'a', 'a']);
+  await f.store.refresh(); assert.deepEqual(f.lostAccess, ['a', 'a', 'a']);
+});
+
+test('expiry re-verification blocks access without clearing data before a renewal result', async () => {
+  const f = fixture(); f.setStatus(status(true)); f.store.setUser('a'); await flush();
+  const read = deferred<BillingStatus>(); f.setRead(() => read.promise);
+  f.store.invalidate('a');
+  assert.equal(f.store.getSnapshot().status, null);
+  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
+  assert.deepEqual(f.lostAccess, []);
+  read.resolve(status(true)); await flush();
+  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), true);
+  assert.deepEqual(f.lostAccess, []);
+});
+
+test('exact API denial clears once even after unavailable verification and fences an older grant', async () => {
+  const f = fixture(); f.setStatus(status(true)); f.store.setUser('a'); await flush();
+  f.setRead(async () => { throw new Error('billing_unavailable'); }); await f.store.refresh();
+  assert.deepEqual(f.lostAccess, []);
+  const old = deferred<BillingStatus>(); let reads = 0;
+  f.setRead(() => ++reads === 1 ? old.promise : Promise.resolve(status()));
+  const refreshing = f.store.refresh(); f.store.deny('a'); await flush();
+  assert.deepEqual(f.lostAccess, ['a']);
+  old.resolve(status(true)); await refreshing;
+  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
+  f.store.deny('a'); await flush(); assert.deepEqual(f.lostAccess, ['a']);
+});
+
+test('API denial fences a purchase-management verification that started before the denial', async () => {
+  const f = fixture(); f.setStatus(status(true)); f.store.setUser('a'); await flush();
+  const syncing = deferred<BillingStatus>(); f.setSync(() => syncing.promise);
+  const manage = f.store.manage(); await flush();
+  f.setStatus(status()); f.store.deny('a');
+  assert.deepEqual(f.lostAccess, ['a']);
+  const grants: boolean[] = []; const stop = f.store.subscribe(() => { grants.push(Boolean(f.store.getSnapshot().status?.has_access)); });
+  syncing.resolve(status(true)); await manage; await flush(); stop();
+  assert.equal(grants.includes(true), false);
+  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
 });
 
 test('late verification cannot clear a replacement account protected data', async () => {
@@ -165,11 +206,46 @@ test('restored SDK entitlement waits for backend confirmation', async () => {
   assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
 });
 
-test('Customer Center verification failure revokes the old grant but presentation failure does not invent one', async () => {
+test('confirmed trial and grace periods stop purchase-sync waiting and recover through management', async () => {
+  for (const phase of ['trial', 'grace'] as const) {
+    for (const restore of [false, true]) {
+      let purchases = 0;
+      const f = fixture({ paywall: async () => { purchases++; return 'purchased'; }, restore: async () => info(true) });
+      f.store.setUser('a'); await flush();
+      f.setStatus({ ...status(), phase, expires_at: '2099-01-01T00:00:00Z' });
+      await (restore ? f.store.restore() : f.store.purchase());
+      const value = f.store.getSnapshot();
+      assert.equal(logic.subscriptionAllowsAccess(true, 'a', value), false);
+      assert.equal(value.confirming, false); assert.equal(value.error, null);
+      assert.match(value.message!, phase === 'trial' ? /trial period.*confirmed payment/ : /payment needs attention.*Manage your subscription/);
+      const previousPurchases = purchases;
+      await f.store.purchase(); assert.equal(purchases, previousPurchases, 'an existing non-paid period does not prompt another purchase');
+      await f.store.refresh(); assert.equal(f.store.getSnapshot().confirming, false);
+      f.setStatus(status(true)); await f.store.manage();
+      assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), true);
+      assert.equal(f.store.getSnapshot().message, null);
+    }
+  }
+});
+
+test('trial and grace discovered after an unavailable purchase check replace the syncing message', async () => {
+  for (const phase of ['trial', 'grace'] as const) {
+    const f = fixture(); f.store.setUser('a'); await flush();
+    f.setSync(async () => { throw new Error('offline'); }); await f.store.purchase();
+    assert.equal(f.store.getSnapshot().confirming, true);
+    f.setSync(async () => ({ ...status(), phase })); await f.store.refresh();
+    assert.equal(f.store.getSnapshot().confirming, false); assert.equal(f.store.getSnapshot().error, null);
+    assert.equal(f.store.getSnapshot().message, logic.subscriptionRecoveryMessage({ ...status(), phase }));
+  }
+});
+
+test('Customer Center verification failure blocks access without revoking memory; presentation failure does not invent access', async () => {
   const f = fixture(); f.setStatus(status(true)); f.store.setUser('a'); await flush();
   f.setSync(async () => { throw new Error('503'); }); await f.store.manage();
   assert.equal(f.store.getSnapshot().status, null);
   assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
+  assert.deepEqual(f.lostAccess, []);
+  f.setSync(async () => status()); await f.store.manage(); assert.deepEqual(f.lostAccess, ['a']);
   const unavailable = fixture({ manage: async () => { throw new Error('Use a development build'); } });
   unavailable.store.setUser('a'); await flush(); await unavailable.store.manage();
   assert.match(unavailable.store.getSnapshot().message!, /development build/);
@@ -192,7 +268,7 @@ test('API denial and SDK signals during cancelled native UI run their queued ref
   for (const sdk of [false, true]) {
     const pending = deferred<'cancelled'>(); const f = fixture({ paywall: () => pending.promise });
     f.store.setUser('a'); await flush(); const purchase = f.store.purchase(); await flush();
-    if (sdk) f.store.sdkChanged(); else f.store.invalidate('a');
+    if (sdk) f.store.sdkChanged(); else f.store.deny('a');
     f.setStatus(status(true)); pending.resolve('cancelled'); await purchase; await flush();
     assert.equal(f.store.getSnapshot().status?.has_access, true);
     assert.equal(f.calls.includes(sdk ? 'sync:a' : 'read:a'), true);
@@ -232,6 +308,11 @@ test('billing HTTP calls are scoped, empty-body, and subscription-required notif
     assert.equal((error as InstanceType<typeof backend.BackendError>).status, 403); return true;
   });
   assert.equal(denied, 1);
+  for (const [httpStatus, detail] of [[503, 'billing_unavailable'], [403, 'forbidden']] as const) {
+    const unavailable = backend.createBackend(async () => new Response(JSON.stringify({ detail }), { status: httpStatus }), () => { denied++; });
+    await assert.rejects(unavailable.getConversations());
+    assert.equal(denied, 1, 'only an exact subscription-required response confirms denial');
+  }
 });
 
 test('missing current, monthly, or annual catalog packages never present a native paywall', async () => {
@@ -275,6 +356,7 @@ test('manually reopening after a startup error does not reopen again after cance
     '@/state/app-context': { useApp: () => ({ colors: {}, authSession: { user: { id: 'a' } },
       accountReady: true, profile: { onboardingComplete: true }, passwordRecovery: false, signOut() {} }) },
     '@/state/subscription-context': { useSubscription: () => subscription },
+    '@/state/subscription-store': logic,
   });
   const tree = screen.default() as TestNode;
   effects.forEach(effect => effect()); effects = [];
@@ -284,4 +366,57 @@ test('manually reopening after a startup error does not reopen again after cance
   screen.default(); effects.forEach(effect => effect());
   assert.equal(calls, 1);
   assert.equal(attempted.current, 'a');
+});
+
+function subscriptionScreen(page: 'account' | 'paywall', subscription: TestModule) {
+  const calls: string[] = []; const effects: (() => void)[] = []; const attempted = { current: null };
+  const state = { enabled: true, hasAccess: false, loading: false, busy: null, error: null, message: null, confirming: false,
+    refresh: async () => { calls.push('refresh'); }, purchase: async () => { calls.push('purchase'); },
+    restore: async () => { calls.push('restore'); }, manage: async () => { calls.push('manage'); }, ...subscription };
+  const screen = load(`screens/${page}-screen.tsx`, {
+    react: { useRef: () => attempted, useState: initial => [initial, () => {}], useEffect: fn => { effects.push(fn); } },
+    'react/jsx-runtime': { jsx, jsxs: jsx },
+    'expo-router': { router: { replace: (route: string) => calls.push(route), push: (route: string) => calls.push(route), back() {} } },
+    'react-native': { StyleSheet: { create: value => value }, Platform: { OS: 'ios' }, View: 'view', ScrollView: 'scroll',
+      KeyboardAvoidingView: 'keyboard', Pressable: 'pressable', ActivityIndicator: 'spinner' },
+    'react-native-safe-area-context': { SafeAreaView: 'safe' }, 'lucide-react-native': {},
+    '@/components/ui': { AppText: 'text', Card: 'card', PrimaryButton: 'button', SecondaryButton: 'button' },
+    '@/components/policy-links': { PolicyLinks: 'policies' }, '@/design/tokens': { fonts: {}, radius: {} },
+    '@/services/api': { liveApiConfigured: true },
+    '@/state/app-context': { useApp: () => ({ colors: {}, authSession: { user: { id: 'a' } }, accountReady: true,
+      profile: { onboardingComplete: true }, passwordRecovery: false, signOut() {} }) },
+    '@/state/subscription-context': { useSubscription: () => state }, '@/state/subscription-store': logic,
+  });
+  const expand = (node: TestValue): TestValue => {
+    if (!node || typeof node !== 'object') return node;
+    if (Array.isArray(node)) return node.map(expand);
+    if (typeof node.type === 'function') return expand(node.type(node.props));
+    return { ...node, props: { ...node.props, children: expand(node.props.children) } };
+  };
+  const tree = expand(screen.default()); effects.forEach(fn => fn());
+  const buttons = nodes(tree).filter(node => node.type === 'button');
+  const text = (node: TestValue): string => Array.isArray(node) ? node.map(text).join('')
+    : node && typeof node === 'object' ? text(node.props.children) : typeof node === 'string' ? node : '';
+  return { calls, text: text(tree), button: (label: string) => buttons.find(node => node.props.children === label) };
+}
+
+test('account and paywall describe denied trial/grace without active-access promises or another purchase prompt', () => {
+  for (const phase of ['trial', 'grace'] as const) {
+    const billing = { ...status(), phase, expires_at: '2099-01-01T00:00:00Z', will_renew: false };
+    for (const page of ['account', 'paywall'] as const) {
+      const f = subscriptionScreen(page, { status: billing });
+      assert.match(f.text, phase === 'trial' ? /trial period.*confirmed payment/ : /payment needs attention/);
+      assert.doesNotMatch(f.text, /trial is active|active during the billing grace period|Access until|still syncing/);
+      assert.equal(f.calls.includes('purchase'), false);
+      assert.equal(f.button('Choose a plan'), undefined); assert.equal(f.button('View plans'), undefined);
+      assert.ok(f.button('Manage subscription')); f.button('Manage subscription')!.props.onPress();
+      assert.deepEqual(f.calls, ['manage']); assert.ok(f.button('Restore purchases'));
+      if (page === 'account') assert.match(f.text, phase === 'trial' ? /Trial ends/ : /Paid period ended/);
+    }
+  }
+  const paid = subscriptionScreen('account', { hasAccess: true, status: { ...status(true), will_renew: false } });
+  assert.match(paid.text, /Arcel Pro is active.*Access until/);
+  const unknown = subscriptionScreen('paywall', { status: null, error: 'Could not verify your subscription.' });
+  assert.equal(unknown.calls.length, 0); assert.equal(unknown.button('Choose a plan')?.props.disabled, true);
+  assert.ok(unknown.button('Retry subscription check'));
 });

@@ -9,6 +9,7 @@ import { fonts, radius } from '@/design/tokens';
 import { liveApiConfigured } from '@/services/api';
 import { useApp } from '@/state/app-context';
 import { useSubscription } from '@/state/subscription-context';
+import { subscriptionRecoveryMessage } from '@/state/subscription-store';
 import { PolicyLinks } from '@/components/policy-links';
 
 function ConnectionStatus() {
@@ -42,20 +43,22 @@ function SubscriptionActions() {
   if (!subscription.enabled) return null;
   const busy = Boolean(subscription.busy) || subscription.loading;
   const status = subscription.status;
+  const recovery = subscriptionRecoveryMessage(status);
   const expiry = status?.expires_at ? new Date(status.expires_at).toLocaleDateString() : null;
+  const expiryLabel = subscription.hasAccess ? status?.will_renew ? 'Renews' : 'Access until'
+    : status?.phase === 'trial' ? 'Trial ends' : status?.phase === 'grace' ? 'Paid period ended' : null;
   return <Card>
     <AppText weight="semibold">Subscription</AppText>
     <AppText tone="secondary" style={styles.infoCopy}>{subscription.loading ? 'Checking subscription…'
       : subscription.hasAccess ? status?.enabled === false ? 'Subscription access is not required in this environment.'
-        : status?.phase === 'trial' ? 'Arcel Pro trial is active.' : status?.phase === 'grace' ? 'Arcel Pro is active during the billing grace period.' : 'Arcel Pro is active.'
-        : 'No verified active subscription.'}</AppText>
-    {expiry ? <AppText tone="secondary" style={styles.infoCopy}>{status?.will_renew ? 'Renews' : 'Access until'} {expiry}</AppText> : null}
-    {subscription.error || subscription.message ? <AppText accessibilityRole="alert" style={styles.infoCopy}>{subscription.error ?? subscription.message}</AppText> : null}
+        : 'Arcel Pro is active.' : recovery ?? 'No verified active subscription.'}</AppText>
+    {expiry && expiryLabel ? <AppText tone="secondary" style={styles.infoCopy}>{expiryLabel} {expiry}</AppText> : null}
+    {subscription.error || subscription.message && subscription.message !== recovery ? <AppText accessibilityRole="alert" style={styles.infoCopy}>{subscription.error ?? subscription.message}</AppText> : null}
     <View style={styles.form}>
       <SecondaryButton disabled={busy} onPress={() => void subscription.refresh()}>Refresh subscription</SecondaryButton>
       <SecondaryButton disabled={busy} loading={subscription.busy === 'restore'} onPress={() => void subscription.restore()}>Restore purchases</SecondaryButton>
       <PrimaryButton disabled={busy} loading={subscription.busy === 'manage'} onPress={() => void subscription.manage()}>Manage subscription</PrimaryButton>
-      {!subscription.hasAccess ? <SecondaryButton disabled={busy} onPress={() => router.replace('/paywall')}>View plans</SecondaryButton> : null}
+      {!subscription.hasAccess && !recovery ? <SecondaryButton disabled={busy} onPress={() => router.replace('/paywall')}>View plans</SecondaryButton> : null}
     </View>
   </Card>;
 }

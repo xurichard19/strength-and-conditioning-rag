@@ -58,7 +58,7 @@ The public SDK key is shipped with the app; it is not a backend credential. `mob
 
 ## Backend and webhook setup
 
-Apply the repository migrations only to the intended environment before deploying compatible services. `20260919232156_billing_entitlements.sql` creates the private entitlement projection and revision-guarded RPCs. `20261109060513_payment_gated_planning.sql` adds payment pause/recheck fields to the existing planning schedule and extends the existing queue operations. Authenticated clients cannot read/write billing state or call queue RPCs directly. There is no separate billing queue, event-inbox table, or billing worker to operate. The direct-client training/chat privilege cutover is staged separately, as described under Release and validation.
+Apply the repository migrations only to the intended environment before deploying compatible services. `20260919232156_billing_entitlements.sql` creates the private entitlement projection and revision-guarded RPCs. `20261109060513_payment_gated_planning.sql` adds payment pause/recheck fields and extends queue operations. `20261110054537_event_driven_planning_billing.sql` adds durable event wake-ups, atomic paid-verification activation, and revision-fenced unpaid waiting. Existing RPCs remain available while old services drain. Authenticated clients cannot read/write billing state or call queue RPCs directly. There is no separate billing queue, event-inbox table, or billing worker to operate. The direct-client training/chat privilege cutover is staged separately, as described under Release and validation.
 
 The backend uses verified Supabase identity to query RevenueCat. A purchase or restore calls `POST /billing/sync`; `GET /billing/status` returns the backend decision. Neither accepts client assertions of paid access. The entitlement projection is partitioned by sandbox/production and is refreshed when missing, invalidated, expired, or older than five minutes. Revision checks prevent an older verification from overwriting newer invalidation.
 
@@ -75,16 +75,21 @@ When billing is enabled, every chat, calendar, workout, sports-workout, and plan
 ### Paid access and automatic planning
 
 - Onboarding saves answers and durable planning intent before payment. Finishing onboarding does not authorize generation.
-- A current, verified **normal or introductory paid period** grants access. Trials and billing grace do not. Turning off auto-renewal retains access until the paid expiry. Unknown active period types fail closed as verification unavailable.
-- A successful billing sync/status check tries to resume planning after the response. The existing dispatcher also reconciles due accounts, so closing the app or a failed immediate dispatch does not lose the first plan.
+- A current, verified **normal or introductory paid period** grants access. Trials and billing grace do not. Turning off auto-renewal retains access until the paid expiry. Unknown active period types fail closed as verification unavailable; definitively expired/refunded history with missing or unsupported string periods returns inactive.
+- Paid verification commits any necessary planning wake in the same database transaction. Onboarding completion and webhooks also persist wakes. A successful `/billing/sync` may accelerate activation after the response using that verified revision; failure of this optional callback does not lose accepted work. Cached `/billing/status` reads do not repeat planning activation.
 - The dispatcher checks payment before submitting or recovering a delivery. The worker checks again before claiming an attempt. The database atomically checks the environment, entitlement revision, verification freshness, paid expiry, and completed onboarding under its existing locks.
-- Unpaid accounts wait five minutes between reconciliation checks; temporary billing failures wait one minute. Deferral retires pending delivery tokens without consuming generation attempts. Webhook invalidation requests an earlier reconciliation.
-- An already-authorized running attempt may finish. A later retry or new attempt must verify again. Payment loss retains saved plans, workouts, and history.
+- Confirmed unpaid accounts stop periodic checks and wait for a webhook or subsequent successful backend verification from purchase, restore, or an app visit. There is no daily fallback. If both notifications and subsequent verification are absent, recovery waits for the user to return or restore. Temporary billing failures retry after one minute.
+- Each tick bulk-enqueues up to 20 due requests for unpaused accounts, then alternates ready deliveries with up to 20 event/outage rechecks within a 45-second admission budget. Event and outage candidates share capacity fairly. Queuing intent does not spend generation attempts or bypass payment verification; the counts are batch limits, not guaranteed throughput.
+- Deferral retires pending delivery tokens without consuming attempts. Permanent unpaid waiting must match the observed entitlement revision, so an older denial cannot strand a newly paid user. Reconciliation only acknowledges its observed wake token; a newer event remains pending.
+- An already-authorized running attempt may finish. A later retry or new attempt must verify again. Saved plans, workouts, and history remain stored after payment loss, but are not viewable through the app until paid access is restored.
 - Resumption creates current coverage, coalesces pending automatic edits, and preserves manual requests. An exhausted first-plan job remains visible and retryable; reconciliation does not silently restart it or discard it during history cleanup.
 - Today and Plans display queued, running, deferred, failed, or ready first-plan state. A failed or cancelled first job has an explicit retry action. A temporarily deferred job waits for reconciliation; neither state requires another purchase.
-- Mobile access loss clears protected training/chat caches and rejects late responses from the old access session. Account and onboarding data remain available.
+- Confirmed backend denial clears protected mobile training/chat caches and rejects late responses from the old access session. Network errors, 503 responses, and expiry rechecks block protected navigation without erasing drafts/caches or aborting already-started chat streams. Logout and account changes still clear account-owned memory immediately.
+- Trial/grace responses show policy-specific recovery guidance rather than claiming access is active or a purchase is still syncing. They do not automatically reopen purchasing. Subscription management, restore, refresh, and support remain available.
 
 The five-minute verified entitlement cache still applies. Expiry is checked immediately, and a webhook invalidates cached verification. Provider requests remain bounded; unavailable verification does not authorize new work. With `BILLING_ENABLED=false`, APIs and job claims retain the previous behavior, including processing jobs paused while billing was enabled.
+
+Keep free-trial offers and Apple's optional Billing Grace Period disabled for this paid-only release. Apple's grace feature is intended to retain service while billing recovery runs; enabling it requires an explicit policy change and matching backend/mobile behavior. Dashboard settings are not changed by these migrations.
 
 ## Local workflow
 
@@ -296,3 +301,10 @@ Keeping stage two outside `supabase/migrations` is deliberate: the current migra
 - Mobile: 236 tests passed; app/test TypeScript checks, lint, and web export passed. Tests cover first-plan progress/retry, access-loss cleanup, stale-response rejection, and publication while Today is offscreen.
 - The codebase graph was refreshed with `graphify update .`.
 - Native purchase/restore validation and the ordered service/database rollout remain release steps. No push, deployment, hosted migration, or production activation was performed.
+
+### Review corrections verified — 2026-11-10
+
+- Backend: 395 tests passed, including pure status reads, proof reuse, expired/refunded historical periods, retryable stale denials, and alternating delivery/reconciliation work.
+- Database: all 12 SQL suites, the full migration chain, seeded migration-transition checks, payment/wake concurrency races, and staged access checks passed in disposable PostgreSQL 17. A 240-account fixture verifies dormant unpaid accounts do not fill the work batch and that events/outage retries share capacity.
+- Mobile: 243 tests passed; app/test TypeScript checks, lint, and web export passed. Regression tests cover preserved drafts and streams during uncertain verification, confirmed denial cleanup, stale response fencing, and trial/grace recovery.
+- The event-driven unpaid policy and paid-only history/trial/grace policy are intentional. No application database, dashboard setting, production feature flag, or hosted service was changed by this work.

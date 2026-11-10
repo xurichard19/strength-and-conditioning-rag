@@ -31,7 +31,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!billingEnabled) return;
     const stopSDK = purchases.subscribe(store.sdkChanged);
-    const stopAPI = onSubscriptionRequired(store.invalidate);
+    const stopAPI = onSubscriptionRequired(store.deny);
     const foreground = AppState.addEventListener('change', value => { if (value === 'active') void store.refresh(); });
     return () => { stopSDK(); stopAPI(); foreground.remove(); };
   }, [store]);

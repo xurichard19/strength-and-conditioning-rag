@@ -15,23 +15,14 @@ from app.db.supabase import SupabaseDataError, planning_schedules
 router = APIRouter(prefix="/billing", tags=["billing"], dependencies=[Depends(private_response)])
 
 
-def _status(user: AuthUser, force: bool, background: BackgroundTasks) -> BillingStatusResponse:
-    """translate verification failures without exposing provider/database details"""
-
-    try:
-        status = BillingStatusResponse.model_validate(billing.get_billing_status(user.id, force=force))
-    except billing.BillingUnavailable as exc:
-        raise HTTPException(503, "billing_unavailable", headers=PRIVATE_HEADERS) from exc
-    if status.enabled and status.has_access:
-        background.add_task(planning_access.after_verification, user.id)
-    return status
-
-
 @router.get("/status", response_model=BillingStatusResponse)
-def get_status(background: BackgroundTasks, user: AuthUser = Depends(require_user)) -> BillingStatusResponse:
+def get_status(user: AuthUser = Depends(require_user)) -> BillingStatusResponse:
     """return the authenticated account's billing status, refreshing stale verification"""
 
-    return _status(user, False, background)
+    try:
+        return BillingStatusResponse.model_validate(billing.get_billing_status(user.id))
+    except billing.BillingUnavailable as exc:
+        raise HTTPException(503, "billing_unavailable", headers=PRIVATE_HEADERS) from exc
 
 
 @router.post("/sync", response_model=BillingStatusResponse)
@@ -39,7 +30,19 @@ def sync_status(background: BackgroundTasks, payload: RequestModel | None = None
                 user: AuthUser = Depends(require_user)) -> BillingStatusResponse:
     """verify this account after purchase/restore; accepts no client entitlement claims"""
 
-    return _status(user, True, background)
+    try:
+        record = billing.get_verified_entitlement(user.id, force=True)
+        if record is None:
+            return BillingStatusResponse(enabled=False, has_access=True)
+        status = BillingStatusResponse.model_validate(billing.billing_access(record))
+    except billing.BillingUnavailable as exc:
+        raise HTTPException(503, "billing_unavailable", headers=PRIVATE_HEADERS) from exc
+    if status.has_access:
+        # The entitlement commit has already persisted any needed planning wake.
+        # Immediate activation is optional and reuses that same verified revision.
+        background.add_task(planning_access.after_verification, user.id,
+            planning_access.PlanningPermission(record.environment, record.sync_revision))
+    return status
 
 
 @router.post("/webhooks/revenuecat")

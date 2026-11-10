@@ -24,6 +24,14 @@ export function subscriptionAllowsAccess(enabled: boolean, userId: string | null
   return !enabled || Boolean(userId && state.owner === userId && status?.has_access && !state.error && !expired);
 }
 
+/** A known non-paid period needs subscription management, not another purchase or sync loop. */
+export function subscriptionRecoveryMessage(status: BillingStatus | null) {
+  if (!status?.enabled || status.has_access) return null;
+  if (status.phase === 'trial') return 'Your subscription is in a trial period. Arcel Pro access begins after a confirmed payment.';
+  if (status.phase === 'grace') return 'Your subscription payment needs attention. Access is paused until payment is confirmed. Manage your subscription to resolve the billing issue.';
+  return null;
+}
+
 /** SDK entitlement data informs recovery messages; it never grants application access. */
 export function hasSDKEntitlement(info: CustomerInfo) {
   return info.entitlements.active.arcel_pro?.isActive === true;
@@ -52,6 +60,7 @@ export function createSubscriptionStore(options: {
   enabled: boolean;
   purchases: PurchasesAdapter;
   api: (userId: string) => { getBillingStatus: () => Promise<BillingStatus>; syncBilling: () => Promise<BillingStatus> };
+  /** Confirmed server denial only; verification failures and local expiry do not discard data. */
   onAccessLost?: (userId: string) => void;
 }) {
   let state = empty();
@@ -62,14 +71,24 @@ export function createSubscriptionStore(options: {
   let confirmationMessage = 'Your purchase is confirmed, but access is still syncing. Retry to finish.';
   let refreshQueued = false;
   let syncQueued = false;
-  let accessGranted = false;
+  let hadAccess = false; // Survives unknown checks so a later denial still clears retained private data.
   const listeners = new Set<() => void>();
   const publish = (patch: Partial<SubscriptionState>) => {
     state = { ...state, ...patch };
-    const allowed = subscriptionAllowsAccess(options.enabled, state.owner, state);
-    if (accessGranted && !allowed && state.owner) options.onAccessLost?.(state.owner);
-    accessGranted = allowed;
     listeners.forEach(listener => listener());
+  };
+  const revoke = () => {
+    if (!hadAccess || !state.owner) return;
+    hadAccess = false;
+    options.onAccessLost?.(state.owner);
+  };
+  const acceptStatus = (status: BillingStatus, fallbackMessage: string | null = null) => {
+    if (status.has_access === true) hadAccess = true;
+    else if (status.has_access === false) revoke();
+    const recovery = subscriptionRecoveryMessage(status);
+    pendingSync = pendingSync && !status.has_access && !recovery;
+    publish({ status, loading: false, error: pendingSync ? confirmationMessage : null, confirming: pendingSync,
+      message: status.has_access ? null : recovery ?? fallbackMessage });
   };
   const identify = async (userId: string) => {
     await options.purchases.identify(userId);
@@ -77,7 +96,7 @@ export function createSubscriptionStore(options: {
     if (state.owner === userId) initializedUser = userId;
   };
 
-  /** An invalidated or failed verification never retains a previous access grant. */
+  /** Failed verification blocks access while preserving private memory until a confirmed denial. */
   const refresh = async (sync = false): Promise<void> => {
     const userId = state.owner;
     if (!options.enabled || !userId || state.busy) return;
@@ -88,9 +107,7 @@ export function createSubscriptionStore(options: {
       const api = options.api(userId);
       const status = await (sync || pendingSync ? api.syncBilling() : api.getBillingStatus());
       if (!current()) return;
-      pendingSync = pendingSync && !status.has_access;
-      publish({ status, loading: false, error: pendingSync ? confirmationMessage : null,
-        message: null, confirming: pendingSync });
+      acceptStatus(status);
       if (status.enabled && initializedUser !== userId) {
         try { await identify(userId); }
         catch (error) { if (current()) publish({ message: message(error, 'Could not connect to the App Store. Please try again.') }); }
@@ -104,13 +121,15 @@ export function createSubscriptionStore(options: {
 
   const perform = async (kind: NonNullable<SubscriptionState['busy']>): Promise<void> => {
     const userId = state.owner;
-    if (!options.enabled || !userId || state.busy || kind === 'purchase' && state.confirming) return;
+    if (!options.enabled || !userId || state.busy
+      || kind === 'purchase' && (state.confirming || subscriptionRecoveryMessage(state.status))) return;
     const epoch = generation;
     const current = () => generation === epoch && state.owner === userId;
     ++request;
     publish({ busy: kind, error: null, message: null });
     let confirmed = false;
     let verifying = false;
+    let verificationTicket = 0;
     let restored = kind === 'restore';
     try {
       await identify(userId);
@@ -137,14 +156,13 @@ export function createSubscriptionStore(options: {
         ? 'Your subscription was restored, but access is still syncing. Retry to finish.'
         : 'Your purchase is confirmed, but access is still syncing. Retry to finish.';
       verifying = true;
+      verificationTicket = ++request;
       const status = await options.api(userId).syncBilling();
-      if (!current()) return;
-      pendingSync = pendingSync && !status.has_access;
-      publish({ status, loading: false, error: pendingSync ? confirmationMessage : null, confirming: pendingSync,
-        message: status.has_access ? null : restored && !confirmed ? 'No active subscription was found for this account.'
-          : 'No active subscription is available yet. Restore purchases or try again.' });
+      if (!current() || request !== verificationTicket) return;
+      acceptStatus(status, restored && !confirmed ? 'No active subscription was found for this account.'
+        : 'No active subscription is available yet. Restore purchases or try again.');
     } catch (error) {
-      if (!current()) return;
+      if (!current() || verifying && request !== verificationTicket) return;
       const failure = purchaseError(error);
       if (failure.cancelled) return;
       if (verifying) {
@@ -162,13 +180,22 @@ export function createSubscriptionStore(options: {
     }
   };
 
+  /** Expiry requires re-verification; it does not prove that a renewal failed. */
+  const invalidate = (userId: string) => {
+    if (!options.enabled || state.owner !== userId) return;
+    ++request;
+    publish({ status: null, error: null });
+    if (state.busy) { refreshQueued = true; return; }
+    void refresh();
+  };
+
   return {
     getSnapshot: () => state,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     setUser(userId: string | null) {
       if (state.owner === userId) return;
       generation++; request++; initializedUser = null; pendingSync = false; refreshQueued = false; syncQueued = false;
-      accessGranted = false;
+      hadAccess = false;
       state = empty(userId); listeners.forEach(listener => listener());
       if (!options.enabled) return;
       // Updating the desired SDK owner immediately fences an in-flight native purchase.
@@ -179,12 +206,12 @@ export function createSubscriptionStore(options: {
     purchase: () => perform('purchase'),
     restore: () => perform('restore'),
     manage: () => perform('manage'),
-    invalidate(userId: string) {
+    invalidate,
+    /** Only the exact backend subscription-required response confirms denial here. */
+    deny(userId: string) {
       if (!options.enabled || state.owner !== userId) return;
-      ++request;
-      publish({ status: null, error: null });
-      if (state.busy) { refreshQueued = true; return; }
-      void refresh();
+      revoke();
+      invalidate(userId);
     },
     sdkChanged() {
       if (initializedUser !== state.owner || !state.owner) return;

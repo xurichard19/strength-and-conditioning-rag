@@ -44,6 +44,8 @@ async def execute(job: ReplanTask, generate_plan: PlanHandler) -> dict:
     - **returns**: durable completion or harmless obsolete/terminal delivery acknowledgement
     """
     proof = {}
+    stored = None
+    permission = None
     if billing.billing_enabled():
         stored = await asyncio.to_thread(replan_jobs.get_delivery_job, job.job_id, job.delivery_token)
         if stored is None:
@@ -56,7 +58,10 @@ async def execute(job: ReplanTask, generate_plan: PlanHandler) -> dict:
         try:
             permission = await asyncio.to_thread(planning_access.permission_for, stored.user_id)
         except planning_access.PlanningDeferred as exc:
-            await asyncio.to_thread(planning_access.defer, stored.user_id, exc.reason)
+            deferred = await asyncio.to_thread(planning_access.defer, stored.user_id, exc.reason,
+                permission=exc.permission)
+            if not deferred:
+                raise HTTPException(503, "planning authorization changed; retry delivery")
             return {"status": "deferred"}
         proof = {"billing_environment": permission.environment, "billing_revision": permission.revision}
 
@@ -65,8 +70,12 @@ async def execute(job: ReplanTask, generate_plan: PlanHandler) -> dict:
     if delivery.status in ("missing", "obsolete", "terminal"):
         return {"status": delivery.status}
     if delivery.status in ("billing_required", "billing_unavailable", "onboarding_required"):
+        if stored is None:
+            raise HTTPException(503, "planning authorization unavailable")
         reason = "subscription_required" if delivery.status == "billing_required" else "billing_unavailable"
-        await asyncio.to_thread(planning_access.defer, stored.user_id, reason)
+        deferred = await asyncio.to_thread(planning_access.defer, stored.user_id, reason, permission=permission)
+        if not deferred:
+            raise HTTPException(503, "planning authorization changed; retry delivery")
         return {"status": "deferred"}
     if delivery.status != "claimed":
         raise HTTPException(503, "planning job is not ready")
