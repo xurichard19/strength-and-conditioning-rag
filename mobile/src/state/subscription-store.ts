@@ -72,6 +72,7 @@ export function createSubscriptionStore(options: {
   let refreshQueued = false;
   let syncQueued = false;
   let hadAccess = false; // Survives unknown checks so a later denial still clears retained private data.
+  let restoredAccess = false; // Keep completion visible through the SDK's immediate follow-up refresh.
   const listeners = new Set<() => void>();
   const publish = (patch: Partial<SubscriptionState>) => {
     state = { ...state, ...patch };
@@ -85,10 +86,11 @@ export function createSubscriptionStore(options: {
   const acceptStatus = (status: BillingStatus, fallbackMessage: string | null = null) => {
     if (status.has_access === true) hadAccess = true;
     else if (status.has_access === false) revoke();
+    restoredAccess = restoredAccess && status.has_access;
     const recovery = subscriptionRecoveryMessage(status);
     pendingSync = pendingSync && !status.has_access && !recovery;
     publish({ status, loading: false, error: pendingSync ? confirmationMessage : null, confirming: pendingSync,
-      message: status.has_access ? null : recovery ?? fallbackMessage });
+      message: status.has_access ? restoredAccess ? 'Restore complete. Arcel Pro is active.' : null : recovery ?? fallbackMessage });
   };
   const identify = async (userId: string) => {
     await options.purchases.identify(userId);
@@ -113,9 +115,12 @@ export function createSubscriptionStore(options: {
         catch (error) { if (current()) publish({ message: message(error, 'Could not connect to the App Store. Please try again.') }); }
       }
     } catch {
-      if (current()) publish({ status: null, loading: false,
-        error: pendingSync ? confirmationMessage
-          : 'Could not verify your subscription. Please try again.' });
+      if (current()) {
+        restoredAccess = false;
+        publish({ status: null, loading: false, message: null,
+          error: pendingSync ? confirmationMessage
+            : 'Could not verify your subscription. Please try again.' });
+      }
     }
   };
 
@@ -126,6 +131,7 @@ export function createSubscriptionStore(options: {
     const epoch = generation;
     const current = () => generation === epoch && state.owner === userId;
     ++request;
+    restoredAccess = false;
     publish({ busy: kind, error: null, message: null });
     let confirmed = false;
     let verifying = false;
@@ -159,6 +165,7 @@ export function createSubscriptionStore(options: {
       verificationTicket = ++request;
       const status = await options.api(userId).syncBilling();
       if (!current() || request !== verificationTicket) return;
+      restoredAccess = restored && status.has_access;
       acceptStatus(status, restored && !confirmed ? 'No active subscription was found for this account.'
         : 'No active subscription is available yet. Restore purchases or try again.');
     } catch (error) {
@@ -184,7 +191,8 @@ export function createSubscriptionStore(options: {
   const invalidate = (userId: string) => {
     if (!options.enabled || state.owner !== userId) return;
     ++request;
-    publish({ status: null, error: null });
+    restoredAccess = false;
+    publish({ status: null, error: null, message: null });
     if (state.busy) { refreshQueued = true; return; }
     void refresh();
   };
@@ -195,7 +203,7 @@ export function createSubscriptionStore(options: {
     setUser(userId: string | null) {
       if (state.owner === userId) return;
       generation++; request++; initializedUser = null; pendingSync = false; refreshQueued = false; syncQueued = false;
-      hadAccess = false;
+      hadAccess = false; restoredAccess = false;
       state = empty(userId); listeners.forEach(listener => listener());
       if (!options.enabled) return;
       // Updating the desired SDK owner immediately fences an in-flight native purchase.

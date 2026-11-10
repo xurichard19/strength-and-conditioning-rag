@@ -206,6 +206,48 @@ test('restored SDK entitlement waits for backend confirmation', async () => {
   assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
 });
 
+test('explicit and paywall restores report completion only after server-confirmed access', async () => {
+  for (const native of [false, true]) {
+    const f = fixture({ paywall: async () => 'restored' });
+    f.store.setUser('a'); await flush(); f.setStatus(status(true));
+    await (native ? f.store.purchase() : f.store.restore());
+    assert.equal(f.store.getSnapshot().message, 'Restore complete. Arcel Pro is active.');
+    assert.equal(f.store.getSnapshot().error, null);
+    assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), true);
+  }
+});
+
+test('one restore retains completion feedback through a queued SDK refresh and ignores duplicate taps', async () => {
+  const restored = deferred<CustomerInfo>(); let restores = 0;
+  const f = fixture({ restore: () => { restores++; return restored.promise; } });
+  f.setStatus(status(true)); f.store.setUser('a'); await flush();
+  const pending = f.store.restore(); await flush();
+  await f.store.restore(); f.store.sdkChanged();
+  assert.equal(restores, 1);
+  assert.equal(f.store.getSnapshot().message, null);
+  assert.equal(f.store.getSnapshot().busy, 'restore');
+  restored.resolve(info(true)); await pending; await flush();
+  assert.equal(f.calls.filter(call => call === 'sync:a').length, 2);
+  assert.equal(f.store.getSnapshot().busy, null);
+  assert.equal(f.store.getSnapshot().message, 'Restore complete. Arcel Pro is active.');
+});
+
+test('restore completion cannot survive a new operation, denial, failed check, expiry, or account change', async () => {
+  for (const change of ['operation', 'denial', 'failure', 'expiry', 'account']) {
+    const f = fixture({ paywall: async () => 'cancelled' });
+    f.setStatus(status(true)); f.store.setUser('a'); await flush(); await f.store.restore();
+    assert.match(f.store.getSnapshot().message!, /Restore complete/);
+    if (change === 'operation') await f.store.purchase();
+    if (change === 'denial') { f.setStatus(status()); await f.store.refresh(); }
+    if (change === 'failure') { f.setRead(async () => { throw new Error('offline'); }); await f.store.refresh(); }
+    if (change === 'expiry') { f.store.invalidate('a'); await flush(); }
+    if (change === 'account') { f.store.setUser('b'); await flush(); }
+    assert.equal(f.store.getSnapshot().message, null, change);
+    f.setRead(async () => status(true)); await f.store.refresh();
+    assert.equal(f.store.getSnapshot().message, null, `${change} cannot resurrect old completion`);
+  }
+});
+
 test('confirmed trial and grace periods stop purchase-sync waiting and recover through management', async () => {
   for (const phase of ['trial', 'grace'] as const) {
     for (const restore of [false, true]) {

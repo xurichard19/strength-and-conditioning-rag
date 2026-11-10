@@ -67,7 +67,8 @@ function Navigation() {
             <Stack.Screen name="workout/[id]" options={{ gestureEnabled: false }} />
             <Stack.Screen name="chat" options={{ presentation: 'transparentModal', animation: 'fade', gestureEnabled: false, contentStyle: { backgroundColor: 'transparent' } }} />
           </Stack.Protected>
-          <Stack.Screen name="account" options={{ presentation: 'modal' }} />
+          {/* Customer Center presents from the root controller; keep Account out of a native modal. */}
+          <Stack.Screen name="account" options={{ presentation: 'card' }} />
         </Stack>
         {paidScreensAvailable ? <ChatLauncher /> : null}
       </GestureHandlerRootView>

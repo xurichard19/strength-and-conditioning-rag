@@ -92,11 +92,16 @@ function AccountForm() {
 
 export default function AccountScreen() {
   const { colors, authSession } = useApp();
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    // Billing rechecks can remove protected routes from the stack. Reuse the entry guards.
+    else router.replace('/');
+  };
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={[styles.header, { borderBottomColor: colors.separator }]}><Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={styles.back}><ArrowLeft color={colors.text} size={21} strokeWidth={1.5} /></Pressable><AppText weight="medium" style={styles.headerLabel}>Your account</AppText><View style={styles.back} /></View>
+        <View style={[styles.header, { borderBottomColor: colors.separator }]}><Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={goBack} style={styles.back}><ArrowLeft color={colors.text} size={21} strokeWidth={1.5} /></Pressable><AppText weight="medium" style={styles.headerLabel}>Your account</AppText><View style={styles.back} /></View>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.intro}><AppText style={styles.title}>Account & sync</AppText><AppText tone="secondary" style={styles.subtitle}>Manage your connection to Arcel.</AppText></View>
           <ConnectionStatus />
