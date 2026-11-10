@@ -55,7 +55,7 @@ def get_sports_workouts_in_range(
     return [SportsWorkoutRecord.model_validate(row) for row in rows]
 
 
-def create_sports_workout(user_id: str | UUID, values: SportsWorkoutInput, access_token: str) -> SportsWorkoutRecord:
+def create_sports_workout(user_id: str | UUID, values: SportsWorkoutInput, access_token: str | None) -> SportsWorkoutRecord:
     """
     save a sports commitment and atomically request any covered planning adjustment
 
@@ -72,7 +72,7 @@ def create_sports_workout(user_id: str | UUID, values: SportsWorkoutInput, acces
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **values**: stable client uuid, sport, date, and optional commitment details
-    - **access_token**: verified user jwt used to enforce rls
+    - **access_token**: user JWT, or none for backend credentials after owner authorization
     - **returns**: saved commitment including its id and database timestamps
     """
 
@@ -92,7 +92,7 @@ def create_sports_workout(user_id: str | UUID, values: SportsWorkoutInput, acces
 
 
 def update_sports_workout(
-    user_id: str | UUID, workout_id: str | UUID, values: SportsWorkoutUpdate, access_token: str,
+    user_id: str | UUID, workout_id: str | UUID, values: SportsWorkoutUpdate, access_token: str | None,
 ) -> SportsWorkoutRecord | None:
     """
     update supplied commitment fields, including explicit nulls to clear optional values
@@ -109,7 +109,7 @@ def update_sports_workout(
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **workout_id**: id of the user-owned workout
     - **values**: validated fields to save; omitted fields stay unchanged and explicit nulls clear nullable fields
-    - **access_token**: verified user jwt used to enforce rls
+    - **access_token**: user JWT, or none for backend credentials after owner authorization
     - **returns**: updated commitment, or none if no visible row matches
     """
 
@@ -123,7 +123,7 @@ def update_sports_workout(
 
 
 def set_sports_workout_status(
-    user_id: str | UUID, workout_id: str | UUID, status: SportsWorkoutStatus, access_token: str,
+    user_id: str | UUID, workout_id: str | UUID, status: SportsWorkoutStatus, access_token: str | None,
 ) -> SportsWorkoutRecord | None:
     """
     set commitment status and keep completion/cancellation timestamps consistent
@@ -141,7 +141,7 @@ def set_sports_workout_status(
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **workout_id**: id of the user-owned workout
     - **status**: planned, completed, or cancelled; timestamps are adjusted consistently
-    - **access_token**: verified user jwt used to enforce rls
+    - **access_token**: user JWT, or none for backend credentials after owner authorization
     - **returns**: updated commitment, or none if no visible row matches
     """
 
@@ -156,7 +156,7 @@ def set_sports_workout_status(
     return SportsWorkoutRecord.model_validate(rows[0]) if rows else None
 
 
-def delete_sports_workout(user_id: str | UUID, workout_id: str | UUID, access_token: str) -> SportsWorkoutRecord | None:
+def delete_sports_workout(user_id: str | UUID, workout_id: str | UUID, access_token: str | None) -> SportsWorkoutRecord | None:
     """
     delete one user-owned sports commitment
 
@@ -169,7 +169,7 @@ def delete_sports_workout(user_id: str | UUID, workout_id: str | UUID, access_to
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **workout_id**: id of the user-owned workout
-    - **access_token**: verified user jwt used to enforce rls
+    - **access_token**: user JWT, or none for backend credentials after owner authorization
     - **returns**: deleted commitment, or none if no visible row matches
     """
 

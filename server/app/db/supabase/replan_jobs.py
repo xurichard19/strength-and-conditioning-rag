@@ -29,6 +29,20 @@ def get_replan_job(user_id: str | UUID, job_id: str | UUID) -> ReplanJobRecord |
     return ReplanJobRecord.model_validate(rows[0]) if rows else None
 
 
+def get_delivery_job(job_id: UUID, delivery_token: UUID) -> ReplanJobRecord | None:
+    """resolve a private task's owner without accepting an identity from the task body"""
+    rows = select_rows("replan_jobs", [("select", "*"), ("id", f"eq.{identifier(job_id)}"),
+        ("delivery_token", f"eq.{identifier(delivery_token)}"), ("limit", "1")], None)
+    return ReplanJobRecord.model_validate(rows[0]) if rows else None
+
+
+def get_latest_initial_job(user_id: str | UUID) -> ReplanJobRecord | None:
+    """include terminal refresh failures while the owner's first plan has no coverage"""
+    rows = select_rows("replan_jobs", [("select", "*"), ("user_id", f"eq.{identifier(user_id)}"),
+        ("kind", "eq.refresh"), ("order", "created_at.desc,id.desc"), ("limit", "1")], None)
+    return ReplanJobRecord.model_validate(rows[0]) if rows else None
+
+
 def get_pending_replans(user_id: str | UUID, limit: int = 20) -> list[ReplanJobRecord]:
     """
     read pending and running jobs for one user
@@ -83,7 +97,7 @@ def enqueue_adjustment(
     }))
 
 
-def enqueue_due_replans(limit: int = 100) -> int:
+def enqueue_due_replans(limit: int = 100, *, include_paused: bool = False) -> int:
     """
     queue a bounded batch of due refreshes and return the number queued
 
@@ -102,7 +116,10 @@ def enqueue_due_replans(limit: int = 100) -> int:
     - **returns**: number of newly queued refresh jobs
     """
 
-    return TypeAdapter(int).validate_python(call_rpc("enqueue_due_replans", {"p_limit": limit}, None), strict=True)
+    payload = {"p_limit": limit}
+    if include_paused:
+        payload["p_include_paused"] = True
+    return TypeAdapter(int).validate_python(call_rpc("enqueue_due_replans", payload, None), strict=True)
 
 
 def claim_replan_job(lease_seconds: int = 300) -> ClaimedReplanJob | None:
@@ -130,10 +147,13 @@ def claim_replan_job(lease_seconds: int = 300) -> ClaimedReplanJob | None:
     return ClaimedReplanJob.model_validate(payload) if payload is not None else None
 
 
-def list_replan_deliveries(limit: int = 20) -> list[ReplanJobRecord]:
+def list_replan_deliveries(limit: int = 20, *, include_paused: bool = False) -> list[ReplanJobRecord]:
     """read a bounded page of ready jobs needing submission or delivery reconciliation"""
     page_limit(limit)
-    rows = call_rpc("list_replan_deliveries", {"p_limit": limit}, None)
+    payload = {"p_limit": limit}
+    if include_paused:
+        payload["p_include_paused"] = True
+    rows = call_rpc("list_replan_deliveries", payload, None)
     return TypeAdapter(list[ReplanJobRecord]).validate_python(rows)
 
 
@@ -150,11 +170,17 @@ def recover_replan_delivery(job_id: UUID, delivery_token: UUID) -> ReplanJobReco
     return ReplanJobRecord.model_validate(row) if row else None
 
 
-def claim_replan_delivery(job_id: UUID, delivery_token: UUID, lease_seconds: int = 300) -> ReplanDeliveryClaim:
-    """claim exactly this delivery under the user's schedule lock; never take another job"""
-    return ReplanDeliveryClaim.model_validate(call_rpc("claim_replan_delivery", {
+def claim_replan_delivery(
+    job_id: UUID, delivery_token: UUID, lease_seconds: int = 300, *,
+    billing_environment: str | None = None, billing_revision: int | None = None,
+) -> ReplanDeliveryClaim:
+    """claim one delivery; optionally fence its paid entitlement before spending an attempt"""
+    payload = {
         "p_job_id": identifier(job_id), "p_delivery_token": identifier(delivery_token),
-        "p_lease_seconds": lease_seconds}, None))
+        "p_lease_seconds": lease_seconds}
+    if billing_environment is not None or billing_revision is not None:
+        payload.update(p_billing_environment=billing_environment, p_billing_revision=billing_revision)
+    return ReplanDeliveryClaim.model_validate(call_rpc("claim_replan_delivery", payload, None))
 
 
 def renew_replan_lease(job_id: str | UUID, lease_token: str | UUID, lease_seconds: int = 300) -> datetime:

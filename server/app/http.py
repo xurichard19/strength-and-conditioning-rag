@@ -45,6 +45,12 @@ async def http_lifespan(app, *, service: str | None = None):
     try:
         if service is not None:
             init_sentry(service)
+        if service in ("planning-dispatcher", "planning-worker"):
+            from app.config import get_billing_settings
+            get_billing_settings()  # Reject enabled-but-incomplete billing before accepting jobs.
+        if service == "planning-worker":
+            from app.config import get_ai_settings
+            get_ai_settings()  # Missing generation credentials must not consume job attempts.
         yield
     finally:
         close_http_client()

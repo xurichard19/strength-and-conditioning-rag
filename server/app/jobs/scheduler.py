@@ -7,22 +7,39 @@ from time import monotonic
 from fastapi import FastAPI, HTTPException
 
 from app.contracts import ReplanJobRecord
-from app.db.supabase import replan_jobs
+from app.db.supabase import planning_schedules, replan_jobs
 from app.http import http_lifespan
 from app.jobs.cloud_tasks import ReplanTask, enqueue_replan, task_exists
 from app.jobs.settings import TaskSettings, get_task_settings
 from app.observability import capture_failure
+from app.services import billing, planning_access
 
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="planning dispatcher", lifespan=partial(http_lifespan, service="planning-dispatcher"))
 
 
-def dispatch_job(job: ReplanJobRecord, settings: TaskSettings) -> None:
-    """submit a committed generation, then confirm it; either failure remains recoverable"""
+def _eligible_delivery(job: ReplanJobRecord) -> ReplanJobRecord | None:
+    """Verify before task lookup/recovery, which must not exhaust unpaid deliveries."""
+    if not billing.billing_enabled():
+        return job
+    if not planning_access.reconcile_user(job.user_id):
+        return None
+    current = replan_jobs.get_delivery_job(job.id, job.delivery_token)
+    return current if current is not None and current.status in ("pending", "running") else None
+
+
+def _submit_delivery(job: ReplanJobRecord, settings: TaskSettings) -> None:
+    """Submit a committed generation, then confirm it; either failure remains recoverable."""
     task = ReplanTask(job_id=job.id, delivery_token=job.delivery_token)
     enqueue_replan(task, queue=settings.queue, worker_url=settings.worker_url, invoker_email=settings.invoker_email)
     replan_jobs.mark_replan_dispatched(task.job_id, task.delivery_token)
+
+
+def dispatch_job(job: ReplanJobRecord, settings: TaskSettings) -> None:
+    current = _eligible_delivery(job)
+    if current is not None:
+        _submit_delivery(current, settings)
 
 
 def dispatch_after_commit(job: ReplanJobRecord) -> None:
@@ -44,13 +61,19 @@ def dispatch_due(settings: TaskSettings, limit: int = 20) -> dict:
     - **returns**: counts, not planning outcomes; later ticks retry submission failures
     """
     deadline = monotonic() + 45
-    counts = {"created": replan_jobs.enqueue_due_replans(limit), "dispatched": 0, "errors": 0}
+    enabled = billing.billing_enabled()
+    # Enabled billing only enqueues through a verified, per-user resume operation.
+    counts = {"created": 0 if enabled else replan_jobs.enqueue_due_replans(limit, include_paused=True),
+              "dispatched": 0, "errors": 0}
     first_error = None
 
-    for job in replan_jobs.list_replan_deliveries(limit):
+    for job in replan_jobs.list_replan_deliveries(limit, include_paused=not enabled):
         if monotonic() >= deadline:
             break
         try:
+            job = _eligible_delivery(job)
+            if job is None:
+                continue
             if job.dispatched_at is not None:
                 task = ReplanTask(job_id=job.id, delivery_token=job.delivery_token)
                 if task_exists(task, settings.queue):
@@ -62,12 +85,27 @@ def dispatch_due(settings: TaskSettings, limit: int = 20) -> dict:
                 if job is None or job.status != "pending":
                     continue
 
-            dispatch_job(job, settings)
+            _submit_delivery(job, settings)
             counts["dispatched"] += 1
         except Exception as exc:
             counts["errors"] += 1
             if first_error is None:
                 first_error = exc
+
+    # Dispatch ready work first. A slow provider or unpaid accounts must not take
+    # the entire tick from users whose jobs are already waiting to run.
+    if enabled:
+        counts["reconciled"] = 0
+        for user_id in planning_schedules.list_billing_rechecks(min(limit, 5)):
+            if monotonic() + 10 >= deadline:
+                break
+            try:
+                if planning_access.reconcile_user(user_id):
+                    counts["reconciled"] += 1
+            except Exception as exc:
+                counts["errors"] += 1
+                if first_error is None:
+                    first_error = exc
 
     if first_error is not None:
         logger.warning("planning reconciliation deferred failures=%s error_type=%s", counts["errors"], type(first_error).__name__)

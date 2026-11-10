@@ -21,9 +21,9 @@ const Context = createContext<SubscriptionContextValue | null>(null);
 
 /** Keep billing lifecycle separate from profile, onboarding, and training state. */
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
-  const { authSession, hydrated } = useApp();
+  const { authSession, hydrated, clearProtectedData } = useApp();
   const userId = hydrated ? authSession?.user.id ?? null : null;
-  const [store] = useState(() => createSubscriptionStore({ enabled: billingEnabled, purchases, api: backendFor }));
+  const [store] = useState(() => createSubscriptionStore({ enabled: billingEnabled, purchases, api: backendFor, onAccessLost: clearProtectedData }));
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [destination, setDestination] = useState<{ owner: string | null; value: SubscriptionDestination }>({ owner: null, value: '/(tabs)/today' });
 

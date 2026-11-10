@@ -15,15 +15,16 @@ from fastapi.testclient import TestClient
 from pydantic import SecretStr, ValidationError
 
 from app.api.routers import billing as routes
-from app.api.routers import chat, planning
+from app.api.routers import calendar, chat, planning, sports_workouts, workouts
 from app.auth.supabase import require_user
+from app.config import BillingSettings
 from app.contracts import BillingAccessDecision, BillingEntitlementRecord, BillingSnapshot
 from app.db.supabase import billing as database
 from app.db.supabase.transport import SupabaseDataError
 from app.integrations import revenuecat
 from app.services import billing
 from tests.backend import test_config
-from tests.backend.test_endpoints import ID, SCHEDULE
+from tests.backend.test_endpoints import ID
 from tests.backend.test_profile import USER
 
 
@@ -87,7 +88,8 @@ class BillingProviderTests(unittest.TestCase):
 
     def test_malformed_and_unlimited_subscription_responses_are_unavailable(self):
         cases = [None, {'subscriber': {}}, customer(is_sandbox='true'), customer(expires_date=None),
-            customer(expires_date='2026-09-19T12:00:00'), customer(expires_date='not-a-date')]
+            customer(expires_date='2026-09-19T12:00:00'), customer(expires_date='not-a-date'), customer(period_type=None),
+            customer(period_type='unexpected'), customer(period_type=[])]
         for payload in cases:
             with self.subTest(payload=payload), self.assertRaises(revenuecat.RevenueCatError):
                 revenuecat.normalize_subscriber(payload, 'sandbox', NOW)
@@ -120,7 +122,7 @@ class BillingProviderTests(unittest.TestCase):
 
 class BillingServiceTests(unittest.TestCase):
     def setUp(self):
-        self.config = patch.object(billing, 'get_settings', return_value=settings()).start()
+        self.config = patch.object(billing, 'get_billing_settings', return_value=settings()).start()
         self.addCleanup(patch.stopall)
         billing._attempts.clear()
         billing._inflight.clear()
@@ -151,10 +153,46 @@ class BillingServiceTests(unittest.TestCase):
         self.assertFalse(billing._fresh(record(verified_at=NOW - timedelta(minutes=6)), NOW))
 
     def test_trial_grace_and_expiry_decisions(self):
-        self.assertEqual(billing._decision(record(period_type='trial'), NOW).phase, 'trial')
-        self.assertEqual(billing._decision(record(expires_at=NOW - timedelta(hours=1),
-            grace_expires_at=NOW + timedelta(hours=1)), NOW).phase, 'grace')
-        self.assertFalse(billing._decision(record(expires_at=NOW - timedelta(hours=1)), NOW).has_access)
+        trial = billing.billing_access(record(period_type='trial'), NOW)
+        grace = billing.billing_access(record(expires_at=NOW - timedelta(hours=1),
+            grace_expires_at=NOW + timedelta(hours=1)), NOW)
+        self.assertEqual(trial.phase, 'trial')
+        self.assertFalse(trial.has_access)
+        self.assertEqual(grace.phase, 'grace')
+        self.assertFalse(grace.has_access)
+        self.assertEqual(grace.expires_at, NOW - timedelta(hours=1))
+        self.assertFalse(billing.billing_access(record(expires_at=NOW - timedelta(hours=1)), NOW).has_access)
+        self.assertTrue(billing.billing_access(record(period_type='intro'), NOW).has_access)
+        self.assertTrue(billing.billing_access(record(will_renew=False), NOW).has_access)
+
+    def test_unknown_active_period_is_unavailable_not_paid(self):
+        for period in (None, 'unknown'):
+            with self.subTest(period=period), self.assertRaises(billing.BillingUnavailable):
+                billing.billing_access(record(period_type=period), NOW)
+
+    def test_verified_proof_preserves_environment_and_revision(self):
+        saved = record()
+        with patch.object(database, 'get_entitlement', return_value=saved), \
+             patch.object(billing, 'fetch_entitlement') as fetch:
+            self.assertEqual(billing.get_verified_entitlement(OWNER), saved)
+            fetch.assert_not_called()
+
+    def test_fresh_nonpaid_state_does_not_exhaust_refresh_budget(self):
+        for saved in (record(period_type='trial'), record(expires_at=NOW - timedelta(hours=1),
+                grace_expires_at=NOW + timedelta(hours=1)), record(active=False)):
+            with self.subTest(saved=saved), patch.object(database, 'get_entitlement', return_value=saved), \
+                 patch.object(billing, 'fetch_entitlement') as fetch:
+                for _ in range(6):
+                    self.assertFalse(billing.get_billing_status(OWNER).has_access)
+                fetch.assert_not_called()
+
+    def test_expiry_crossing_refreshes_without_waiting_for_cache_age(self):
+        expired = record(verified_at=NOW - timedelta(minutes=1), expires_at=NOW - timedelta(seconds=1))
+        inactive = record(active=False)
+        with patch.object(database, 'get_entitlement', side_effect=[expired, inactive]), \
+             patch.object(billing, '_coalesced_verify', return_value=inactive) as verify:
+            self.assertFalse(billing.get_billing_status(OWNER).has_access)
+        verify.assert_called_once_with(OWNER, 'sandbox')
 
     def test_invalidated_cache_fetches_and_commits_exact_claim(self):
         stale = record(verified_at=None)
@@ -210,7 +248,8 @@ class BillingServiceTests(unittest.TestCase):
 
     def test_transfer_invalidates_deduplicated_known_uuids_in_both_partitions(self):
         with patch.object(database, 'invalidate_entitlements') as invalidate:
-            billing.invalidate_webhook_users([str(OWNER), str(SECOND), str(OWNER), '$RCAnonymousID:x'], None)
+            recognized = billing.invalidate_webhook_users([str(OWNER), str(SECOND), str(OWNER), '$RCAnonymousID:x'], None)
+        self.assertEqual(recognized, [OWNER, SECOND])
         self.assertEqual(invalidate.call_count, 2)
         self.assertEqual(invalidate.call_args_list[0].args, ([OWNER, SECOND], 'sandbox'))
         self.assertEqual(invalidate.call_args_list[1].args, ([OWNER, SECOND], 'production'))
@@ -220,8 +259,8 @@ class BillingRouteTests(unittest.TestCase):
     def setUp(self):
         app = FastAPI()
         app.include_router(routes.router)
-        app.include_router(chat.router)
-        app.include_router(planning.router)
+        for router in (calendar.router, chat.router, planning.router, sports_workouts.router, workouts.router):
+            app.include_router(router)
         app.dependency_overrides[require_user] = lambda: USER
         self.client = TestClient(app)
         self.addCleanup(self.client.close)
@@ -265,28 +304,56 @@ class BillingRouteTests(unittest.TestCase):
                 self.assertEqual(response.json(), {'detail': 'subscription_required'})
         save.assert_not_called()
 
-    def test_read_and_cancel_paths_keep_original_auth_dependency(self):
-        with patch('app.auth.billing.get_billing_status') as gate, \
-             patch.object(planning.planning_schedules, 'get_planning_schedule', return_value=SCHEDULE):
-            self.assertEqual(self.client.get('/planning/schedule').status_code, 200)
-            gate.assert_not_called()
+    def test_protected_reads_and_mutations_share_paid_and_unavailable_outcomes(self):
+        cases = [('get', '/calendar?start_date=2026-09-19&end_date=2026-09-20', None),
+            ('get', '/chat/conversations', None), ('get', f'/chat/conversations/{ID}', None),
+            ('patch', f'/chat/conversations/{ID}', {'title': 'title'}),
+            ('delete', f'/chat/conversations/{ID}', None), ('get', f'/chat/messages?conversation_id={ID}', None),
+            ('get', f'/workouts/{ID}', None),
+            ('put', f'/workouts/{ID}/results', {'expected_revision': 1, 'status': 'completed'}),
+            ('get', f'/sports-workouts/{ID}', None),
+            ('post', '/sports-workouts', {'id': str(ID), 'sport': 'running', 'scheduled_date': '2026-09-19'}),
+            ('patch', f'/sports-workouts/{ID}', {'notes': 'updated'}),
+            ('put', f'/sports-workouts/{ID}/status', {'status': 'completed'}),
+            ('delete', f'/sports-workouts/{ID}', None), ('get', '/planning/schedule', None),
+            ('get', '/planning/jobs', None), ('get', f'/planning/jobs/{ID}', None),
+            ('post', f'/planning/jobs/{ID}/cancel', None), ('get', '/planning/changes', None),
+            ('get', f'/planning/changes/{ID}', None),
+            ('post', f'/planning/changes/{ID}/undo', {'expected_revision': 1}),
+            ('post', f'/planning/changes/{ID}/redo', {'expected_revision': 1})]
+        for unavailable in (False, True):
+            with patch('app.auth.billing.get_billing_status',
+                    return_value=BillingAccessDecision(enabled=True, has_access=False),
+                    side_effect=billing.BillingUnavailable('private') if unavailable else None):
+                for method, url, payload in cases:
+                    with self.subTest(method=method, url=url, unavailable=unavailable):
+                        response = self.client.request(method, url, json=payload)
+                        self.assertEqual(response.status_code, 503 if unavailable else 403)
+                        self.assertEqual(response.json(), {'detail': 'billing_unavailable' if unavailable else 'subscription_required'})
+                        self.assertEqual(response.headers['cache-control'], 'private, no-store')
 
     def test_webhook_scoping_unknown_fields_and_transfer_without_app_id(self):
         headers = {'Authorization': 'Bearer delivery-secret'}
         with patch.object(billing, 'billing_enabled', return_value=True), \
              patch.object(routes, 'get_settings', return_value=settings()), \
-             patch.object(billing, 'invalidate_webhook_users') as invalidate:
+             patch.object(billing, 'invalidate_webhook_users', return_value=[OWNER]) as invalidate, \
+             patch.object(routes.planning_schedules, 'request_billing_recheck') as recheck:
             event = {'id': 'event', 'type': 'RENEWAL', 'app_id': 'app_test', 'app_user_id': str(OWNER),
                 'environment': 'SANDBOX', 'future_field': {'any': 'value'}}
             self.assertEqual(self.client.post('/billing/webhooks/revenuecat', json={'event': event}, headers=headers).status_code, 200)
             invalidate.assert_called_once_with([str(OWNER)], 'SANDBOX')
+            recheck.assert_called_once_with([OWNER])
             invalidate.reset_mock()
+            recheck.reset_mock()
             self.assertEqual(self.client.post('/billing/webhooks/revenuecat', json={'event': event}).status_code, 401)
             self.assertEqual(self.client.post('/billing/webhooks/revenuecat', json={'event': event | {'app_id': 'other'}}, headers=headers).status_code, 403)
             invalidate.assert_not_called()
+            recheck.assert_not_called()
             transfer = {'id': 'move', 'type': 'TRANSFER', 'transferred_from': [str(OWNER)], 'transferred_to': [str(SECOND)]}
+            invalidate.return_value = [OWNER, SECOND]
             self.assertEqual(self.client.post('/billing/webhooks/revenuecat', json={'event': transfer}, headers=headers).status_code, 200)
             invalidate.assert_called_once_with([str(OWNER), str(SECOND)], None)
+            recheck.assert_called_once_with([OWNER, SECOND])
 
     def test_webhook_oversized_identity_union_and_failed_commit_are_not_acknowledged(self):
         headers = {'Authorization': 'Bearer delivery-secret'}
@@ -304,6 +371,15 @@ class BillingRouteTests(unittest.TestCase):
 
 
 class BillingDatabaseConfigurationTests(unittest.TestCase):
+    def test_workers_verify_billing_without_ai_or_webhook_credentials(self):
+        with patch.dict('os.environ', {}, clear=True):
+            configured = BillingSettings(_env_file=None, supabase_url='https://test.supabase.co',
+                SUPABASE_PUBLISHABLE_KEY='public', supabase_secret_key='db-secret', billing_enabled=True,
+                revenuecat_api_key='server-key')
+        self.assertTrue(configured.billing_enabled)
+        self.assertNotIn('openai_api_key', type(configured).model_fields)
+        self.assertNotIn('revenuecat_webhook_authorization', type(configured).model_fields)
+
     def test_database_rpc_payload_and_lost_commit(self):
         with patch.object(database, 'call_rpc', return_value=[record().model_dump(mode='json')]) as rpc:
             database.invalidate_entitlements([OWNER, OWNER], 'sandbox')

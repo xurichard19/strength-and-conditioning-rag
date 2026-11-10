@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ActionSheet } from '@/components/action-sheet';
+import { InitialPlanStatus } from '@/components/initial-plan-status';
 import { AppText, Card, Screen, SecondaryButton } from '@/components/ui';
 import { calendarLabel, calendarSnapshot, shiftDays, type CalendarSnapshot } from '@/lib/calendar';
 import { backendFor } from '@/services/api';
@@ -168,7 +169,7 @@ function ChangeDetails({ change, userId, visible, onClose }: {
 function PlansContent({ userId }: { userId: string }) {
   const { colors } = useApp();
   const { jobs, changes, schedule, calendar, overviewLoaded, overviewError, checkedAt,
-    loading, loadingMore, hasMore, jobsLoaded, loaded, error, refresh, loadMore } = usePlanningManager();
+    loading, loadingMore, retrying, hasMore, jobsLoaded, loaded, error, refresh, loadMore, retryInitialPlan } = usePlanningManager();
   const [timeline, setTimeline] = useState(false);
   const [adjustmentsOnly, setAdjustmentsOnly] = useState(false);
   const [detail, setDetail] = useState<{ change: PlanningChange; visible: boolean } | null>(null);
@@ -186,12 +187,13 @@ function PlansContent({ userId }: { userId: string }) {
         {loaded || overviewLoaded ? <AppText tone="secondary" style={styles.caption}>Showing the last loaded data. It may be out of date.</AppText> : null}
         <SecondaryButton onPress={() => void refresh()} disabled={loading}>Retry</SecondaryButton>
       </Card> : null}
-      {schedule ? <PlanOverview schedule={schedule} calendar={calendar} checkedAt={checkedAt} compact={timeline} /> : overviewLoaded ? <Card style={styles.stack}>
+      <InitialPlanStatus schedule={schedule} loading={!overviewLoaded && loading} retrying={retrying} onRetry={retryInitialPlan} onRefresh={refresh} />
+      {schedule?.initial_plan_status === 'ready' ? <PlanOverview schedule={schedule} calendar={calendar} checkedAt={checkedAt} compact={timeline} /> : !schedule && overviewLoaded ? <Card style={styles.stack}>
         <AppText style={styles.heading}>Your plan starts here.</AppText>
         <AppText tone="secondary">Complete onboarding to set up your training plan.</AppText>
       </Card> : null}
-      {jobs.map(job => <JobCard key={job.id} job={job} />)}
-      {jobsLoaded && !jobs.length ? <AppText tone="secondary" style={[styles.caption, { textAlign: 'center' }]}>
+      {jobs.filter(job => job.id !== schedule?.initial_plan_job?.id || schedule?.initial_plan_status === 'ready').map(job => <JobCard key={job.id} job={job} />)}
+      {jobsLoaded && !jobs.length && (!schedule || schedule.initial_plan_status === 'ready') ? <AppText tone="secondary" style={[styles.caption, { textAlign: 'center' }]}>
         No plan updates in progress.
       </AppText> : null}
       {timeline ? <>

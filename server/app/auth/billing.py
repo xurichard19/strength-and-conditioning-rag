@@ -7,7 +7,7 @@ from app.services.billing import BillingUnavailable, get_billing_status
 
 def require_paid_user(user: AuthUser = Depends(require_user)) -> AuthUser:
     """
-    authorize a new ai operation while preserving disabled deployments
+    authorize protected application data and operations while preserving disabled deployments
 
     - **user**: verified supabase account; clients cannot nominate another billing identity
     - **returns**: authenticated user, or stable 403/503 without provider diagnostics

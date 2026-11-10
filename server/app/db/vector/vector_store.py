@@ -2,7 +2,7 @@ import chromadb
 from chromadb.api.models.Collection import Collection
 from chromadb.errors import NotFoundError
 from chromadb.utils.embedding_functions import ChromaBm25EmbeddingFunction
-from app.config import get_settings
+from app.config import get_ai_settings
 from app.db.vector.ingestion import load_system_docs, split_docs
 from app.db.vector.embeddings import MODEL_NAME, MODEL_REVISION, embed_research_documents
 from tqdm import tqdm
@@ -11,7 +11,7 @@ from uuid import uuid4
 class VectorDB:
 
     def __init__(self):
-        self.settings = get_settings()
+        self.settings = get_ai_settings()
         self.client = chromadb.CloudClient(
             tenant=self.settings.chroma_tenant,
             database=self.settings.chroma_database,

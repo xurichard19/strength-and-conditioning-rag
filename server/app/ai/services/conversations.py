@@ -14,7 +14,7 @@ async def load_history(context, limit: int = 10) -> list[HumanMessage | AIMessag
     - **returns**: full messages in chronological order
     """
     rows = await asyncio.to_thread(
-        get_recent_messages, context.user_id, context.access_token, limit,
+        get_recent_messages, context.user_id, None, limit,
         conversation_id=context.conversation_id,
         before_created_at=context.message_created_at, before_id=context.message_id,
     )

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { load, plain, jsx, type TestValue, type TestModule, type TestNode, type Stubs } from './helpers.ts';
+import { load, plain, jsx, deferred, type TestValue, type TestModule, type TestNode, type Stubs } from './helpers.ts';
 import type { Profile, ChatSource, ChatStage } from '../../mobile/src/domain/types';
 import type { SavedMessage, Conversation } from '../../mobile/src/services/backend';
 const backend = load<typeof import('../../mobile/src/services/backend')>('services/backend.ts');
@@ -679,6 +679,38 @@ test('provider finishes onboarding only after API save and never calls planning'
   assert.deepEqual(f.calls, ['profile', ['answers', { pain: 'ankle' }], 'complete']);
   assert.equal(f.value.profile.onboardingComplete, true);
   assert.equal(f.value.calendarCache.version, version + 1, 'onboarding exposes its newly queued planning job on the next visit');
+});
+
+test('access loss clears protected caches and fences old reads and writes without resetting account or onboarding', async () => {
+  const renamed = deferred<Conversation>();
+  const messages = deferred<SavedMessage[]>();
+  const f = providerFixture({ getConversations: async () => [{ id: 'chat', title: 'Private chat', created_at: 'now' }],
+    getMessages: () => messages.promise, renameConversation: () => renamed.promise });
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  await f.value.finishOnboarding(profile, {}); await f.flush();
+  await f.value.refreshConversations(); f.value.openConversation('chat'); await f.flush();
+  const rename = f.value.renameConversation('Changed');
+  const calendar = f.value.calendarCache;
+  await calendar.load({ getCalendarRange: async () => ({ revision: 1, workouts: [], sports_workouts: [] }) }, '2026-11-01', '2026-11-01');
+  const pendingCalendar = deferred<{ revision: number; workouts: []; sports_workouts: [] }>();
+  const loadingCalendar = calendar.load({ getCalendarRange: () => pendingCalendar.promise }, '2026-11-02', '2026-11-02');
+  f.value.chatDraft.current = 'Private draft';
+  f.value.clearProtectedData('other-account'); await f.flush();
+  assert.equal(f.value.conversations.length, 1); assert.equal(f.value.chatDraft.current, 'Private draft');
+  f.value.clearProtectedData('user-a'); await f.flush();
+  assert.equal(f.value.conversations.length, 0); assert.equal(f.value.chatDraft.current, '');
+  assert.equal(f.value.activeConversationId, null); assert.equal(f.value.chatMessages.length, 0);
+  assert.equal(calendar.peek('2026-11-01', '2026-11-01'), undefined);
+  assert.equal(f.value.profile.onboardingComplete, true); assert.equal(f.value.profile.displayName, 'Ada');
+  assert.deepEqual(plain(f.value.onboardingAnswers), { note: 'saved' }); assert.equal(f.value.accountReady, true);
+  assert.equal(f.value.authSession?.user.id, 'user-a');
+  renamed.resolve({ id: 'chat', title: 'Late private title', created_at: 'now' });
+  messages.resolve([{ id: 'message', role: 'assistant', content: 'Late private reply', created_at: 'now' }]);
+  pendingCalendar.resolve({ revision: 1, workouts: [], sports_workouts: [] });
+  await Promise.all([rename, loadingCalendar]); await f.flush();
+  assert.equal(f.value.conversations.length, 0); assert.equal(f.value.chatMessages.length, 0);
+  assert.equal(f.value.chatTitle, 'Ask Arcel'); assert.equal(f.value.chatLoading, false);
+  assert.equal(calendar.peek('2026-11-02', '2026-11-02'), undefined);
 });
 
 test('an older account read cannot overwrite newly completed onboarding', async () => {
@@ -1406,10 +1438,11 @@ test('external page loading darkens cached content without a pull spinner and cl
   assert.equal(screen.scroll().accessibilityState.busy, false);
 });
 
-test('You refreshes account data, Today and Calendar refresh ranges, Progress remains a preview', () => {
-  const refreshLiveData = async () => {};
-  const refreshPreview = async () => {};
-  const refreshCalendar = async () => {};
+test('You refreshes account data, Today and Calendar refresh ranges, Progress remains a preview', async () => {
+  const calls: string[] = [];
+  const refreshLiveData = async () => { calls.push('account'); };
+  const refreshPreview = async () => { calls.push('preview'); };
+  const refreshCalendar = async () => { calls.push('calendar'); };
   for (const populated of [false, true]) {
     const value = { colors: {}, profile, block: {}, proposal: null, refreshLiveData, refreshPreview,
       sessions: populated ? [{ id: 's-today', status: 'planned', modality: 'strength', date: '2026-09-15', exercises: [] }] : [],
@@ -1421,6 +1454,7 @@ test('You refreshes account data, Today and Calendar refresh ranges, Progress re
         'expo-router': {}, 'lucide-react-native': {}, 'react-native-svg': {},
         'react-native': { StyleSheet: { create: value => value }, useWindowDimensions: () => ({ width: 390 }) },
         '@/components/ui': { Screen: 'screen' },
+        '@/components/initial-plan-status': { InitialPlanStatus: 'initial-plan' },
         '@/components/calendar-day-actions': { CalendarDayActions: 'day-actions' },
         '@/components/sports-workout-details': { SportsWorkoutDetails: 'sport-details' },
         '@/components/workout-details': { WorkoutDetails: 'workout-details' },
@@ -1429,9 +1463,12 @@ test('You refreshes account data, Today and Calendar refresh ranges, Progress re
         '@/lib/dates': { isToday: () => true, todayIso: () => '2026-09-15' },
         '@/lib/calendar': load('lib/calendar.ts'), '@/state/app-context': { useApp: () => value },
         '@/state/use-calendar-range': { useCalendarRange: () => ({ data: { entries: [] }, loading: false, error: null, refresh: refreshCalendar }) },
+        '@/state/use-initial-plan': { useInitialPlan: () => ({ schedule: { initial_plan_status: 'ready' }, loading: false,
+          refresh: async () => { calls.push('initial-plan'); } }) },
       }).default();
       assert.equal(page.type, 'screen');
-      assert.equal(page.props.onRefresh, tab === 'you' ? refreshLiveData : tab === 'progress' ? refreshPreview : refreshCalendar);
+      calls.length = 0; await page.props.onRefresh();
+      assert.deepEqual(calls, tab === 'you' ? ['account'] : tab === 'progress' ? ['preview'] : tab === 'today' ? ['calendar', 'initial-plan'] : ['calendar']);
     }
   }
 });

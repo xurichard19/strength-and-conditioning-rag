@@ -21,6 +21,8 @@ ChangeWorkoutSide = Literal["before", "after"]
 ReplanJobStatus = Literal["pending", "running", "succeeded", "failed", "cancelled"]
 BillingEnvironment = Literal["sandbox", "production"]
 BillingPhase = Literal["inactive", "trial", "paid", "grace"]
+PlanningPauseReason = Literal["subscription_required", "billing_unavailable"]
+InitialPlanStatus = Literal["queued", "running", "deferred", "failed", "ready"]
 
 
 # -------------------- verified billing access --------------------
@@ -167,6 +169,8 @@ class PlanningScheduleRecord(BaseModel):
     horizon_end: datetime.date | None = None
     next_refresh_at: datetime.datetime
     revision: int = Field(default=0, ge=0)
+    billing_pause_reason: PlanningPauseReason | None = None
+    billing_recheck_at: datetime.datetime | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
@@ -325,7 +329,8 @@ class ClaimedReplanJob(BaseModel):
 
 
 class ReplanDeliveryClaim(BaseModel):
-    status: Literal["claimed", "missing", "obsolete", "terminal", "busy", "not_ready"]
+    status: Literal["claimed", "missing", "obsolete", "terminal", "busy", "not_ready",
+                    "billing_required", "billing_unavailable", "onboarding_required"]
     claim: ClaimedReplanJob | None = None
 
     @model_validator(mode="after")

@@ -52,6 +52,7 @@ export function createSubscriptionStore(options: {
   enabled: boolean;
   purchases: PurchasesAdapter;
   api: (userId: string) => { getBillingStatus: () => Promise<BillingStatus>; syncBilling: () => Promise<BillingStatus> };
+  onAccessLost?: (userId: string) => void;
 }) {
   let state = empty();
   let generation = 0;
@@ -61,9 +62,14 @@ export function createSubscriptionStore(options: {
   let confirmationMessage = 'Your purchase is confirmed, but access is still syncing. Retry to finish.';
   let refreshQueued = false;
   let syncQueued = false;
+  let accessGranted = false;
   const listeners = new Set<() => void>();
   const publish = (patch: Partial<SubscriptionState>) => {
-    state = { ...state, ...patch }; listeners.forEach(listener => listener());
+    state = { ...state, ...patch };
+    const allowed = subscriptionAllowsAccess(options.enabled, state.owner, state);
+    if (accessGranted && !allowed && state.owner) options.onAccessLost?.(state.owner);
+    accessGranted = allowed;
+    listeners.forEach(listener => listener());
   };
   const identify = async (userId: string) => {
     await options.purchases.identify(userId);
@@ -162,6 +168,7 @@ export function createSubscriptionStore(options: {
     setUser(userId: string | null) {
       if (state.owner === userId) return;
       generation++; request++; initializedUser = null; pendingSync = false; refreshQueued = false; syncQueued = false;
+      accessGranted = false;
       state = empty(userId); listeners.forEach(listener => listener());
       if (!options.enabled) return;
       // Updating the desired SDK owner immediately fences an in-flight native purchase.

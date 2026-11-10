@@ -38,7 +38,7 @@ async def load_training_context(context, start: date, end: date) -> dict:
     """
     date_range(start, end)
     start, end = start - timedelta(days=5), end + timedelta(days=5)
-    calendar = await asyncio.to_thread(get_calendar, context.user_id, start, end, context.access_token)
+    calendar = await asyncio.to_thread(get_calendar, context.user_id, start, end, None)
     return {"range": {"start": str(start), "end": str(end)},
         "coverage": "current app workouts and non-cancelled sports sessions in this range; not lifetime history",
         "training": compact_training(calendar.model_dump(mode="json", exclude_none=True))}

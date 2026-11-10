@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.errors import PRIVATE_HEADERS, database_errors, private_response
 from app.api.schemas import SportsCreateRequest, SportsStatusRequest, SportsUpdateRequest, SportsWorkoutResponse
-from app.auth.supabase import AuthUser, require_user
+from app.auth.supabase import AuthUser
+from app.auth.billing import require_paid_user
 from app.contracts import SportsWorkoutInput, SportsWorkoutRecord, SportsWorkoutUpdate
 from app.db.supabase import sports_workouts
 
@@ -21,7 +22,7 @@ def require_sport(result: SportsWorkoutRecord | None) -> SportsWorkoutResponse:
 
 
 @router.get("/{workout_id}", response_model=SportsWorkoutResponse)
-def get_sport(workout_id: UUID, user: AuthUser = Depends(require_user)) -> SportsWorkoutResponse:
+def get_sport(workout_id: UUID, user: AuthUser = Depends(require_paid_user)) -> SportsWorkoutResponse:
     """
     read one commitment, including cancelled sessions; range reads use /calendar
 
@@ -31,11 +32,11 @@ def get_sport(workout_id: UUID, user: AuthUser = Depends(require_user)) -> Sport
     """
 
     with database_errors("sports_workouts.get_sport"):
-        return require_sport(sports_workouts.get_sports_workout(user.id, workout_id, user.access_token))
+        return require_sport(sports_workouts.get_sports_workout(user.id, workout_id, None))
 
 
 @router.post("", response_model=SportsWorkoutResponse, status_code=201)
-def create_sport(payload: SportsCreateRequest, user: AuthUser = Depends(require_user)) -> SportsWorkoutResponse:
+def create_sport(payload: SportsCreateRequest, user: AuthUser = Depends(require_paid_user)) -> SportsWorkoutResponse:
     """
     create a preplanned sports commitment, separate from generated workouts
 
@@ -51,11 +52,11 @@ def create_sport(payload: SportsCreateRequest, user: AuthUser = Depends(require_
 
     with database_errors("sports_workouts.create_sport"):
         return SportsWorkoutResponse.model_validate(sports_workouts.create_sports_workout(user.id,
-            SportsWorkoutInput.model_validate(payload.model_dump()), user.access_token))
+            SportsWorkoutInput.model_validate(payload.model_dump()), None))
 
 
 @router.patch("/{workout_id}", response_model=SportsWorkoutResponse)
-def update_sport(workout_id: UUID, payload: SportsUpdateRequest, user: AuthUser = Depends(require_user)) -> SportsWorkoutResponse:
+def update_sport(workout_id: UUID, payload: SportsUpdateRequest, user: AuthUser = Depends(require_paid_user)) -> SportsWorkoutResponse:
     """
     patch supplied commitment fields; omitted values remain and explicit nulls clear optional values
 
@@ -67,11 +68,11 @@ def update_sport(workout_id: UUID, payload: SportsUpdateRequest, user: AuthUser 
 
     with database_errors("sports_workouts.update_sport"):
         return require_sport(sports_workouts.update_sports_workout(user.id, workout_id,
-            SportsWorkoutUpdate.model_validate(payload.model_dump(exclude_unset=True)), user.access_token))
+            SportsWorkoutUpdate.model_validate(payload.model_dump(exclude_unset=True)), None))
 
 
 @router.put("/{workout_id}/status", response_model=SportsWorkoutResponse)
-def set_sport_status(workout_id: UUID, payload: SportsStatusRequest, user: AuthUser = Depends(require_user)) -> SportsWorkoutResponse:
+def set_sport_status(workout_id: UUID, payload: SportsStatusRequest, user: AuthUser = Depends(require_paid_user)) -> SportsWorkoutResponse:
     """
     mark a commitment planned, completed, or cancelled with matching timestamps
 
@@ -86,11 +87,11 @@ def set_sport_status(workout_id: UUID, payload: SportsStatusRequest, user: AuthU
     """
 
     with database_errors("sports_workouts.set_sport_status"):
-        return require_sport(sports_workouts.set_sports_workout_status(user.id, workout_id, payload.status, user.access_token))
+        return require_sport(sports_workouts.set_sports_workout_status(user.id, workout_id, payload.status, None))
 
 
 @router.delete("/{workout_id}", response_model=SportsWorkoutResponse)
-def delete_sport(workout_id: UUID, user: AuthUser = Depends(require_user)) -> SportsWorkoutResponse:
+def delete_sport(workout_id: UUID, user: AuthUser = Depends(require_paid_user)) -> SportsWorkoutResponse:
     """
     permanently delete a commitment; use cancelled status if it must remain inspectable
 
@@ -102,4 +103,4 @@ def delete_sport(workout_id: UUID, user: AuthUser = Depends(require_user)) -> Sp
     """
 
     with database_errors("sports_workouts.delete_sport"):
-        return require_sport(sports_workouts.delete_sports_workout(user.id, workout_id, user.access_token))
+        return require_sport(sports_workouts.delete_sports_workout(user.id, workout_id, None))

@@ -11,6 +11,7 @@ const job: PlanningJob = { id: 'job-1', kind: 'refresh', status: 'running', reas
   effective_from: null, effective_through: null, scheduled_for: null, change_id: null, completed_at: null,
   created_at: '2026-10-18T12:00:00Z' };
 const schedule: PlanningSchedule = { user_id: 'owner', horizon_days: 21, refresh_interval_days: 7,
+  initial_plan_status: 'ready', initial_plan_job: null,
   horizon_end: '2026-11-07', next_refresh_at: '2026-10-25T12:00:00Z', revision: 3,
   created_at: change.created_at, updated_at: change.created_at };
 const calendar: CalendarSnapshot = { revision: 3, entries: [
@@ -30,7 +31,7 @@ const preview: PlanningChangePreview = { change, revision: 3,
 function fixture(state: TestModule = {}, detail = async () => preview) {
   type Instance = { slots: TestValue[]; mounted: boolean };
   const instances = new Map<string, Instance>(); let active: Instance; let cursor = 0; let dirty = true; let tree: TestNode;
-  let effects: (() => void)[] = []; const reads: string[] = []; let refreshes = 0; let older = 0; let lateWrites = 0;
+  let effects: (() => void)[] = []; const reads: string[] = []; let refreshes = 0; let retries = 0; let older = 0; let lateWrites = 0;
   const app = { colors: {}, authSession: { user: { id: 'owner' } } };
   const hooks = {
     useState: initial => {
@@ -54,6 +55,11 @@ function fixture(state: TestModule = {}, detail = async () => preview) {
     'react-native': { View: 'view', Pressable: 'button', ScrollView: 'scroll', ActivityIndicator: 'spinner',
       StyleSheet: { create: value => value, hairlineWidth: 1 } },
     'lucide-react-native': { ArrowLeft: 'left', ArrowUpRight: 'right', ChevronRight: 'chevron', Clock3: 'clock', History: 'history', Layers3: 'layers' },
+    '@/components/initial-plan-status': load('components/initial-plan-status.tsx', {
+      'react/jsx-runtime': { jsx: keyedJsx, jsxs: keyedJsx },
+      'react-native': { StyleSheet: { create: value => value } },
+      '@/components/ui': { AppText: 'text', Card: 'card', SecondaryButton: 'action' },
+    }),
     '@/components/action-sheet': { ActionSheet: 'sheet' },
     '@/components/ui': { AppText: 'text', Card: 'card', Screen: 'screen', SecondaryButton: 'action' },
     '@/lib/calendar': load('lib/calendar.ts'),
@@ -62,6 +68,7 @@ function fixture(state: TestModule = {}, detail = async () => preview) {
     '@/state/use-planning-manager': { usePlanningManager: () => ({ jobs: [], changes: [], schedule: null, calendar: null,
       jobsLoaded: true, loaded: true, overviewLoaded: true, overviewError: null, checkedAt: Date.parse('2026-10-19T12:00:00Z'),
       loading: false, loadingMore: false, hasMore: false, error: null,
+      retrying: false, retryInitialPlan: async () => { retries++; },
       refresh: async () => { refreshes++; }, loadMore: async () => { older++; }, ...state }) },
   }, { Date: class extends Date { static now() { return Date.parse('2026-10-19T12:00:00Z'); } } });
   const dispose = (instance: Instance) => { instance.mounted = false; instance.slots.forEach(slot => slot?.cleanup?.()); };
@@ -91,7 +98,7 @@ function fixture(state: TestModule = {}, detail = async () => preview) {
     : node && typeof node === 'object' ? text(node.props.children) : typeof node === 'string' || typeof node === 'number' ? String(node) : '';
   return { render, flush, reads, state, app, text: () => text(tree),
     screen: () => nodes(tree).find(node => node.type === 'screen')!,
-    get refreshes() { return refreshes; }, get older() { return older; }, get lateWrites() { return lateWrites; },
+    get refreshes() { return refreshes; }, get retries() { return retries; }, get older() { return older; }, get lateWrites() { return lateWrites; },
     labels: () => nodes(tree).map(node => node.props.accessibilityLabel).filter(Boolean).join(' '),
     click: (label: string) => {
       const button = nodes(tree).find(node => node.props.accessibilityLabel === label || node.props.accessibilityLabel?.startsWith(`${label}.`)
@@ -115,6 +122,19 @@ test('loading, failures and empty state stay truthful and support retry and pull
   assert.equal(f.screen().props.preview, false);
   assert.match(f.text(), /Your plan starts here/); assert.match(f.text(), /No plan history yet/);
   await f.screen().props.onRefresh(); assert.equal(f.refreshes, 2);
+});
+
+test('first-plan states stay in Plans and terminal failures offer retry without purchase controls', async () => {
+  const first: PlanningSchedule = { ...schedule, horizon_end: null, initial_plan_status: 'queued', initial_plan_job: { ...job, status: 'pending' } };
+  const f = fixture({ schedule: first, jobs: [] }); await f.flush();
+  assert.match(f.text(), /Your first plan is queued/); assert.doesNotMatch(f.text(), /No plan updates in progress/);
+  first.initial_plan_status = 'running'; f.render(); assert.match(f.text(), /Building your first plan/);
+  first.initial_plan_status = 'deferred'; f.render(); assert.match(f.text(), /temporarily delayed/);
+  first.initial_plan_status = 'failed'; first.initial_plan_job!.status = 'cancelled'; f.render();
+  assert.match(f.text(), /Retry plan/); f.click('Retry plan'); assert.equal(f.retries, 1);
+  assert.doesNotMatch(f.labels(), /Choose plan|Restore purchases/);
+  first.initial_plan_status = 'ready'; first.horizon_end = schedule.horizon_end; f.render();
+  assert.doesNotMatch(f.text(), /Your first plan needs/); assert.match(f.text(), /Next refresh/);
 });
 
 test('overview uses saved weeks and counts, distinguishes missing summary and expired coverage', async () => {

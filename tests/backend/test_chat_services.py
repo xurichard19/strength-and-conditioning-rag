@@ -36,7 +36,7 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
             limit = options.get('limit', 10)
             with self.subTest(options=options), patch.object(conversations, 'get_recent_messages', return_value=rows[:limit]) as read:
                 history = await conversations.load_history(CONTEXT, **options)
-                read.assert_called_once_with(CONTEXT.user_id, CONTEXT.access_token, limit, conversation_id=ID,
+                read.assert_called_once_with(CONTEXT.user_id, None, limit, conversation_id=ID,
                     before_created_at=CONTEXT.message_created_at, before_id=ID)
                 self.assertEqual(len(history), limit)
                 self.assertEqual([message.content for message in history], [row.content for row in rows[:limit]])
@@ -52,7 +52,7 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
         client = SimpleNamespace(get_collection=AsyncMock(side_effect=get_collection))
         settings = SimpleNamespace(chroma_api_key='test', chroma_tenant='test', chroma_database='test', system_collection_name='research')
         with patch.object(search, '_collection', None), patch.object(search, '_collection_lock', asyncio.Lock()), \
-             patch.object(search, 'get_settings', return_value=settings), \
+             patch.object(search, 'get_ai_settings', return_value=settings), \
              patch.object(search.chromadb, 'AsyncHttpClient', new=AsyncMock(return_value=client)) as factory:
             results = await asyncio.gather(search.research_collection(), search.research_collection())
         self.assertEqual(results, [collection, collection])
@@ -64,7 +64,7 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
         client = SimpleNamespace(get_collection=AsyncMock(return_value=collection))
         settings = SimpleNamespace(chroma_api_key='test', chroma_tenant='test', chroma_database='test', system_collection_name='research')
         with patch.object(search, '_collection', None), patch.object(search, '_collection_lock', asyncio.Lock()), \
-             patch.object(search, 'get_settings', return_value=settings), \
+             patch.object(search, 'get_ai_settings', return_value=settings), \
              patch.object(search.chromadb, 'AsyncHttpClient', new=AsyncMock(return_value=client)):
             with self.assertRaisesRegex(RuntimeError, 'reindexed'):
                 await search.research_collection()
@@ -286,7 +286,7 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
     def test_tavily_clients_keep_result_limits_immutable_and_disable_extra_payloads(self):
         search.web_search_client.cache_clear()
         self.addCleanup(search.web_search_client.cache_clear)
-        with patch.object(search, 'get_settings', return_value=SimpleNamespace(tavily_api_key='test')), \
+        with patch.object(search, 'get_ai_settings', return_value=SimpleNamespace(tavily_api_key='test')), \
              patch.object(search, 'TavilySearch') as factory:
             search.web_search_client(5); search.web_search_client(10); search.web_search_client(5)
         self.assertEqual(factory.call_count, 2)
@@ -316,7 +316,7 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
              patch.object(user_context, 'get_calendar', return_value=CalendarRecords(workouts=[], sports_workouts=[])) as training:
             data = await user_context.load_training_context(CONTEXT, TODAY, TODAY)
         profile.assert_not_called()
-        training.assert_called_once_with(CONTEXT.user_id, date(2026, 9, 11), date(2026, 9, 21), CONTEXT.access_token)
+        training.assert_called_once_with(CONTEXT.user_id, date(2026, 9, 11), date(2026, 9, 21), None)
         self.assertEqual(data['training'], {'workouts': [], 'sports_workouts': []})
 
     async def test_training_route_loads_profile_and_calendar_concurrently(self):
@@ -349,7 +349,7 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
                  patch.object(user_context, 'get_calendar', return_value=CalendarRecords(workouts=[], sports_workouts=[])) as read:
                 decision = route('none', 'training').model_copy(update={'start_date': start, 'end_date': end})
                 data = await user_context.load_user_context(CONTEXT, decision, TODAY)
-                read.assert_called_once_with(CONTEXT.user_id, expected_start, expected_end, CONTEXT.access_token)
+                read.assert_called_once_with(CONTEXT.user_id, expected_start, expected_end, None)
                 self.assertEqual(data['range'], {'start': str(expected_start), 'end': str(expected_end)})
 
     async def test_context_preserves_workouts_nested_details_and_onboarding_without_text_clipping(self):
@@ -386,7 +386,7 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
              patch.object(calendar, 'get_sports_workouts_in_range', return_value=[]) as sports:
             await user_context.load_user_context(CONTEXT, route('none', 'training'), TODAY)
         for read in [app, sports]:
-            read.assert_called_once_with(CONTEXT.user_id, date(2026, 9, 11), date(2026, 9, 21), CONTEXT.access_token)
+            read.assert_called_once_with(CONTEXT.user_id, date(2026, 9, 11), date(2026, 9, 21), None)
 
     def test_training_compaction_preserves_prescriptions_without_storage_metadata(self):
         data = user_context.compact_training({'workouts': [{'id': 'hidden', 'user_id': 'hidden',
@@ -399,7 +399,7 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
     def test_nano_uses_native_structured_output_with_explicit_budgets(self):
         models.decision_model.cache_clear()
         self.addCleanup(models.decision_model.cache_clear)
-        with patch.object(models, 'get_settings', return_value=SimpleNamespace(openai_api_key='test')), \
+        with patch.object(models, 'get_ai_settings', return_value=SimpleNamespace(openai_api_key='test')), \
              patch.object(models, 'ChatOpenAI') as factory:
             models.decision_model(ChatRoute)
         self.assertEqual(factory.call_args.kwargs['model'], 'gpt-5-nano')

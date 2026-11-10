@@ -14,7 +14,10 @@ Billing is implemented behind independent backend and mobile flags, both **off b
 | `server/app/contracts.py` and `services/billing.py` | Internal snapshots, freshness policy, environment selection, and access decisions |
 | `server/app/integrations/revenuecat.py` | Bounded provider requests, payload normalization, and webhook authentication |
 | `server/app/db/supabase/billing.py` | Typed database reads and revision-guarded RPC calls |
-| `server/app/auth/billing.py` | Paid-access dependency on the four specified AI/planning writes; existing `require_user` is unchanged |
+| `server/app/auth/billing.py` | Paid-access dependency on all chat, calendar, workout, sports-workout, and planning routes |
+| `server/app/services/planning_access.py` | Shared payment verification, durable planning pause/resume, and best-effort post-purchase activation |
+| `server/app/jobs/scheduler.py` and `replan_worker.py` | Verify before task delivery and revalidate the entitlement revision atomically before a generation attempt |
+| `mobile/src/components/initial-plan-status.tsx` | Shared first-plan progress and retry experience in Today and Plans |
 
 Purchase flow: native purchase/restore → authenticated `/billing/sync` → RevenueCat verification → conditional database commit → mobile unlock. SDK entitlement data informs messages; only the backend decision grants access. A confirmed purchase whose verification fails stays retryable and does not automatically purchase again. Webhooks invalidate cached verification; they cannot grant access directly.
 
@@ -44,7 +47,7 @@ Set real values only in ignored environment files or the appropriate deployment 
 | `REVENUECAT_APP_IDS` | JSON array of allowed RevenueCat app IDs; include the Test Store app ID during testing. These are not bundle IDs or SDK keys |
 | `BILLING_SANDBOX_USER_IDS` | JSON array of Supabase user UUIDs permitted to use sandbox verification on the production backend |
 
-`SUPABASE_SECRET_KEY` is also required for enabled billing. Backend secrets are represented as `SecretStr` in settings and must never use an `EXPO_PUBLIC_` name. Local/development backends verify sandbox state; ordinary production accounts verify production App Store state. Only the explicitly listed production review/test accounts use sandbox state.
+`SUPABASE_SECRET_KEY` is also required for enabled billing. Backend secrets are represented as `SecretStr` in settings and must never use an `EXPO_PUBLIC_` name. Local/development backends verify sandbox state; ordinary production accounts verify production App Store state. Only the explicitly listed production review/test accounts use sandbox state. The API, planning worker, and dispatcher must use the same `BILLING_ENABLED`, provider key, sandbox account allowlist, and deployment environment. The job services need the provider credentials but do not need webhook authorization or app IDs; the dispatcher does not need AI provider credentials.
 
 | Mobile variable | Configuration |
 | --- | --- |
@@ -55,7 +58,7 @@ The public SDK key is shipped with the app; it is not a backend credential. `mob
 
 ## Backend and webhook setup
 
-Apply `supabase/migrations/20260919232156_billing_entitlements.sql` only to the intended development database before enabling local billing. It creates **one table**, `billing_entitlements`, and **two service-role-only RPCs**, `invalidate_billing_entitlements` and `commit_billing_entitlement`. Authenticated clients cannot read/write the table directly. There is no billing queue, event-inbox table, or worker to operate.
+Apply the repository migrations only to the intended environment before deploying compatible services. `20260919232156_billing_entitlements.sql` creates the private entitlement projection and revision-guarded RPCs. `20261109060513_payment_gated_planning.sql` adds payment pause/recheck fields to the existing planning schedule and extends the existing queue operations. Authenticated clients cannot read/write billing state or call queue RPCs directly. There is no separate billing queue, event-inbox table, or billing worker to operate. The direct-client training/chat privilege cutover is staged separately, as described under Release and validation.
 
 The backend uses verified Supabase identity to query RevenueCat. A purchase or restore calls `POST /billing/sync`; `GET /billing/status` returns the backend decision. Neither accepts client assertions of paid access. The entitlement projection is partitioned by sandbox/production and is refreshed when missing, invalidated, expired, or older than five minutes. Revision checks prevent an older verification from overwriting newer invalidation.
 
@@ -67,16 +70,21 @@ Configure a RevenueCat webhook with:
 
 The webhook checks authorization and, when configured, the timestamped `X-RevenueCat-Webhook-Signature` against the raw request bytes. It invalidates affected projections durably before acknowledging. Subsequent status or paid requests fetch canonical RevenueCat state. It does not grant access from the event payload. Duplicate or delayed delivery therefore causes re-verification rather than replaying an old entitlement. [RevenueCat webhooks](https://www.revenuecat.com/docs/integrations/webhooks)
 
-When billing is enabled, these operations require verified `arcel_pro` access:
+When billing is enabled, every chat, calendar, workout, sports-workout, and planning read or write requires verified `arcel_pro` access. Auth, profile, onboarding, and subscription-management routes remain available. Training/chat database access goes through the backend service credential with explicit authenticated-owner filters. Inactive paid access returns `403 subscription_required`; verification failure returns `503 billing_unavailable` rather than claiming the user needs to buy again.
 
-- `POST /chat`
-- `PUT /planning/schedule`
-- `POST /planning/adjustments`
-- `POST /planning/jobs/{id}/retry`
+### Paid access and automatic planning
 
-Existing profile, workout/history, and subscription-management access remains available. Inactive paid access returns `403 subscription_required`; verification failure returns `503 billing_unavailable` rather than claiming the user needs to buy again.
+- Onboarding saves answers and durable planning intent before payment. Finishing onboarding does not authorize generation.
+- A current, verified **normal or introductory paid period** grants access. Trials and billing grace do not. Turning off auto-renewal retains access until the paid expiry. Unknown active period types fail closed as verification unavailable.
+- A successful billing sync/status check tries to resume planning after the response. The existing dispatcher also reconciles due accounts, so closing the app or a failed immediate dispatch does not lose the first plan.
+- The dispatcher checks payment before submitting or recovering a delivery. The worker checks again before claiming an attempt. The database atomically checks the environment, entitlement revision, verification freshness, paid expiry, and completed onboarding under its existing locks.
+- Unpaid accounts wait five minutes between reconciliation checks; temporary billing failures wait one minute. Deferral retires pending delivery tokens without consuming generation attempts. Webhook invalidation requests an earlier reconciliation.
+- An already-authorized running attempt may finish. A later retry or new attempt must verify again. Payment loss retains saved plans, workouts, and history.
+- Resumption creates current coverage, coalesces pending automatic edits, and preserves manual requests. An exhausted first-plan job remains visible and retryable; reconciliation does not silently restart it or discard it during history cleanup.
+- Today and Plans display queued, running, deferred, failed, or ready first-plan state. A failed or cancelled first job has an explicit retry action. A temporarily deferred job waits for reconciliation; neither state requires another purchase.
+- Mobile access loss clears protected training/chat caches and rejects late responses from the old access session. Account and onboarding data remain available.
 
-The planning infrastructure now creates initial plans and background refreshes automatically. Those jobs currently run independently of billing status; the four paid API operations above retain their entitlement checks. Define and implement the entitlement policy for automatic planning before enabling production billing, including how initial generation resumes after a purchase.
+The five-minute verified entitlement cache still applies. Expiry is checked immediately, and a webhook invalidates cached verification. Provider requests remain bounded; unavailable verification does not authorize new work. With `BILLING_ENABLED=false`, APIs and job claims retain the previous behavior, including processing jobs paused while billing was enabled.
 
 ## Local workflow
 
@@ -86,7 +94,7 @@ After dashboard/environment setup, restart the backend and Metro, sign in, then 
 
 ### Isolated local Supabase and webhook tunnel
 
-Use the local Supabase stack for payment development. It includes PostgreSQL 17, Auth and the REST/RPC API that Arcel uses; a standalone PostgreSQL server does not provide the latter two. The local database uses **54322**, leaving the existing Postgres.app instance on **5432** untouched. All seven repository migrations, including billing, have already been applied locally. No production data was copied and no hosted migration was run.
+Use the local Supabase stack for payment development. It includes PostgreSQL 17, Auth and the REST/RPC API that Arcel uses; a standalone PostgreSQL server does not provide the latter two. The local database uses **54322**, leaving the existing Postgres.app instance on **5432** untouched. Check and apply pending local migrations with the commands below when the branch changes; the implementation tests use a separate disposable database and do not update this stack. No production data was copied and no hosted migration was run.
 
 **Where it is configured and stored**
 
@@ -262,6 +270,16 @@ Before enabling billing:
 
 **Deployment behavior:** matching pushes to `main` and manual runs of `.github/workflows/deploy-backend-cloud-run.yml` build/push the backend, apply pending Supabase migrations, then deploy Cloud Run. A push affecting this workflow or server/Supabase files can therefore change the live database even when billing is disabled. This setup does not run a deployment or configure any external dashboard.
 
+### Ordered planning enforcement rollout
+
+1. Apply the additive planning migration and deploy the compatible API, worker, and dispatcher with billing disabled. Validate account ownership, profile/onboarding access, and the existing planning lifecycle. Pause the queue/scheduler while replacing old job-service revisions; drain old API and worker revisions before the access cutover.
+2. Review `supabase/staged/backend_only_training_access.sql`. It revokes direct authenticated access to training/chat tables, the separately granted message/conversation columns, and the calendar RPC. Keep it outside automatic migrations until the compatible backend is serving all traffic. Apply it in a transaction as the separate second deployment step; the database test suite exercises this staged SQL against disposable data.
+3. Verify two-account isolation through the API and denial of direct authenticated training/chat reads and mutations. Profile/onboarding must still work, and service-role training/chat operations must still work. Do not roll back to a JWT-based old API after this cutover without a separately reviewed privilege restoration.
+4. Enable the same backend billing configuration on the API, worker, and dispatcher. Resume planning only after all three services are compatible and configured. Enable mobile billing for the intended build. Confirm unpaid onboarding creates no generation attempts; purchase/restore resumes one current first plan; duplicate sync/webhook/task deliveries do not duplicate generation.
+5. Exercise expiry, trial, grace, refund/transfer invalidation, provider outage, an already-running attempt, retry after first-plan failure, and app closure immediately after purchase. Inspect both the entitlement row and the existing schedule/job records. Complete native Apple purchase validation before production activation.
+
+Keeping stage two outside `supabase/migrations` is deliberate: the current migration-before-deploy workflow would otherwise revoke privileges from the still-running old API. The default feature flags remain disabled; neither this document nor the implementation enables production billing.
+
 ### Implementation verification — 2026-09-19
 
 - Backend: 177 tests passed; isolated SQL fixtures and billing/planning concurrency checks passed.
@@ -270,3 +288,11 @@ Before enabling billing:
 - Native iOS: initial CocoaPods/system Ruby blockers were subsequently resolved. The iOS 27 launch failure was fixed with Expo 57.0.24 and the official `ios.enableSceneSupport` plugin setting. The development build compiles, installs and launches on the iPhone 18 Pro simulator. Mobile tests (143), typecheck, lint, web export and Expo Doctor (21 checks) pass after the patch. RevenueCat purchase/restore validation remains pending.
 - Initial local-activation blockers were subsequently resolved by the isolated local setup above: backend/database/webhook services run with local billing enabled, a blank optional-use Tavily key, and configured RevenueCat credentials. The normal hosted configuration and production billing defaults remain unchanged.
 - Production has not been deployed or enabled.
+
+### Planning enforcement verification — 2026-11-09
+
+- Backend: 379 tests passed, including paid API denial, service-credential owner isolation, paused deliveries, entitlement revision checks, and worker startup without webhook credentials.
+- Database: all 13 migrations, 11 SQL suites, concurrent resume/invalidation/claim checks, and the staged privilege cutover passed in disposable PostgreSQL 17. The application databases were not changed.
+- Mobile: 236 tests passed; app/test TypeScript checks, lint, and web export passed. Tests cover first-plan progress/retry, access-loss cleanup, stale-response rejection, and publication while Today is offscreen.
+- The codebase graph was refreshed with `graphify update .`.
+- Native purchase/restore validation and the ordered service/database rollout remain release steps. No push, deployment, hosted migration, or production activation was performed.

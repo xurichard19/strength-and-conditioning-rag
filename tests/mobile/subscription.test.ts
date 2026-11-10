@@ -23,16 +23,17 @@ function fixture(overrides: Partial<PurchasesAdapter> = {}, enabled = true) {
   let read: (id: string) => Promise<BillingStatus> = async () => value;
   let sync: (id: string) => Promise<BillingStatus> = async () => value;
   const calls: string[] = [];
+  const lostAccess: string[] = [];
   const purchases: PurchasesAdapter = {
     identify: async id => { calls.push(`identify:${id}`); }, customerInfo: async () => info(),
     restore: async () => info(), offering: async () => offering, paywall: async () => 'purchased',
     manage: async () => {}, subscribe: () => () => {}, ...overrides,
   };
-  const store = logic.createSubscriptionStore({ enabled, purchases, api: id => ({
+  const store = logic.createSubscriptionStore({ enabled, purchases, onAccessLost: id => { lostAccess.push(id); }, api: id => ({
     getBillingStatus: () => { calls.push(`read:${id}`); return read(id); },
     syncBilling: () => { calls.push(`sync:${id}`); return sync(id); },
   }) });
-  return { store, calls, setStatus: (next: BillingStatus) => { value = next; },
+  return { store, calls, lostAccess, setStatus: (next: BillingStatus) => { value = next; },
     setRead: (next: typeof read) => { read = next; }, setSync: (next: typeof sync) => { sync = next; } };
 }
 
@@ -70,6 +71,34 @@ test('backend status is authoritative even when the SDK has no active entitlemen
   const f = fixture(); f.setStatus(status(true)); f.store.setUser('a'); await flush();
   assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), true);
   assert.equal(logic.hasSDKEntitlement(info()), false);
+});
+
+test('access loss clears protected memory once; routine verification preserves it', async () => {
+  const f = fixture(); f.setStatus(status(true)); f.store.setUser('a'); await flush();
+  const read = deferred<BillingStatus>(); f.setRead(() => read.promise);
+  const refreshing = f.store.refresh();
+  assert.deepEqual(f.lostAccess, []);
+  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), true);
+  read.resolve(status(true)); await refreshing;
+  assert.deepEqual(f.lostAccess, []);
+  f.setRead(async () => status()); await f.store.refresh();
+  assert.deepEqual(f.lostAccess, ['a']);
+  await f.store.refresh(); assert.deepEqual(f.lostAccess, ['a']);
+  f.setRead(async () => status(true)); await f.store.refresh();
+  f.store.invalidate('other'); assert.deepEqual(f.lostAccess, ['a']);
+  f.store.invalidate('a'); assert.deepEqual(f.lostAccess, ['a', 'a']);
+  await flush();
+  f.setRead(async () => { throw new Error('offline'); }); await f.store.refresh();
+  assert.deepEqual(f.lostAccess, ['a', 'a', 'a']);
+});
+
+test('late verification cannot clear a replacement account protected data', async () => {
+  const f = fixture(); f.setStatus(status(true)); f.store.setUser('a'); await flush();
+  const read = deferred<BillingStatus>(); f.setRead(id => id === 'a' ? read.promise : Promise.resolve(status(true)));
+  const refresh = f.store.refresh(); f.store.setUser('b'); await flush();
+  read.resolve(status()); await refresh;
+  assert.deepEqual(f.lostAccess, []);
+  assert.equal(logic.subscriptionAllowsAccess(true, 'b', f.store.getSnapshot()), true);
 });
 
 test('late account reads and failures cannot overwrite the next account or logout', async () => {

@@ -11,12 +11,12 @@ from app.db.supabase.transport import call_rpc, select_rows
 CHANGE_COLUMNS = "id,user_id,revision,kind,status,reason,effective_from,effective_through,horizon_end_before,horizon_end_after,created_at"
 
 
-def get_history_page(user_id: str | UUID, access_token: str, limit: int = 20, before_revision: int | None = None) -> PlanningHistoryPage:
+def get_history_page(user_id: str | UUID, access_token: str | None, limit: int = 20, before_revision: int | None = None) -> PlanningHistoryPage:
     """
     read history with the current revision needed to request undo/redo
 
     - **user_id**: authenticated owner
-    - **access_token**: caller jwt enforcing rls
+    - **access_token**: user JWT, or none for backend credentials after owner authorization
     - **limit**: page size, 1-100
     - **before_revision**: exclusive original change revision cursor, not schedule revision
     - **returns**: newest-first changes/current revision; 409 if state changes during reading
@@ -27,7 +27,7 @@ def get_history_page(user_id: str | UUID, access_token: str, limit: int = 20, be
     return PlanningHistoryPage(changes=changes, revision=revision)
 
 
-def get_change_preview(user_id: str | UUID, change_id: UUID, access_token: str) -> PlanningChangePreview | None:
+def get_change_preview(user_id: str | UUID, change_id: UUID, access_token: str | None) -> PlanningChangePreview | None:
     """
     resolve the original before/after versions for a change, including superseded workouts
 
@@ -36,7 +36,7 @@ def get_change_preview(user_id: str | UUID, change_id: UUID, access_token: str) 
 
     - **user_id**: authenticated owner
     - **change_id**: owned planning change to inspect
-    - **access_token**: caller jwt enforcing rls
+    - **access_token**: user JWT, or none for backend credentials after owner authorization
     - **returns**: change and workout trees with current revision, or none when missing
     """
 

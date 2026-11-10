@@ -89,6 +89,9 @@ jobs:
           image: ${{ inputs.image }}
           env_vars: |-
             ENVIRONMENT=production
+            BILLING_ENABLED=${{ vars.BILLING_ENABLED || 'false' }}
+            REVENUECAT_API_KEY=${{ vars.BILLING_ENABLED == 'true' && secrets.REVENUECAT_API_KEY || '' }}
+            BILLING_SANDBOX_USER_IDS=${{ vars.BILLING_SANDBOX_USER_IDS || '[]' }}
             SENTRY_DSN=${{ secrets.SENTRY_DSN }}
             SENTRY_TRACES_SAMPLE_RATE=0
             SENTRY_RELEASE=${{ github.sha }}
@@ -125,6 +128,9 @@ jobs:
           image: ${{ inputs.image }}
           env_vars: |-
             ENVIRONMENT=production
+            BILLING_ENABLED=${{ vars.BILLING_ENABLED || 'false' }}
+            REVENUECAT_API_KEY=${{ vars.BILLING_ENABLED == 'true' && secrets.REVENUECAT_API_KEY || '' }}
+            BILLING_SANDBOX_USER_IDS=${{ vars.BILLING_SANDBOX_USER_IDS || '[]' }}
             SENTRY_DSN=${{ secrets.SENTRY_DSN }}
             SENTRY_TRACES_SAMPLE_RATE=0
             SENTRY_RELEASE=${{ github.sha }}

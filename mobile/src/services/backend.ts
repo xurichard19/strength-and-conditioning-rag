@@ -56,6 +56,8 @@ export type PlanningHistory = { changes: PlanningChange[]; revision: number | nu
 export type PlanningSchedule = {
   user_id: string; horizon_days: number; refresh_interval_days: number; horizon_end: string | null;
   next_refresh_at: string; revision: number; created_at: string; updated_at: string;
+  initial_plan_status: 'queued' | 'running' | 'deferred' | 'failed' | 'ready';
+  initial_plan_job: PlanningJob | null;
 };
 export type PlanningChangePreview = {
   change: PlanningChange; before: CalendarWorkout[]; after: CalendarWorkout[]; revision: number | null;
@@ -141,6 +143,7 @@ export function createBackend(request: ApiRequest, onSubscriptionRequired?: () =
     }),
     completeOnboarding: () => json<Onboarding>('/onboarding/complete', { method: 'POST' }),
     getPlanningJobs: () => json<PlanningJob[]>('/planning/jobs?limit=20'),
+    retryPlanningJob: (id: string) => json<PlanningJob>(`/planning/jobs/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
     getPlanningSchedule: () => json<PlanningSchedule | null>('/planning/schedule'),
     getPlanningHistory: (beforeRevision?: number) => {
       const query = new URLSearchParams({ limit: '20' });

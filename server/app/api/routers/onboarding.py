@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from app.api.errors import PRIVATE_HEADERS, database_errors, private_response
 from app.api.schemas import OnboardingResponse, OnboardingSaveRequest
 from app.auth.supabase import AuthUser, require_user
 from app.db.supabase import onboarding_responses
+from app.services import planning_access
 
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"], dependencies=[Depends(private_response)])
@@ -47,14 +48,14 @@ def save_onboarding(
 
 
 @router.post("/complete", response_model=OnboardingResponse)
-def complete_onboarding(user: AuthUser = Depends(require_user)) -> OnboardingResponse:
+def complete_onboarding(background: BackgroundTasks, user: AuthUser = Depends(require_user)) -> OnboardingResponse:
     """
-    complete saved onboarding and schedule the initial three-week plan atomically
+    save completed onboarding and durable planning intent before checking payment
 
     does not enforce specific questions or nonempty answers. completion is an
     explicit user action; repeated calls preserve the first timestamp and any
-    existing schedule. the dispatcher starts generation on its next tick when
-    planning is enabled, independently of the mobile connection.
+    existing schedule. billing-enabled generation waits for verified paid access;
+    the dispatcher recovers activation independently of the mobile connection.
 
     - **user**: verified owner; the handler uses backend credentials
     - **returns**: completed response before generation; 404 if no answers were saved
@@ -64,4 +65,5 @@ def complete_onboarding(user: AuthUser = Depends(require_user)) -> OnboardingRes
         result = onboarding_responses.complete_onboarding_response(user.id)
         if result is None:
             raise HTTPException(404, "save onboarding answers before completing", headers=PRIVATE_HEADERS)
+        background.add_task(planning_access.after_verification, user.id)
         return OnboardingResponse.model_validate(result)

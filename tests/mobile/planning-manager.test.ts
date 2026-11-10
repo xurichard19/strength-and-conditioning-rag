@@ -4,7 +4,7 @@ import { deferred, load, plain, type Stubs, type TestValue } from './helpers.ts'
 import type { CalendarResponse, createBackend, PlanningChange, PlanningHistory, PlanningJob, PlanningSchedule } from '../../mobile/src/services/backend';
 
 type Api = Pick<ReturnType<typeof createBackend>, 'getPlanningJobs' | 'getPlanningHistory'>
-  & Partial<Pick<ReturnType<typeof createBackend>, 'getPlanningSchedule' | 'getCalendarRange'>>;
+  & Partial<Pick<ReturnType<typeof createBackend>, 'getPlanningSchedule' | 'getCalendarRange' | 'retryPlanningJob'>>;
 const calendar = load<typeof import('../../mobile/src/lib/calendar')>('lib/calendar.ts');
 const { createCalendarCache } = load<typeof import('../../mobile/src/state/calendar-cache')>('state/calendar-cache.ts', {
   '../lib/calendar': calendar, './memory-cache': load('state/memory-cache.ts'),
@@ -17,6 +17,7 @@ const job: PlanningJob = { id: 'job', kind: 'refresh', status: 'running', reason
   created_at: '2026-10-18T12:00:00Z', completed_at: null };
 const history = (changes: PlanningChange[] = []): PlanningHistory => ({ changes, revision: changes[0]?.revision ?? null });
 const schedule = (revision = 1): PlanningSchedule => ({ user_id: 'a', horizon_days: 21, refresh_interval_days: 7,
+  initial_plan_status: 'ready', initial_plan_job: null,
   horizon_end: '2026-11-07', next_refresh_at: '2026-10-25T12:00:00Z', revision,
   created_at: '2026-10-18T12:00:00Z', updated_at: '2026-10-18T12:00:00Z' });
 
@@ -53,6 +54,7 @@ function fixture(api: Api, initialAppState = 'active') {
     } },
     'react-native': { AppState: native },
     '@/lib/calendar': calendar,
+    '@/lib/initial-plan': load('lib/initial-plan.ts'),
     '@/lib/errors': { errorMessage: error => error.message },
     '@/services/api': { backendFor: userId => { assert.equal(userId, owner); return { getPlanningSchedule: async () => null, ...api }; } },
     '@/state/app-context': { useApp: () => ({ authSession: owner ? { user: { id: owner } } : null, calendarCache }) },
@@ -86,6 +88,36 @@ test('planning polls active jobs, refreshes history on completion, and then stop
   f.tick(); await f.flush();
   assert.equal(f.value.jobs.length, 0); assert.equal(f.value.changes[0].revision, 1);
   assert.equal(f.timerCount, 0); assert.equal(calls, 2);
+});
+
+test('first-plan polling continues with no active jobs through deferral and stops on failure', async () => {
+  let current: PlanningSchedule = { ...schedule(0), horizon_end: null, initial_plan_status: 'queued', initial_plan_job: null };
+  const f = fixture({ getPlanningJobs: async () => [], getPlanningHistory: async () => history(),
+    getPlanningSchedule: async () => current });
+  await f.flush(); assert.equal(f.timerCount, 1);
+  current = { ...current, initial_plan_status: 'deferred' };
+  f.tick(); await f.flush(); assert.equal(f.value.schedule?.initial_plan_status, 'deferred'); assert.equal(f.timerCount, 1);
+  f.focus(false); await f.flush(); f.focus(true); await f.flush(); assert.equal(f.timerCount, 1);
+  current = { ...current, initial_plan_status: 'failed', initial_plan_job: { ...job, status: 'cancelled' } };
+  f.tick(); await f.flush(); assert.equal(f.timerCount, 0);
+  assert.equal(f.value.schedule?.initial_plan_job?.status, 'cancelled');
+});
+
+test('a failed first plan retries once, reports failures and resumes polling after acceptance', async () => {
+  let current: PlanningSchedule = { ...schedule(0), horizon_end: null, initial_plan_status: 'failed', initial_plan_job: { ...job, status: 'failed' } };
+  let failure = true; let retries = 0;
+  const response = deferred<PlanningJob>();
+  const f = fixture({ getPlanningJobs: async () => [], getPlanningHistory: async () => history(),
+    getPlanningSchedule: async () => current,
+    retryPlanningJob: async id => { assert.equal(id, job.id); retries++; if (failure) throw new Error('Try again'); return response.promise; } });
+  await f.flush(); await f.value.retryInitialPlan(); await f.flush();
+  assert.equal(f.value.error, 'Try again'); assert.equal(f.timerCount, 0);
+  failure = false;
+  const retry = f.value.retryInitialPlan(); await f.flush(); assert.equal(f.value.retrying, true);
+  await f.value.retryInitialPlan(); assert.equal(retries, 2);
+  current = { ...current, initial_plan_status: 'queued', initial_plan_job: { ...job, status: 'pending' } };
+  response.resolve(current.initial_plan_job!); await retry; await f.flush();
+  assert.equal(f.value.retrying, false); assert.equal(f.value.error, null); assert.equal(f.timerCount, 1);
 });
 
 test('planning pauses polling off screen and in background and refreshes on return', async () => {

@@ -59,10 +59,25 @@ class DatabaseSettings(RuntimeSettings):
         return value.rstrip("/")
 
 
-class Settings(DatabaseSettings):
-    app_name: str = "arcel api"
-    cors_origins: list[str] = Field(default_factory=lambda: [
-        "http://localhost:5173", "http://localhost:8081", "https://arcelassist.vercel.app"])
+class BillingSettings(DatabaseSettings):
+    """Subscription verification shared by the API, dispatcher, and worker."""
+
+    billing_enabled: bool = False
+    revenuecat_api_key: SecretStr | None = None
+    billing_sandbox_user_ids: list[UUID] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_billing_credentials(self):
+        if self.billing_enabled:
+            for name in ("revenuecat_api_key", "supabase_secret_key"):
+                value = getattr(self, name)
+                if value is None or not value.get_secret_value().strip():
+                    raise ValueError(f"{name} is required when billing is enabled")
+        return self
+
+
+class AISettings(BillingSettings):
+    """Model and retrieval configuration shared by chat and planning generation."""
 
     doc_source: str = "local"
     gcs_bucket: str | None = None
@@ -77,12 +92,17 @@ class Settings(DatabaseSettings):
     system_collection_name: str = "system-docs"
     index_batch_size: int = 300
 
-    billing_enabled: bool = False
-    revenuecat_api_key: SecretStr | None = None
+
+class Settings(AISettings):
+    """Public API configuration, including webhook authentication."""
+
+    app_name: str = "arcel api"
+    cors_origins: list[str] = Field(default_factory=lambda: [
+        "http://localhost:5173", "http://localhost:8081", "https://arcelassist.vercel.app"])
+
     revenuecat_webhook_authorization: SecretStr | None = None
     revenuecat_webhook_signing_secret: SecretStr | None = None
     revenuecat_app_ids: list[str] = Field(default_factory=list)
-    billing_sandbox_user_ids: list[UUID] = Field(default_factory=list)
 
     @field_validator("revenuecat_webhook_signing_secret", mode="before")
     @classmethod
@@ -96,10 +116,9 @@ class Settings(DatabaseSettings):
         """require backend credentials and app scoping only when billing is enabled"""
 
         if self.billing_enabled:
-            for name in ("revenuecat_api_key", "revenuecat_webhook_authorization", "supabase_secret_key"):
-                value = getattr(self, name)
-                if value is None or not value.get_secret_value().strip():
-                    raise ValueError(f"{name} is required when billing is enabled")
+            authorization = self.revenuecat_webhook_authorization
+            if authorization is None or not authorization.get_secret_value().strip():
+                raise ValueError("revenuecat_webhook_authorization is required when billing is enabled")
             if not self.revenuecat_app_ids or any(not value.strip() for value in self.revenuecat_app_ids):
                 raise ValueError("revenuecat app ids are required when billing is enabled")
             if self.revenuecat_webhook_signing_secret is not None and not self.revenuecat_webhook_signing_secret.get_secret_value().strip():
@@ -116,3 +135,15 @@ def get_settings() -> Settings:
 def get_database_settings() -> DatabaseSettings:
     """load background configuration without ai credentials"""
     return DatabaseSettings()
+
+
+@lru_cache
+def get_billing_settings() -> BillingSettings:
+    """Load verification credentials without AI or webhook configuration."""
+    return BillingSettings()
+
+
+@lru_cache
+def get_ai_settings() -> AISettings:
+    """Load generation credentials without API webhook configuration."""
+    return AISettings()

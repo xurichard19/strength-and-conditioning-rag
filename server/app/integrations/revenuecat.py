@@ -89,7 +89,7 @@ def normalize_subscriber(payload: object, environment: BillingEnvironment, now: 
     grace_values = [value for value in (entitlement_grace, subscription_grace) if value is not None]
     grace = max(grace_values) if grace_values else None
     period_type = subscription.get("period_type")
-    if period_type is not None and not isinstance(period_type, str):
+    if not isinstance(period_type, str) or period_type not in {"normal", "intro", "trial"}:
         raise RevenueCatError("invalid provider period")
     refunded = _date(subscription.get("refunded_at")) is not None
     active = not refunded and max(expires_at, grace or expires_at) > now

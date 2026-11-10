@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 from app.contracts import (
-    BillingPhase, ChatMode, MessageRole, PlanningChangeStatus, ReplanJobStatus, ReplanKind, SetResultStatus,
+    BillingPhase, ChatMode, InitialPlanStatus, MessageRole, PlanningChangeStatus, ReplanJobStatus, ReplanKind, SetResultStatus,
     SportsWorkoutIntensity, SportsWorkoutStatus, WorkoutStatus,
 )
 
@@ -373,6 +373,8 @@ class ScheduleResponse(ResponseModel):
     revision: int = Field(default=0, ge=0)
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    initial_plan_status: InitialPlanStatus = "queued"
+    initial_plan_job: JobResponse | None = None
 
 
 class ChangeResponse(ResponseModel):

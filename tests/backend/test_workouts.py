@@ -26,7 +26,7 @@ class WorkoutRouteTests(unittest.TestCase):
         self.assertEqual(response.json()["revision"], 4)
         self.assertEqual(response.json()["workouts"][0]["name"], "strength")
         self.assertEqual(handler.call_args.args[0], USER.id)
-        self.assertEqual(handler.call_args.args[-1], USER.access_token)
+        self.assertIsNone(handler.call_args.args[-1])
         self.assertEqual(response.headers["cache-control"], "private, no-store")
 
     @patch("app.api.routers.calendar.calendar.get_calendar_snapshot")
@@ -50,7 +50,7 @@ class WorkoutRouteTests(unittest.TestCase):
         response = self.client.get(f"/workouts/{ID}")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["revision"], 4)
-        handler.assert_called_once_with(USER.id, ID, USER.access_token)
+        handler.assert_called_once_with(USER.id, ID, None)
         handler.return_value = None
         self.assertEqual(self.client.get(f"/workouts/{ID}").status_code, 404)
 

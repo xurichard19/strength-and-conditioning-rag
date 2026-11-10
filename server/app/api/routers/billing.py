@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import ValidationError
 
 from app.api.errors import PRIVATE_HEADERS, private_response
@@ -8,33 +8,38 @@ from app.api.schemas import BillingStatusResponse, RequestModel, RevenueCatWebho
 from app.auth.supabase import AuthUser, require_user
 from app.config import get_settings
 from app.integrations.revenuecat import MAX_RESPONSE_BYTES, authorized_webhook
-from app.services import billing
+from app.services import billing, planning_access
+from app.db.supabase import SupabaseDataError, planning_schedules
 
 
 router = APIRouter(prefix="/billing", tags=["billing"], dependencies=[Depends(private_response)])
 
 
-def _status(user: AuthUser, force: bool) -> BillingStatusResponse:
+def _status(user: AuthUser, force: bool, background: BackgroundTasks) -> BillingStatusResponse:
     """translate verification failures without exposing provider/database details"""
 
     try:
-        return BillingStatusResponse.model_validate(billing.get_billing_status(user.id, force=force))
+        status = BillingStatusResponse.model_validate(billing.get_billing_status(user.id, force=force))
     except billing.BillingUnavailable as exc:
         raise HTTPException(503, "billing_unavailable", headers=PRIVATE_HEADERS) from exc
+    if status.enabled and status.has_access:
+        background.add_task(planning_access.after_verification, user.id)
+    return status
 
 
 @router.get("/status", response_model=BillingStatusResponse)
-def get_status(user: AuthUser = Depends(require_user)) -> BillingStatusResponse:
+def get_status(background: BackgroundTasks, user: AuthUser = Depends(require_user)) -> BillingStatusResponse:
     """return the authenticated account's billing status, refreshing stale verification"""
 
-    return _status(user, False)
+    return _status(user, False, background)
 
 
 @router.post("/sync", response_model=BillingStatusResponse)
-def sync_status(payload: RequestModel | None = None, user: AuthUser = Depends(require_user)) -> BillingStatusResponse:
+def sync_status(background: BackgroundTasks, payload: RequestModel | None = None,
+                user: AuthUser = Depends(require_user)) -> BillingStatusResponse:
     """verify this account after purchase/restore; accepts no client entitlement claims"""
 
-    return _status(user, True)
+    return _status(user, True, background)
 
 
 @router.post("/webhooks/revenuecat")
@@ -74,7 +79,8 @@ async def receive_webhook(request: Request) -> dict[str, bool]:
         identities = [value for value in (event.app_user_id, event.original_app_user_id) if value]
         identities.extend([*event.aliases, *event.transferred_from, *event.transferred_to])
         try:
-            await asyncio.to_thread(billing.invalidate_webhook_users, identities, event.environment)
-        except billing.BillingUnavailable as exc:
+            users = await asyncio.to_thread(billing.invalidate_webhook_users, identities, event.environment)
+            await asyncio.to_thread(planning_schedules.request_billing_recheck, users)
+        except (billing.BillingUnavailable, SupabaseDataError) as exc:
             raise HTTPException(503, "billing_unavailable", headers=PRIVATE_HEADERS) from exc
     return {"received": True}

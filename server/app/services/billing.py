@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from app.config import get_settings
+from app.config import get_billing_settings
 from app.contracts import BillingAccessDecision, BillingEntitlementRecord, BillingEnvironment
 from app.db.supabase import billing
 from app.db.supabase.transport import SupabaseDataError
@@ -29,13 +29,13 @@ class BillingUnavailable(Exception):
 def billing_enabled() -> bool:
     """keep legacy settings/test doubles and existing deployments disabled by default"""
 
-    return getattr(get_settings(), "billing_enabled", False) is True
+    return getattr(get_billing_settings(), "billing_enabled", False) is True
 
 
 def billing_environment(user_id: UUID) -> BillingEnvironment:
     """select the store partition from server deployment and review-account configuration"""
 
-    settings = get_settings()
+    settings = get_billing_settings()
     reviewers = {UUID(str(value)) for value in getattr(settings, "billing_sandbox_user_ids", [])}
     return "production" if settings.environment == "production" and user_id not in reviewers else "sandbox"
 
@@ -46,16 +46,21 @@ def _fresh(record: BillingEntitlementRecord | None, now: datetime) -> bool:
     return record is not None and record.verified_at is not None and -timedelta(seconds=30) <= now - record.verified_at <= FRESHNESS
 
 
-def _decision(record: BillingEntitlementRecord, now: datetime) -> BillingAccessDecision:
-    """derive access from verified state and current time, including provider billing grace"""
+def billing_access(record: BillingEntitlementRecord, now: datetime | None = None) -> BillingAccessDecision:
+    """Grant only a verified paid period; retain trial/grace phases for account messaging."""
 
-    end = max(value for value in (record.expires_at, record.grace_expires_at) if value is not None) if record.expires_at else None
-    active = record.active and end is not None and end > now
+    now = now or datetime.now(UTC)
     phase = "inactive"
-    if active:
-        phase = "grace" if record.expires_at <= now else ("trial" if record.period_type == "trial" else "paid")
-    return BillingAccessDecision(enabled=True, has_access=active, phase=phase, product_id=record.product_id,
-        expires_at=end, will_renew=record.will_renew, verified_at=record.verified_at)
+    if record.active:
+        if record.period_type not in {"normal", "intro", "trial"}:
+            raise BillingUnavailable("unknown subscription period")
+        if record.expires_at is not None and record.expires_at > now:
+            phase = "trial" if record.period_type == "trial" else "paid"
+        elif record.grace_expires_at is not None and record.grace_expires_at > now:
+            phase = "grace"
+    return BillingAccessDecision(enabled=True, has_access=phase == "paid", phase=phase,
+        product_id=record.product_id, expires_at=record.expires_at,
+        will_renew=record.will_renew, verified_at=record.verified_at)
 
 
 def _verify(user_id: UUID, environment: BillingEnvironment) -> BillingEntitlementRecord:
@@ -64,7 +69,7 @@ def _verify(user_id: UUID, environment: BillingEnvironment) -> BillingEntitlemen
     claims = billing.invalidate_entitlements([user_id], environment)
     if len(claims) != 1:
         raise BillingUnavailable()
-    key = get_settings().revenuecat_api_key
+    key = get_billing_settings().revenuecat_api_key
     if key is None:
         raise BillingUnavailable()
     snapshot = fetch_entitlement(user_id, environment, key.get_secret_value())
@@ -110,42 +115,51 @@ def _coalesced_verify(user_id: UUID, environment: BillingEnvironment) -> Billing
             _inflight.pop(identity, None)
 
 
-def get_billing_status(user_id: str | UUID, *, force: bool = False) -> BillingAccessDecision:
+def get_verified_entitlement(user_id: str | UUID, *, force: bool = False) -> BillingEntitlementRecord | None:
     """
-    read verified access, refreshing missing, expired or explicitly invalidated state
+    read a fresh canonical record and revision, or none when billing is disabled
 
     - **user_id**: identity already verified by supabase auth
     - **force**: request a bounded refresh after purchase/restore; no client claims are trusted
-    - **returns**: access decision; disabled billing avoids all provider/database calls
+    - **returns**: verified record, including inactive state; disabled billing avoids all provider/database calls
     """
 
     if not billing_enabled():
-        return BillingAccessDecision(enabled=False, has_access=True)
+        return None
     owner = UUID(str(user_id))
     environment = billing_environment(owner)
     try:
         record = billing.get_entitlement(owner, environment)
         now = datetime.now(UTC)
-        expired = record is not None and record.active and not _decision(record, now).has_access
+        expired = (record is not None and record.active and record.expires_at is not None
+            and record.verified_at is not None and record.verified_at < record.expires_at <= now)
         if force or not _fresh(record, now) or expired:
             record = _coalesced_verify(owner, environment)
         # Re-read after coalescing so a webhook delivered during a provider call cannot be hidden.
         current = billing.get_entitlement(owner, environment)
         if current is None or current.sync_revision != record.sync_revision or not _fresh(current, datetime.now(UTC)):
             raise BillingUnavailable()
-        return _decision(current, datetime.now(UTC))
+        billing_access(current)  # Reject malformed historical rows before returning an authorization proof.
+        return current
     except (SupabaseDataError, RevenueCatError, ValidationError, OSError, ValueError) as exc:
         logger.warning("billing verification unavailable error_type=%s", type(exc).__name__)
         raise BillingUnavailable() from exc
 
 
-def invalidate_webhook_users(identities: list[str], environment: str | None) -> None:
+def get_billing_status(user_id: str | UUID, *, force: bool = False) -> BillingAccessDecision:
+    """Return the shared paid-only decision for an authenticated account."""
+
+    record = get_verified_entitlement(user_id, force=force)
+    return billing_access(record) if record is not None else BillingAccessDecision(enabled=False, has_access=True)
+
+
+def invalidate_webhook_users(identities: list[str], environment: str | None) -> list[UUID]:
     """
     invalidate recognized account uuids without trusting event state or user attributes
 
     - **identities**: canonical/alias ids from an authenticated provider event, including both transfer sides
     - **environment**: event partition; unknown/missing partitions invalidate both
-    - **returns**: none after durable invalidation; missing/deleted profiles are ignored
+    - **returns**: recognized account IDs after durable invalidation; missing/deleted profiles are ignored
     """
 
     users = set()
@@ -157,8 +171,10 @@ def invalidate_webhook_users(identities: list[str], environment: str | None) -> 
     partitions = [environment.lower()] if environment and environment.lower() in {"sandbox", "production"} else ["sandbox", "production"]
     if len(users) > 100:
         raise BillingUnavailable()
+    recognized = sorted(users)
     try:
         for partition in partitions:
-            billing.invalidate_entitlements(sorted(users), partition)
+            billing.invalidate_entitlements(recognized, partition)
     except (SupabaseDataError, ValidationError) as exc:
         raise BillingUnavailable() from exc
+    return recognized

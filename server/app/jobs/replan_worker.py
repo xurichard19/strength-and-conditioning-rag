@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from functools import partial
 import logging
+from datetime import UTC, datetime
 
 from fastapi import FastAPI, HTTPException
 
@@ -12,6 +13,7 @@ from app.db.supabase import SupabaseDataError, calendar, replan_jobs
 from app.http import http_lifespan
 from app.jobs.cloud_tasks import ReplanTask
 from app.observability import capture_failure
+from app.services import billing, planning_access
 
 
 logger = logging.getLogger(__name__)
@@ -41,10 +43,31 @@ async def execute(job: ReplanTask, generate_plan: PlanHandler) -> dict:
     - **generate_plan**: async context loading, generation and validation handler
     - **returns**: durable completion or harmless obsolete/terminal delivery acknowledgement
     """
+    proof = {}
+    if billing.billing_enabled():
+        stored = await asyncio.to_thread(replan_jobs.get_delivery_job, job.job_id, job.delivery_token)
+        if stored is None:
+            return {"status": "obsolete"}
+        if stored.status in ("succeeded", "failed", "cancelled"):
+            return {"status": "terminal"}
+        # A duplicate delivery must not pause or disturb an authorized running lease.
+        if stored.lease_expires_at is not None and stored.lease_expires_at > datetime.now(UTC):
+            raise HTTPException(503, "planning job is already running")
+        try:
+            permission = await asyncio.to_thread(planning_access.permission_for, stored.user_id)
+        except planning_access.PlanningDeferred as exc:
+            await asyncio.to_thread(planning_access.defer, stored.user_id, exc.reason)
+            return {"status": "deferred"}
+        proof = {"billing_environment": permission.environment, "billing_revision": permission.revision}
+
     delivery = await asyncio.to_thread(replan_jobs.claim_replan_delivery,
-        job.job_id, job.delivery_token, LEASE_SECONDS)
+        job.job_id, job.delivery_token, LEASE_SECONDS, **proof)
     if delivery.status in ("missing", "obsolete", "terminal"):
         return {"status": delivery.status}
+    if delivery.status in ("billing_required", "billing_unavailable", "onboarding_required"):
+        reason = "subscription_required" if delivery.status == "billing_required" else "billing_unavailable"
+        await asyncio.to_thread(planning_access.defer, stored.user_id, reason)
+        return {"status": "deferred"}
     if delivery.status != "claimed":
         raise HTTPException(503, "planning job is not ready")
 

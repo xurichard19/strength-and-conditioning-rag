@@ -13,7 +13,7 @@ import httpx
 from langchain_tavily import TavilySearch
 from pydantic import BaseModel, Field
 
-from app.config import get_settings
+from app.config import get_ai_settings
 from app.contracts import RESEARCH_METADATA_FIELDS, Source, metadata_text
 from app.db.vector.embeddings import MODEL_NAME, embed_research_queries as _research_embeddings
 from app.observability import capture_failure
@@ -43,7 +43,7 @@ async def research_collection():
 
     async with _collection_lock:
         if _collection is None:
-            settings = get_settings()
+            settings = get_ai_settings()
             client = await chromadb.AsyncHttpClient(host="api.trychroma.com", port=443, ssl=True,
                 headers={"x-chroma-token": settings.chroma_api_key},
                 tenant=settings.chroma_tenant, database=settings.chroma_database)
@@ -58,7 +58,7 @@ async def research_collection():
 @lru_cache(maxsize=2)
 def web_search_client(top_k: int):
     """initialize tavily client, cache limit of two for quick chat and deep research"""
-    return TavilySearch(tavily_api_key=get_settings().tavily_api_key,
+    return TavilySearch(tavily_api_key=get_ai_settings().tavily_api_key,
         max_results=top_k, search_depth="fast", include_answer=False,
         include_raw_content=False, include_images=False, auto_parameters=False)
 
@@ -66,7 +66,7 @@ def web_search_client(top_k: int):
 @lru_cache(maxsize=1)
 def rerank_client():
     """rerank client"""
-    return cohere.AsyncClientV2(api_key=get_settings().cohere_api_key, timeout=20)
+    return cohere.AsyncClientV2(api_key=get_ai_settings().cohere_api_key, timeout=20)
 
 
 def _research_source(identifier: str, text: str, metadata: dict | None, score: float | None = None) -> Source:

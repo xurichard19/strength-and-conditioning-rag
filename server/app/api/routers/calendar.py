@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends
 
 from app.api.errors import database_errors, private_response
 from app.api.parameters import calendar_range
-from app.auth.supabase import AuthUser, require_user
+from app.auth.supabase import AuthUser
+from app.auth.billing import require_paid_user
 from app.api.schemas import CalendarResponse
 from app.db.supabase import calendar
 
@@ -13,7 +14,7 @@ router = APIRouter(prefix="/calendar", tags=["calendar"], dependencies=[Depends(
 
 
 @router.get("", response_model=CalendarResponse)
-def get_calendar(dates: tuple[date, date] = Depends(calendar_range), user: AuthUser = Depends(require_user)) -> CalendarResponse:
+def get_calendar(dates: tuple[date, date] = Depends(calendar_range), user: AuthUser = Depends(require_paid_user)) -> CalendarResponse:
     """
     load current generated workouts and non-cancelled sports for the calendar
 
@@ -26,4 +27,4 @@ def get_calendar(dates: tuple[date, date] = Depends(calendar_range), user: AuthU
     """
 
     with database_errors("calendar.get_calendar"):
-        return CalendarResponse.model_validate(calendar.get_calendar_snapshot(user.id, *dates, user.access_token))
+        return CalendarResponse.model_validate(calendar.get_calendar_snapshot(user.id, *dates, None))

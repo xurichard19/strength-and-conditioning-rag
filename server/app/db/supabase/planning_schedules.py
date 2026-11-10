@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic import TypeAdapter
 
 from app.contracts import PlanningScheduleRecord
-from app.db.supabase._queries import identifier, rpc_row
+from app.db.supabase._queries import identifier, page_limit, rpc_row
 from app.db.supabase.transport import call_rpc, select_rows
 
 
@@ -81,3 +81,39 @@ def invalidate_planning_inputs(user_id: str | UUID) -> int:
 
     return TypeAdapter(int).validate_python(call_rpc("invalidate_planning_inputs",
         {"p_user_id": identifier(user_id)}, None), strict=True)
+
+
+def list_billing_rechecks(limit: int = 20) -> list[UUID]:
+    """find a fair, bounded page of completed accounts with work and a due payment check"""
+    page_limit(limit)
+    return TypeAdapter(list[UUID]).validate_python(call_rpc("list_planning_billing_rechecks",
+        {"p_limit": limit}, None))
+
+
+def defer_planning(user_id: str | UUID, reason: str, retry_seconds: int) -> None:
+    """pause new work and retire queued deliveries without spending attempts or cancelling a live lease"""
+    if reason not in {"subscription_required", "billing_unavailable"}:
+        raise ValueError("invalid payment wait reason")
+    if not 1 <= retry_seconds <= 3600:
+        raise ValueError("billing retry delay must be between 1 and 3600 seconds")
+    call_rpc("defer_planning", {"p_user_id": identifier(user_id), "p_reason": reason,
+        "p_retry_seconds": retry_seconds}, None)
+
+
+def resume_planning(
+    user_id: str | UUID, *, billing_environment: str | None = None, billing_revision: int | None = None,
+) -> bool:
+    """clear waiting and prepare due work once; a supplied paid revision is rechecked atomically"""
+    return TypeAdapter(bool).validate_python(call_rpc("resume_planning", {
+        "p_user_id": identifier(user_id), "p_billing_environment": billing_environment,
+        "p_billing_revision": billing_revision,
+    }, None), strict=True)
+
+
+def request_billing_recheck(user_ids: list[str | UUID]) -> None:
+    """wake affected schedules after billing invalidation, without granting access"""
+    if len(user_ids) > 100:
+        raise ValueError("at most 100 billing accounts may be requested")
+    call_rpc("request_planning_billing_recheck", {
+        "p_user_ids": [identifier(value) for value in user_ids],
+    }, None)

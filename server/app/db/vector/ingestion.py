@@ -20,7 +20,7 @@ from tqdm import tqdm
 import tempfile
 from pathlib import Path
 from google.cloud import storage
-from app.config import get_settings
+from app.config import get_ai_settings
 from app.contracts import RESEARCH_METADATA_FIELDS, metadata_text
 
 ALLOWED_EXTENSIONS = {".pdf", ".txt"}
@@ -37,7 +37,7 @@ def _chunk_tokenizer():
 
 
 def load_system_docs(data_dir: str | None = None) -> list[Document]:
-    settings = get_settings()
+    settings = get_ai_settings()
     if settings.doc_source.lower() == 'gcs':
         if not settings.gcs_bucket:
             raise RuntimeError("GCS_BUCKET is required when DOC_SOURCE=gcs")

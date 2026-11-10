@@ -49,6 +49,18 @@ def main() -> None:
             cwd=ROOT, check=True, timeout=120)
         subprocess.run([sys.executable, "-u", str(TESTS / "billing_concurrency.py"), container],
             cwd=ROOT, check=True, timeout=120)
+        subprocess.run([sys.executable, "-u", str(TESTS / "planning_billing_concurrency.py"), container],
+            cwd=ROOT, check=True, timeout=120)
+        # The privilege cutover is intentionally outside automatic migrations.
+        # Exercise it last without affecting the migration-first compatibility suites.
+        staged = ROOT / "supabase/staged/backend_only_training_access.sql"
+        access_test = TESTS / "staged/protected_access.sql"
+        print("Checking staged backend-only training access", flush=True)
+        subprocess.run([
+            "docker", "exec", "-i", container, "psql", "-X", "-U", "postgres", "-d", "postgres",
+            "-v", "ON_ERROR_STOP=1", "--quiet",
+        ], input=b"begin;\n" + staged.read_bytes() + access_test.read_bytes() + b"\nrollback;\n",
+            check=True, timeout=120)
         print(f"Passed {len(suites)} SQL suites and concurrent database checks", flush=True)
     finally:
         cleanup = subprocess.run(["docker", "rm", "--force", "--volumes", container],
