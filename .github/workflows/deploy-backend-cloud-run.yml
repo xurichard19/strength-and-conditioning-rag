@@ -151,7 +151,8 @@ jobs:
           SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID }}
         run: |
           supabase link --project-ref "${SUPABASE_PROJECT_ID}"
-          supabase db push --linked --yes
+          # Include unapplied branch migrations older than the latest remote version.
+          supabase db push --linked --include-all --yes
 
       - name: deploy backend to cloud run
         id: deploy

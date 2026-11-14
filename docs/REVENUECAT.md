@@ -21,7 +21,6 @@ Billing is implemented behind independent backend and mobile flags, both **off b
 
 Purchase flow: native purchase/restore → authenticated `/billing/sync` → RevenueCat verification → conditional database commit → mobile unlock. SDK entitlement data informs messages; only the backend decision grants access. A confirmed purchase whose verification fails stays retryable and does not automatically purchase again. Webhooks invalidate cached verification; they cannot grant access directly.
 
-Local handoff: the supplied public Test Store SDK key is saved only in ignored `mobile/.env`. The isolated setup below uses ignored backend/mobile `.env.local` overrides with local Supabase credentials and billing enabled. Hosted settings and deployment billing defaults remain unchanged. Native purchase validation remains pending.
 
 ## Account and product configuration
 
@@ -91,177 +90,29 @@ The five-minute verified entitlement cache still applies. Expiry is checked imme
 
 Keep free-trial offers and Apple's optional Billing Grace Period disabled for this paid-only release. Apple's grace feature is intended to retain service while billing recovery runs; enabling it requires an explicit policy change and matching backend/mobile behavior. Dashboard settings are not changed by these migrations.
 
-## Local workflow
+## Development verification
 
-Follow [mobile local development](../mobile/README.md): Node **22.18+**, backend **8000**, Metro **8081** or **8082** if occupied. A physical phone needs the computer's LAN API URL; the RevenueCat webhook separately needs a public HTTPS tunnel. Do not point a development billing client at an unconfigured production backend.
+Use an isolated development Supabase project or local stack, with the repository migrations applied. Local Supabase supplies Auth and the REST/RPC API as well as PostgreSQL; a standalone PostgreSQL server is insufficient for app testing. Keep development credentials in ignored environment files. Do not point a billing-enabled development client at an unconfigured production backend.
 
-After dashboard/environment setup, restart the backend and Metro, sign in, then test the paywall, purchase, restore, and Customer Center. Rebuild the development app when native dependencies change. Install compatible native packages with `npx expo install`; `expo-dev-client` and both RevenueCat packages are already included.
-
-### Isolated local Supabase and webhook tunnel
-
-Use the local Supabase stack for payment development. It includes PostgreSQL 17, Auth and the REST/RPC API that Arcel uses; a standalone PostgreSQL server does not provide the latter two. The local database uses **54322**, leaving the existing Postgres.app instance on **5432** untouched. Check and apply pending local migrations with the commands below when the branch changes; the implementation tests use a separate disposable database and do not update this stack. No production data was copied and no hosted migration was run.
-
-**Where it is configured and stored**
-
-- `supabase/config.toml`: project name, PostgreSQL version and service ports.
-- `supabase/migrations/`: SQL that builds the local schema, including `20260919232156_billing_entitlements.sql`.
-- `package.json`: the `db:local:*`, `api:local` and `webhook:*` commands below.
-- `server/scripts/bind_local_supabase.py`: starts the Supabase CLI stack and binds this project's published Docker ports to `127.0.0.1`, preserving data volumes.
-- Docker Desktop → Containers: this project's services have names ending in `_strength-and-conditioning-rag`.
-- Docker Desktop → Volumes: `supabase_db_strength-and-conditioning-rag` holds the actual database files inside Docker Desktop's Linux VM. Database data is not in the repository or Postgres.app.
-- Ignored `.env.local`, `mobile/.env.local` and `.local-dev/`: machine-specific configuration, local tools and logs.
-
-| Service | Local address |
-| --- | --- |
-| Supabase Auth/database API | `http://127.0.0.1:54321` |
-| PostgreSQL | `127.0.0.1:54322`, database/user `postgres` |
-| Supabase Studio | [Open local Studio](http://127.0.0.1:54323) |
-| Test email inbox | [Open local inbox](http://127.0.0.1:54324) |
-| Arcel API | [Health check](http://127.0.0.1:8000/health) |
-| Webhook-only proxy | `http://127.0.0.1:8001` |
-
-**What Studio is**
-
-Studio is the browser dashboard for this local Supabase instance, similar to the hosted Supabase dashboard. Use **Table Editor** for `public.profiles` and `public.billing_entitlements`, **SQL Editor** to run local SQL, and **Authentication → Users** to inspect local accounts. It does not show production accounts or tables. Test confirmation/reset emails appear in the local inbox, not a real mailbox. For a desktop SQL client, use the local PostgreSQL connection URL printed by `npm run db:local:status`.
-
-**Exactly how the environment overrides work**
-
-The backend does not automatically recognize `.env.local`. The `api:local` script in `package.json` explicitly runs:
+Follow [mobile setup](../mobile/README.md) for the native development build. For a local backend override, run from the repository root:
 
 ```sh
 .venv/bin/python -m uvicorn app.main:app --env-file .env.local --host 127.0.0.1 --port 8000
 ```
 
-Uvicorn loads `.env.local` into the process before importing the app. Then `server/app/main.py` calls `load_dotenv()` to fill remaining values from `.env`, without overwriting existing process values. `server/app/config.py` reads those values with Pydantic settings, also using `.env` as a fallback. Precedence for this command is:
+Uvicorn loads `.env.local` before application settings; exported shell values take precedence, and root `.env` supplies remaining values. Expo loads `mobile/.env.local` ahead of `mobile/.env`. Restart the backend and Metro after configuration changes. A physical phone needs reachable API and Supabase addresses; its `localhost` is the phone itself. Bind services to the intended private network only when needed.
 
-```text
-already exported shell variables > root .env.local > root .env > settings defaults
-```
+For webhook testing, use an HTTPS tunnel to the local webhook endpoint, restrict public routing to that endpoint, and configure RevenueCat with the tunnel's current URL and matching authorization. A dashboard `TEST` event should return `200 {"received":true}` without writing billing state. A browser GET returns 405 because the endpoint accepts POST only.
 
-Use a terminal without manually exported hosted Supabase credentials. Plain `uvicorn app.main:app` does not load `.env.local`, and the existing `docker compose up api` reads `.env`; use `npm run api:local` for this workflow.
+Verify the following with a new development account:
 
-| Configuration | Local override | Values retained from the ordinary `.env` |
-| --- | --- | --- |
-| Backend | Development mode, local Supabase URL/keys, `BILLING_ENABLED=true`, blank Tavily/Sentry, tracing off | RevenueCat server API key, webhook authorization, allowed app IDs, existing AI provider settings |
-| Mobile | Local Supabase URL/public key, API at port 8000, `EXPO_PUBLIC_BILLING_ENABLED=true` | RevenueCat public Test Store SDK key |
+1. Complete onboarding. Confirm the paywall appears and planning does not generate before verified payment.
+2. Exercise cancelled, failed and successful Test Store purchases. Only successful backend verification through `/billing/sync` should unlock access and resume planning.
+3. Confirm `billing_entitlements` records the user's UUID, sandbox environment, `arcel_pro`, product, expiry and verification timestamps. RevenueCat's identified App User ID should match that UUID.
+4. Check a real purchase webhook receives 200. It invalidates verification (`verified_at` becomes null and the revision increases); a subsequent backend verification restores canonical state. It does not grant access from the notification alone.
+5. Test restore feedback, account switching, Customer Center, expiry and recovery from unavailable verification. Check both protected API access and the app's state, including preservation of drafts during temporary failures.
 
-Expo itself loads `mobile/.env.local` ahead of `mobile/.env` during normal development. No custom loader was added: `mobile/src/services/api.ts` reads the `EXPO_PUBLIC_*` URLs/key, and `mobile/src/services/purchases.ts` reads the billing flag and public SDK key. Existing shell variables can take precedence here too. Restart the backend after backend environment edits; fully reload the app after mobile environment edits. [Expo environment variables](https://docs.expo.dev/guides/environment-variables/)
-
-Both override files are ignored by Git. Local Supabase accounts/data are isolated; RevenueCat still uses its cloud Test Store, and existing AI providers remain external if invoked. This setup does not make every integration offline.
-
-**Start everything after a reboot**
-
-The initial setup already started Supabase, the API, proxy and tunnel in the background. If they are still running, use the dashboard test below directly; do not start another API/proxy on the same ports. Startup commands below are for stopped services.
-
-1. Open Docker Desktop and wait until its engine is running.
-2. In each terminal, start from the repository root:
-
-   ```sh
-   cd /Users/dimitriosmahairas/Documents/Projects/strength-and-conditioning-rag
-   ```
-
-3. Start/check the database:
-
-   ```sh
-   npm run db:local:start
-   npm run db:local:status
-   npm run db:local:migrations
-   ```
-
-   `db:local:start` can be repeated safely. For newly added migrations, run `npm run db:local:migrate`; it explicitly uses `--local`. **Do not use `npm run db:push` for local testing**: it targets the linked hosted project. Opening Studio confirms that the dashboard is available. Keep service secrets printed by the status command out of mobile configuration.
-
-4. Leave each of these running in its own terminal:
-
-   | Terminal | Command | Purpose |
-   | --- | --- | --- |
-   | A | `npm run api:local` | Arcel backend on 8000; open the health-check URL above |
-   | B | `npm run webhook:proxy` | Forwards the permitted webhook route from 8001 to 8000 |
-   | C | `npm run webhook:tunnel` | Prints a public `https://…trycloudflare.com` address |
-
-5. Whenever the tunnel is restarted, copy the new address from Terminal C and append `/billing/webhooks/revenuecat`. Update the existing RevenueCat webhook URL before testing. The initial background run's URL is saved in `.local-dev/webhook-url.txt`; later manual tunnel commands print their new URL but do not update that file automatically.
-
-**Where the public HTTPS URL comes from**
-
-The setup downloaded the official **Cloudflare `cloudflared` 2026.9.0** macOS ARM64 release, verified its published SHA-256 checksum, and installed it in ignored `.local-dev/bin/cloudflared`. There is no global installation. Cloudflare Quick Tunnels allocate a temporary random `trycloudflare.com` hostname without requiring a Cloudflare account or purchased domain. [Official release](https://github.com/cloudflare/cloudflared/releases/tag/2026.9.0), [Quick Tunnel documentation](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/)
-
-```text
-RevenueCat → Cloudflare HTTPS → local proxy :8001 → Arcel API :8000 → local Supabase
-```
-
-`server/scripts/revenuecat_webhook_proxy.py` forwards only exact `POST /billing/webhooks/revenuecat` requests, including the original body and authorization/signature headers. Supabase, Studio, backend docs and other API routes are not exposed through this tunnel. The backend authenticates webhook deliveries. The Mac must stay awake and all three processes must stay running. Restarting the tunnel normally changes its hostname; this is a development endpoint, not a permanent production URL.
-
-**Test 1: webhook delivery, without the mobile app**
-
-1. Open the existing configuration under RevenueCat **Integrations → Webhooks**.
-2. Confirm its URL is the current tunnel URL including `/billing/webhooks/revenuecat`.
-3. Set its Authorization header to the complete value of `REVENUECAT_WEBHOOK_AUTHORIZATION` from root `.env`, including `Bearer ` but excluding surrounding quotes. Select **Test Store**, **Sandbox** and all event types. The allowed app ID in the backend is `app33be86dd3f`, not the project ID. Leave HMAC disabled unless the matching signing secret has been configured on the backend.
-4. Send the dashboard test event. RevenueCat should show HTTP **200**; the response body is `{"received":true}`. The backend terminal/log should show `POST /billing/webhooks/revenuecat` with status 200. [RevenueCat webhook testing](https://www.revenuecat.com/docs/integrations/webhooks)
-
-The router deliberately skips database writes for event type `TEST`. This verifies delivery, authorization and app filtering; **no new subscription row or paid access is expected**. Opening the webhook URL in a browser sends GET and returns 405, which is expected.
-
-**Test 2: mobile purchase and database verification**
-
-Use an **iOS Simulator on this Mac** with the current local addresses. A physical phone cannot reach these loopback-only services; it needs separate private-LAN configuration for both the Arcel API and Supabase API.
-
-1. Use Node **22.18+**. The shell's default was verified as 22.14.0. This machine also has a compatible bundled Node runtime; to use it in the mobile terminal without changing the global installation:
-
-   ```sh
-   export PATH="$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH"
-   node --version
-   ```
-
-2. Once a native development build is installed, start Metro from the repository root:
-
-   ```sh
-   npm --prefix mobile run start -- --dev-client --port 8081
-   ```
-
-   Use 8082 if 8081 is occupied; the backend URL stays on 8000. To build the development app with Xcode/CocoaPods configured, run `npx expo run:ios --port 8081` from `mobile/` instead; it also starts Metro. The development build now compiles, installs and launches on the local iOS 27 simulator. Xcode 27 scene lifecycle support is enabled through `expo-build-properties` on Expo 57.0.24; see [native build configuration](../mobile/README.md#native-purchases). Purchase/restore validation remains a separate step. Expo Go is not the validation environment for this native flow.
-
-3. Create a **new local account**, then complete onboarding. Existing hosted accounts do not exist locally. Use the test-email inbox if a confirmation/reset email is required.
-4. Confirm the paywall shows both plans. Make a successful simulated Test Store purchase.
-5. The app calls `POST /billing/sync`; access should unlock only after the backend verifies `arcel_pro` with RevenueCat.
-6. Open Studio → Table Editor → `billing_entitlements`, filtered to this local user's UUID. Expect `environment=sandbox`, `entitlement_key=arcel_pro`, `active=true`, the purchased `product_id` (`monthly` or `yearly`), and expiry/verification timestamps. RevenueCat's customer App User ID should match the UUID in Studio → Authentication → Users.
-7. Check RevenueCat's delivery history for the purchase event and a 200 response. A purchase event invalidates the cached verification (`verified_at=null`, revision increases); the next app status/sync request fetches current RevenueCat state. It does not grant access solely from the notification. A webhook arriving after purchase sync may leave `verified_at` null until the next refresh.
-
-For a readable database view, run this in **local Studio → SQL Editor**:
-
-```sql
-select user_id, environment, entitlement_key, active, product_id,
-       expires_at, verified_at, sync_revision
-from public.billing_entitlements
-order by updated_at desc;
-```
-
-**Logs, stopping and common failures**
-
-For the initial background processes:
-
-```sh
-tail -f .local-dev/backend.log .local-dev/webhook-proxy.log .local-dev/tunnel.log
-```
-
-Stop foreground API/proxy/tunnel processes with Ctrl+C. For the initial background processes, their `.local-dev/*.pid` files identify only the processes started by this setup. `npm run db:local:stop` stops this project's Supabase services while retaining the local database volume. Do not use `--no-backup` unless intentionally deleting local data.
-
-| Result | Meaning / next check |
-| --- | --- |
-| Address already in use | That local service may already be running; do not launch a second copy |
-| Webhook 401 | Authorization mismatch, or signing mismatch when HMAC is enabled |
-| Webhook 403 | Test/event app ID does not match `REVENUECAT_APP_IDS` |
-| Webhook 405 from browser | Expected: browser GET is not a webhook POST |
-| Tunnel unavailable / 502 | Check the current hostname and running tunnel, proxy and backend |
-| Billing/webhook 503 | Inspect backend logs and local DB/settings; billing status/sync also requires RevenueCat availability |
-| TEST returns 200 but no billing row | Expected; use Test 2 to verify purchase/database behavior |
-
-### Local environment verification — 2026-09-19
-
-- All seven repository migrations applied to the local Supabase PostgreSQL 17 database only.
-- Local signup/profile creation, service-key billing access, and client billing-table denial verified against the running stack.
-- Real RevenueCat backend verification returned inactive access for a fresh local account; no purchase was simulated as a paid entitlement.
-- Public HTTPS webhook returned 401 without authorization and 200 with authorization; unrelated routes returned 404. A synthetic non-TEST renewal notification durably invalidated the local billing row, followed by successful backend re-verification. A dashboard-style TEST notification only acknowledged delivery.
-- Local billing SQL permission/revision fixture passed. Backend regression suite: 187 tests passed; container binding helper: 10 focused tests passed.
-- All published Supabase ports, Arcel API and webhook proxy verified on loopback. The local startup command is idempotent and data survived container recreation.
-- RevenueCat dashboard webhook configuration and native mobile purchase validation remain user/testing steps. No hosted migration, production deployment or App Store submission was performed.
+Test Store validates the integration flow; the Apple sandbox rehearsal and deployed planning checks below remain necessary before release.
 
 ## Release and validation
 
@@ -273,38 +124,16 @@ Before enabling billing:
 4. Run native Apple sandbox tests with the `appl_` key and real Apple products. Finalize prices, trial policy, legal URLs, support details, and the paywall configuration.
 5. Review production activation separately. Configure GitHub **secrets** for the API key, webhook authorization, and optional signing secret; **variables** for `BILLING_ENABLED`, app IDs, and sandbox user IDs. The deployment workflow rejects incomplete enabled configuration, and supplies disabled defaults when unset. Set the production EAS environment's app-specific public key and deliberately change its billing flag only as part of that release.
 
-**Deployment behavior:** matching pushes to `main` and manual runs of `.github/workflows/deploy-backend-cloud-run.yml` build/push the backend, apply pending Supabase migrations, then deploy Cloud Run. A push affecting this workflow or server/Supabase files can therefore change the live database even when billing is disabled. This setup does not run a deployment or configure any external dashboard.
+**Deployment behavior:** matching pushes to `main` and manual runs of `.github/workflows/deploy-backend-cloud-run.yml` build/push the backend, apply pending Supabase migrations, then deploy Cloud Run. A push affecting this workflow or server/Supabase files can therefore change the live database even when billing is disabled. Review these workflow triggers before merging.
+
+The deployment uses `supabase db push --linked --include-all --yes` because the billing-table migration predates some already-deployed migrations. The root `db:push:check` (dry run) and `db:push` scripts use the same target and migration selection. This includes migrations missing from database history in timestamp order and skips those already applied. Keep the existing migration IDs so local testing databases retain their history. The separate staged permissions script is not included in these commands.
 
 ### Ordered planning enforcement rollout
 
-1. Apply the additive planning migration and deploy the compatible API, worker, and dispatcher with billing disabled. Validate account ownership, profile/onboarding access, and the existing planning lifecycle. Pause the queue/scheduler while replacing old job-service revisions; drain old API and worker revisions before the access cutover.
+1. Apply the additive billing/planning migrations and deploy the compatible API, worker, and dispatcher with billing disabled. Validate account ownership, profile/onboarding access, and the existing planning lifecycle. Pause the queue/scheduler while replacing old job-service revisions; drain old API and worker revisions before the access cutover.
 2. Review `supabase/staged/backend_only_training_access.sql`. It revokes direct authenticated access to training/chat tables, the separately granted message/conversation columns, and the calendar RPC. Keep it outside automatic migrations until the compatible backend is serving all traffic. Apply it in a transaction as the separate second deployment step; the database test suite exercises this staged SQL against disposable data.
 3. Verify two-account isolation through the API and denial of direct authenticated training/chat reads and mutations. Profile/onboarding must still work, and service-role training/chat operations must still work. Do not roll back to a JWT-based old API after this cutover without a separately reviewed privilege restoration.
 4. Enable the same backend billing configuration on the API, worker, and dispatcher. Resume planning only after all three services are compatible and configured. Enable mobile billing for the intended build. Confirm unpaid onboarding creates no generation attempts; purchase/restore resumes one current first plan; duplicate sync/webhook/task deliveries do not duplicate generation.
 5. Exercise expiry, trial, grace, refund/transfer invalidation, provider outage, an already-running attempt, retry after first-plan failure, and app closure immediately after purchase. Inspect both the entitlement row and the existing schedule/job records. Complete native Apple purchase validation before production activation.
 
 Keeping stage two outside `supabase/migrations` is deliberate: the current migration-before-deploy workflow would otherwise revoke privileges from the still-running old API. The default feature flags remain disabled; neither this document nor the implementation enables production billing.
-
-### Implementation verification — 2026-09-19
-
-- Backend: 177 tests passed; isolated SQL fixtures and billing/planning concurrency checks passed.
-- Mobile: 143 tests passed, including 18 billing tests; typecheck, lint, and web export passed.
-- Build/deploy configuration: 11 mobile guard cases and eight workflow validation cases passed.
-- Native iOS: initial CocoaPods/system Ruby blockers were subsequently resolved. The iOS 27 launch failure was fixed with Expo 57.0.24 and the official `ios.enableSceneSupport` plugin setting. The development build compiles, installs and launches on the iPhone 18 Pro simulator. Mobile tests (143), typecheck, lint, web export and Expo Doctor (21 checks) pass after the patch. RevenueCat purchase/restore validation remains pending.
-- Initial local-activation blockers were subsequently resolved by the isolated local setup above: backend/database/webhook services run with local billing enabled, a blank optional-use Tavily key, and configured RevenueCat credentials. The normal hosted configuration and production billing defaults remain unchanged.
-- Production has not been deployed or enabled.
-
-### Planning enforcement verification — 2026-11-09
-
-- Backend: 379 tests passed, including paid API denial, service-credential owner isolation, paused deliveries, entitlement revision checks, and worker startup without webhook credentials.
-- Database: all 13 migrations, 11 SQL suites, concurrent resume/invalidation/claim checks, and the staged privilege cutover passed in disposable PostgreSQL 17. The application databases were not changed.
-- Mobile: 236 tests passed; app/test TypeScript checks, lint, and web export passed. Tests cover first-plan progress/retry, access-loss cleanup, stale-response rejection, and publication while Today is offscreen.
-- The codebase graph was refreshed with `graphify update .`.
-- Native purchase/restore validation and the ordered service/database rollout remain release steps. No push, deployment, hosted migration, or production activation was performed.
-
-### Review corrections verified — 2026-11-10
-
-- Backend: 395 tests passed, including pure status reads, proof reuse, expired/refunded historical periods, retryable stale denials, and alternating delivery/reconciliation work.
-- Database: all 12 SQL suites, the full migration chain, seeded migration-transition checks, payment/wake concurrency races, and staged access checks passed in disposable PostgreSQL 17. A 240-account fixture verifies dormant unpaid accounts do not fill the work batch and that events/outage retries share capacity.
-- Mobile: 243 tests passed; app/test TypeScript checks, lint, and web export passed. Regression tests cover preserved drafts and streams during uncertain verification, confirmed denial cleanup, stale response fencing, and trial/grace recovery.
-- The event-driven unpaid policy and paid-only history/trial/grace policy are intentional. No application database, dashboard setting, production feature flag, or hosted service was changed by this work.

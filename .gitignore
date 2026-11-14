@@ -54,8 +54,3 @@ dist-ssr
 
 # local database/tunnel runtime files and credentials
 .local-dev/
-
-# graphify local skill
-/graphify-out
-/AGENTS.md
-/.codex

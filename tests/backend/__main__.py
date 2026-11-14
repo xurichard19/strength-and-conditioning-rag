@@ -10,21 +10,13 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 _connect = socket.socket.connect
-_getaddrinfo = socket.getaddrinfo
 
 
 def local_connect(connection, address):
-    """Allow only loopback connections for asyncio and local webhook proxy tests."""
+    """Allow only loopback connections needed by Windows asyncio socket pairs."""
     if connection.family in (socket.AF_INET, socket.AF_INET6) and address[0] not in ("127.0.0.1", "::1"):
         raise AssertionError("external network access is disabled in backend tests")
     return _connect(connection, address)
-
-
-def local_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-    """Resolve numeric loopback fixtures without permitting external DNS lookups."""
-    if host not in ("127.0.0.1", "::1"):
-        raise AssertionError("DNS access is disabled in backend tests")
-    return _getaddrinfo(host, port, family, type, proto, flags | socket.AI_NUMERICHOST)
 
 
 def main() -> int:
@@ -50,7 +42,7 @@ def main() -> int:
     with patch("dotenv.load_dotenv", return_value=False), \
             patch("socket.socket.connect", new=local_connect), \
             patch("socket.socket.connect_ex", side_effect=AssertionError("network access is disabled in backend tests")), \
-            patch("socket.getaddrinfo", new=local_getaddrinfo):
+            patch("socket.getaddrinfo", side_effect=AssertionError("DNS access is disabled in backend tests")):
         suite = unittest.defaultTestLoader.discover(str(ROOT / "tests/backend"), top_level_dir=str(ROOT))
         return int(not unittest.TextTestRunner(verbosity=1).run(suite).wasSuccessful())
 
