@@ -6,6 +6,10 @@ on:
       image:
         required: true
         type: string
+      billing_sandbox_user_ids:
+        description: JSON list escaped for deploy-cloudrun by the caller's billing validation step.
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -91,7 +95,7 @@ jobs:
             ENVIRONMENT=production
             BILLING_ENABLED=${{ vars.BILLING_ENABLED || 'false' }}
             REVENUECAT_API_KEY=${{ vars.BILLING_ENABLED == 'true' && secrets.REVENUECAT_API_KEY || '' }}
-            BILLING_SANDBOX_USER_IDS=${{ vars.BILLING_SANDBOX_USER_IDS || '[]' }}
+            BILLING_SANDBOX_USER_IDS=${{ inputs.billing_sandbox_user_ids }}
             SENTRY_DSN=${{ secrets.SENTRY_DSN }}
             SENTRY_TRACES_SAMPLE_RATE=0
             SENTRY_RELEASE=${{ github.sha }}
@@ -130,7 +134,7 @@ jobs:
             ENVIRONMENT=production
             BILLING_ENABLED=${{ vars.BILLING_ENABLED || 'false' }}
             REVENUECAT_API_KEY=${{ vars.BILLING_ENABLED == 'true' && secrets.REVENUECAT_API_KEY || '' }}
-            BILLING_SANDBOX_USER_IDS=${{ vars.BILLING_SANDBOX_USER_IDS || '[]' }}
+            BILLING_SANDBOX_USER_IDS=${{ inputs.billing_sandbox_user_ids }}
             SENTRY_DSN=${{ secrets.SENTRY_DSN }}
             SENTRY_TRACES_SAMPLE_RATE=0
             SENTRY_RELEASE=${{ github.sha }}

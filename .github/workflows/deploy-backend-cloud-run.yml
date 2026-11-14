@@ -37,6 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.image.outputs.uri }}
+      billing_sandbox_user_ids: ${{ steps.billing.outputs.BILLING_SANDBOX_USER_IDS }}
 
     steps:
       - name: check out repository
@@ -67,6 +68,7 @@ jobs:
           fi
 
       - name: validate optional billing configuration
+        id: billing
         env:
           BILLING_ENABLED: ${{ vars.BILLING_ENABLED || 'false' }}
           REVENUECAT_API_KEY: ${{ secrets.REVENUECAT_API_KEY }}
@@ -82,23 +84,28 @@ jobs:
           flag = os.environ['BILLING_ENABLED']
           if flag not in ('true', 'false'):
               raise SystemExit('::error::BILLING_ENABLED must be true or false')
-          if flag == 'false':
-              raise SystemExit(0)
-          for name in ('REVENUECAT_API_KEY', 'REVENUECAT_WEBHOOK_AUTHORIZATION'):
-              if not os.environ[name].strip():
-                  raise SystemExit(f'::error::missing {name} while billing is enabled')
+          if flag == 'true':
+              for name in ('REVENUECAT_API_KEY', 'REVENUECAT_WEBHOOK_AUTHORIZATION'):
+                  if not os.environ[name].strip():
+                      raise SystemExit(f'::error::missing {name} while billing is enabled')
+          outputs = {}
           for name in ('REVENUECAT_APP_IDS', 'BILLING_SANDBOX_USER_IDS'):
               try:
-                  values = json.loads(os.environ[name])
+                  values = json.loads(os.environ[name]) if flag == 'true' else []
                   if not isinstance(values, list) or any(not isinstance(v, str) or not v.strip() for v in values):
                       raise ValueError()
-                  if name == 'REVENUECAT_APP_IDS' and not values:
+                  if name == 'REVENUECAT_APP_IDS' and flag == 'true' and not values:
                       raise ValueError()
                   if name == 'BILLING_SANDBOX_USER_IDS':
                       for value in values:
                           UUID(value)
               except (ValueError, TypeError):
                   raise SystemExit(f'::error::invalid {name}; use a JSON array of app IDs or user UUIDs')
+              # deploy-cloudrun parses commas and backslashes, not shell quotes.
+              outputs[name] = json.dumps(values, separators=(',', ':')).replace('\\', '\\\\').replace(',', '\\,')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              for name, value in outputs.items():
+                  print(f'{name}={value}', file=output)
           PY
 
       - name: authenticate to google cloud
@@ -189,8 +196,8 @@ jobs:
             REVENUECAT_API_KEY=${{ vars.BILLING_ENABLED == 'true' && secrets.REVENUECAT_API_KEY || '' }}
             REVENUECAT_WEBHOOK_AUTHORIZATION=${{ vars.BILLING_ENABLED == 'true' && secrets.REVENUECAT_WEBHOOK_AUTHORIZATION || '' }}
             REVENUECAT_WEBHOOK_SIGNING_SECRET=${{ vars.BILLING_ENABLED == 'true' && secrets.REVENUECAT_WEBHOOK_SIGNING_SECRET || '' }}
-            REVENUECAT_APP_IDS='${{ vars.BILLING_ENABLED == 'true' && vars.REVENUECAT_APP_IDS || '[]' }}'
-            BILLING_SANDBOX_USER_IDS='${{ vars.BILLING_ENABLED == 'true' && vars.BILLING_SANDBOX_USER_IDS || '[]' }}'
+            REVENUECAT_APP_IDS=${{ steps.billing.outputs.REVENUECAT_APP_IDS }}
+            BILLING_SANDBOX_USER_IDS=${{ steps.billing.outputs.BILLING_SANDBOX_USER_IDS }}
             PLANNING_ENABLED=false
           flags: >-
             --port=8000
@@ -208,4 +215,5 @@ jobs:
     uses: ./.github/workflows/deploy-planning-cloud-run.yml
     with:
       image: ${{ needs.deploy.outputs.image }}
+      billing_sandbox_user_ids: ${{ needs.deploy.outputs.billing_sandbox_user_ids }}
     secrets: inherit
