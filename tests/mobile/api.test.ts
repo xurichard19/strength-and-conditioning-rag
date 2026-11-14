@@ -542,10 +542,13 @@ test('requests use the refreshed session token and reject account switches befor
   await api.getProfile();
   assert.equal(new Headers(f.requests[0][1]?.headers).get('Authorization'), 'Bearer fresh-token');
   f.setSession({ user: { id: 'user-b' }, access_token: 'other-token' });
-  await assert.rejects(api.saveAnswers({}), /sign in again/);
+  await assert.rejects(api.saveAnswers({}), (error: unknown) => error instanceof backend.BackendError
+    && error.status === 401 && /sign in again/.test(error.message));
   assert.equal(f.requests.length, 1);
   await f.api.signOut();
   assert.equal(await f.api.getAuthSession(), null);
+  await assert.rejects(api.getBillingStatus(), (error: unknown) => error instanceof backend.BackendError && error.status === 401);
+  assert.equal(f.requests.length, 1);
 });
 
 test('native auth callback restores tokens and rejects invalid links', async () => {
@@ -736,13 +739,13 @@ test('unavailable billing and renewal checks preserve drafts, cached workouts an
     f.value.chatDraft.current = 'Unsent follow-up';
     await f.value.calendarCache.load({ getCalendarRange: async () => ({ revision: 1, workouts: [], sports_workouts: [] }) }, '2026-11-01', '2026-11-01');
     read = async () => { throw new Error('billing_unavailable'); }; await store.refresh(); await f.flush();
-    assert.equal(subscriptions.subscriptionAllowsAccess(true, 'user-a', store.getSnapshot()), false);
+    assert.equal(subscriptions.subscriptionAllowsAccess(true, 'user-a', store.getSnapshot()), true);
     assert.equal(signal.aborted, false); assert.equal(f.value.chatDraft.current, 'Unsent follow-up');
     assert.ok(f.value.calendarCache.peek('2026-11-01', '2026-11-01'));
     delta('Still running'); await f.flush(); assert.equal(f.value.chatMessages.at(-1)?.text, 'Still running');
     const renewal = deferred<BillingStatus>(); read = () => renewal.promise;
     store.invalidate('user-a'); await f.flush();
-    assert.equal(subscriptions.subscriptionAllowsAccess(true, 'user-a', store.getSnapshot()), false);
+    assert.equal(subscriptions.subscriptionAllowsAccess(true, 'user-a', store.getSnapshot()), true);
     assert.equal(signal.aborted, false); assert.equal(f.value.chatDraft.current, 'Unsent follow-up');
     renewal.resolve(paid); await f.flush();
     assert.equal(subscriptions.subscriptionAllowsAccess(true, 'user-a', store.getSnapshot()), true);

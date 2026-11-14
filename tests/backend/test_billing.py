@@ -151,6 +151,7 @@ class BillingProviderTests(unittest.TestCase):
 class BillingServiceTests(unittest.TestCase):
     def setUp(self):
         self.config = patch.object(billing, 'get_billing_settings', return_value=settings()).start()
+        self.claim = patch.object(database, 'claim_verification', return_value=record(verified_at=None)).start()
         self.addCleanup(patch.stopall)
         billing._attempts.clear()
         billing._inflight.clear()
@@ -173,10 +174,11 @@ class BillingServiceTests(unittest.TestCase):
 
     def test_fresh_cache_and_small_database_clock_skew_do_not_call_provider(self):
         for timestamp in (NOW, NOW + timedelta(seconds=15)):
-            with self.subTest(timestamp=timestamp), patch.object(database, 'get_entitlement', return_value=record(verified_at=timestamp)), \
+            with self.subTest(timestamp=timestamp), patch.object(database, 'get_entitlement', return_value=record(verified_at=timestamp)) as read, \
                  patch.object(billing, 'fetch_entitlement') as fetch:
                 self.assertTrue(billing.get_billing_status(OWNER).has_access)
                 fetch.assert_not_called()
+                read.assert_called_once()
         self.assertFalse(billing._fresh(record(verified_at=NOW + timedelta(minutes=2)), NOW))
         self.assertFalse(billing._fresh(record(verified_at=NOW - timedelta(minutes=6)), NOW))
 
@@ -238,18 +240,17 @@ class BillingServiceTests(unittest.TestCase):
         stale = record(verified_at=None)
         saved = record(sync_revision=3)
         snapshot = BillingSnapshot(active=True, expires_at=NOW + timedelta(days=20))
-        with patch.object(database, 'get_entitlement', side_effect=[stale, saved]), \
-             patch.object(database, 'invalidate_entitlements', return_value=[record(verified_at=None, sync_revision=3)]) as invalidate, \
+        with patch.object(database, 'get_entitlement', side_effect=[stale, saved, saved]), \
+             patch.object(database, 'claim_verification', return_value=record(verified_at=None, sync_revision=3)) as claim, \
              patch.object(billing, 'fetch_entitlement', return_value=snapshot) as fetch, \
              patch.object(database, 'commit_entitlement', return_value=saved) as commit:
             self.assertTrue(billing.get_billing_status(OWNER).has_access)
-        invalidate.assert_called_once_with([OWNER], 'sandbox')
-        fetch.assert_called_once_with(OWNER, 'sandbox', 'server-key')
+        claim.assert_called_once_with(OWNER, 'sandbox')
+        fetch.assert_called_once_with(OWNER, 'sandbox', 'server-key', timeout=8)
         commit.assert_called_once_with(OWNER, 'sandbox', 3, snapshot)
 
     def test_provider_failure_never_reuses_invalidated_positive_state(self):
         with patch.object(database, 'get_entitlement', return_value=record(verified_at=None)), \
-             patch.object(database, 'invalidate_entitlements', return_value=[record(verified_at=None)]), \
              patch.object(billing, 'fetch_entitlement', side_effect=revenuecat.RevenueCatError('private')), \
              patch.object(database, 'commit_entitlement') as commit, self.assertRaises(billing.BillingUnavailable):
             billing.get_billing_status(OWNER)
@@ -258,7 +259,6 @@ class BillingServiceTests(unittest.TestCase):
     def test_lost_claim_and_late_webhook_do_not_grant_stale_access(self):
         for committed in (None, record()):
             with self.subTest(committed=committed), patch.object(database, 'get_entitlement', return_value=record(verified_at=None)), \
-                 patch.object(database, 'invalidate_entitlements', return_value=[record(verified_at=None)]), \
                  patch.object(billing, 'fetch_entitlement', return_value=BillingSnapshot()), \
                  patch.object(database, 'commit_entitlement', return_value=committed), self.assertRaises(billing.BillingUnavailable):
                 billing.get_billing_status(OWNER)
@@ -266,7 +266,6 @@ class BillingServiceTests(unittest.TestCase):
     def test_lost_claim_can_use_newer_verified_canonical_state(self):
         newer = record(sync_revision=3, active=False)
         with patch.object(database, 'get_entitlement', side_effect=[record(verified_at=None), newer, newer]), \
-             patch.object(database, 'invalidate_entitlements', return_value=[record(verified_at=None)]), \
              patch.object(billing, 'fetch_entitlement', return_value=BillingSnapshot(active=True)), \
              patch.object(database, 'commit_entitlement', return_value=None):
             self.assertFalse(billing.get_billing_status(OWNER).has_access)
@@ -314,7 +313,7 @@ class BillingRouteTests(unittest.TestCase):
             self.assertEqual(self.client.post('/billing/sync').status_code, 200)
             self.assertEqual(self.client.post('/billing/sync', json={}).status_code, 200)
             self.assertEqual(verify.call_count, 2)
-            verify.assert_called_with(USER.id, force=True)
+            verify.assert_called_with(USER.id, force=True, allow_outage=True)
             for body in ({'user_id': str(SECOND)}, {'has_access': True}, {'environment': 'sandbox'}):
                 self.assertEqual(self.client.post('/billing/sync', json=body).status_code, 422)
             self.assertEqual(verify.call_count, 2)
@@ -337,7 +336,7 @@ class BillingRouteTests(unittest.TestCase):
             response = self.client.post('/billing/sync')
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()['has_access'])
-        verify.assert_called_once_with(USER.id, force=True)
+        verify.assert_called_once_with(USER.id, force=True, allow_outage=True)
         status.assert_not_called()
         activate.assert_called_once_with(USER.id,
             routes.planning_access.PlanningPermission(saved.environment, saved.sync_revision))
@@ -351,6 +350,17 @@ class BillingRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()['has_access'])
         self.assertNotIn('private', response.text)
+
+    def test_sync_outage_access_does_not_activate_planning(self):
+        saved = record(verified_at=None, outage_access_until=NOW + timedelta(hours=1),
+            verification_retry_at=NOW + timedelta(seconds=60))
+        with patch.object(billing, 'get_verified_entitlement', return_value=saved), \
+             patch.object(routes.planning_access, 'after_verification') as activate:
+            response = self.client.post('/billing/sync')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['has_access'])
+        self.assertIsNone(response.json()['verified_at'])
+        activate.assert_not_called()
 
     def test_disabled_sync_preserves_legacy_access_without_activation(self):
         with patch.object(billing, 'get_verified_entitlement', return_value=None), \
@@ -488,3 +498,17 @@ class BillingDatabaseConfigurationTests(unittest.TestCase):
             revenuecat_app_ids=['app_test'], revenuecat_webhook_signing_secret='')
         self.assertIsNone(configured.revenuecat_webhook_signing_secret)
         self.assertEqual(configured.revenuecat_app_ids, ['app_test'])
+
+    def test_claim_and_defer_use_scoped_server_only_rpc_parameters(self):
+        expected = {'p_user_id': str(OWNER), 'p_environment': 'sandbox', 'p_entitlement_key': 'arcel_pro'}
+        with patch.object(database, 'call_rpc', return_value=[record().model_dump(mode='json')]) as rpc:
+            self.assertEqual(database.claim_verification(OWNER, 'sandbox'), record())
+            rpc.assert_called_once_with('claim_billing_verification', expected, None)
+        with patch.object(database, 'call_rpc', return_value=[]) as rpc:
+            self.assertIsNone(database.defer_verification(OWNER, 'sandbox', 2))
+            rpc.assert_called_once_with('defer_billing_verification', expected | {'p_expected_revision': 2}, None)
+        for operation, args in ((database.claim_verification, (OWNER, 'sandbox')),
+                (database.defer_verification, (OWNER, 'sandbox', 2))):
+            with self.subTest(operation=operation.__name__), patch.object(database, 'call_rpc',
+                    return_value=[record().model_dump(mode='json')] * 2), self.assertRaises(SupabaseDataError):
+                operation(*args)

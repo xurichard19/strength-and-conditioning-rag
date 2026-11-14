@@ -13,6 +13,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ChatLauncher from '@/components/chat-launcher';
 import { GlassProvider } from '@/components/glass-surface';
+import { SubscriptionNotice } from '@/components/subscription-notice';
 import { AppText, PrimaryButton, SecondaryButton } from '@/components/ui';
 
 import { AppProvider, useApp } from '@/state/app-context';
@@ -54,23 +55,26 @@ function Navigation() {
     <ThemeProvider value={theme}>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
       <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="auth" options={{ gestureEnabled: false }} />
-          <Stack.Screen name="reset-password" options={{ gestureEnabled: false }} />
-          <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-          <Stack.Screen name="paywall" options={{ gestureEnabled: false }} />
-          <Stack.Protected guard={paidScreensAvailable}>
-            <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
-            <Stack.Screen name="session/[id]" />
-            <Stack.Screen name="sports-workout" />
-            <Stack.Screen name="workout/[id]" options={{ gestureEnabled: false }} />
-            <Stack.Screen name="chat" options={{ presentation: 'transparentModal', animation: 'fade', gestureEnabled: false, contentStyle: { backgroundColor: 'transparent' } }} />
-          </Stack.Protected>
-          {/* Customer Center presents from the root controller; keep Account out of a native modal. */}
-          <Stack.Screen name="account" options={{ presentation: 'card' }} />
-        </Stack>
-        {paidScreensAvailable ? <ChatLauncher /> : null}
+        <View style={{ flex: 1 }}>
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="auth" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="reset-password" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="paywall" options={{ gestureEnabled: false }} />
+            <Stack.Protected guard={paidScreensAvailable}>
+              <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
+              <Stack.Screen name="session/[id]" />
+              <Stack.Screen name="sports-workout" />
+              <Stack.Screen name="workout/[id]" options={{ gestureEnabled: false }} />
+              <Stack.Screen name="chat" options={{ presentation: 'transparentModal', animation: 'fade', gestureEnabled: false, contentStyle: { backgroundColor: 'transparent' } }} />
+            </Stack.Protected>
+            {/* Customer Center presents from the root controller; keep Account out of a native modal. */}
+            <Stack.Screen name="account" options={{ presentation: 'card' }} />
+          </Stack>
+          {paidScreensAvailable ? <ChatLauncher /> : null}
+        </View>
+        {paidScreensAvailable ? <SubscriptionNotice /> : null}
       </GestureHandlerRootView>
     </ThemeProvider>
   );

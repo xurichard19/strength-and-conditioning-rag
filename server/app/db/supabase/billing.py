@@ -19,7 +19,7 @@ def get_entitlement(user_id: str | UUID, environment: BillingEnvironment) -> Bil
 
     - **user_id**: verified owner; never an arbitrary mobile request value
     - **environment**: server-selected store environment
-    - **returns**: saved projection or none; null verification never authorizes access
+    - **returns**: saved projection or none; the billing service evaluates freshness/outage eligibility
     """
 
     rows = select_rows("billing_entitlements", [("select", "*"), ("user_id", f"eq.{identifier(user_id)}"),
@@ -44,6 +44,28 @@ def invalidate_entitlements(user_ids: list[UUID], environment: BillingEnvironmen
     }, None))
 
 
+def claim_verification(user_id: UUID, environment: BillingEnvironment) -> BillingEntitlementRecord | None:
+    """Start a refresh without discarding the previous paid outage allowance."""
+    rows = _records(call_rpc("claim_billing_verification", {
+        "p_user_id": identifier(user_id), "p_environment": environment, "p_entitlement_key": "arcel_pro",
+    }, None))
+    if len(rows) > 1:
+        raise SupabaseDataError("invalid billing response")
+    return rows[0] if rows else None
+
+
+def defer_verification(user_id: UUID, environment: BillingEnvironment,
+                       expected_revision: int) -> BillingEntitlementRecord | None:
+    """Record a temporary failure only while its verification claim is current."""
+    rows = _records(call_rpc("defer_billing_verification", {
+        "p_user_id": identifier(user_id), "p_environment": environment,
+        "p_entitlement_key": "arcel_pro", "p_expected_revision": expected_revision,
+    }, None))
+    if len(rows) > 1:
+        raise SupabaseDataError("invalid billing response")
+    return rows[0] if rows else None
+
+
 def commit_entitlement(user_id: UUID, environment: BillingEnvironment, expected_revision: int,
                        snapshot: BillingSnapshot) -> BillingEntitlementRecord | None:
     """
@@ -51,7 +73,7 @@ def commit_entitlement(user_id: UUID, environment: BillingEnvironment, expected_
 
     - **user_id**: verified account being synchronized
     - **environment**: server-selected partition
-    - **expected_revision**: revision returned by invalidation before the provider call
+    - **expected_revision**: revision returned by the claim before the provider call
     - **snapshot**: normalized provider response; never supplied by the mobile client
     - **returns**: saved record or none if another fetch/webhook invalidated this claim
     """

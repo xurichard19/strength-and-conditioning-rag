@@ -14,6 +14,7 @@ const backend = load<typeof import('../../mobile/src/services/backend')>('servic
 const status = (has_access = false): BillingStatus => ({ enabled: true, has_access, entitlement: 'arcel_pro',
   phase: has_access ? 'paid' : 'inactive', product_id: has_access ? 'annual' : null,
   expires_at: has_access ? '2099-01-01T00:00:00Z' : null, will_renew: has_access, verified_at: '2026-09-19T00:00:00Z' });
+const billingOff = (): BillingStatus => ({ ...status(), enabled: false, has_access: true, will_renew: null, verified_at: null });
 const info = (active = false) => ({ entitlements: { active: active ? { arcel_pro: { isActive: true } } : {} } }) as CustomerInfo;
 const offering = { monthly: {}, annual: {} } as PurchasesOffering;
 const flush = async () => { for (let i = 0; i < 12; i++) await new Promise(resolve => setImmediate(resolve)); };
@@ -66,7 +67,7 @@ test('disabled billing performs no SDK or backend calls and preserves existing d
   }
 });
 
-test('enabled gate rejects unknown, failed, other-account, expired and inactive states', async () => {
+test('enabled gate rejects unknown and other-account access, but trusts server time for a paid grant', async () => {
   const f = fixture();
   assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
   f.store.setUser('a'); await flush();
@@ -75,10 +76,74 @@ test('enabled gate rejects unknown, failed, other-account, expired and inactive 
   assert.equal(logic.subscriptionDestination(true, 'a', f.store.getSnapshot(), '/chat'), '/chat');
   assert.equal(logic.subscriptionAllowsAccess(true, 'b', f.store.getSnapshot()), false);
   f.setStatus({ ...status(true), expires_at: '2000-01-01T00:00:00Z' }); await f.store.refresh();
-  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
+  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), true);
   f.setRead(async () => { throw new Error('offline'); }); await f.store.refresh();
-  assert.equal(f.store.getSnapshot().status, null);
+  assert.equal(f.store.getSnapshot().status?.has_access, true);
+  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), true);
   assert.match(f.store.getSnapshot().error!, /Could not verify/);
+});
+
+test('network, timeout, rate-limit and service failures preserve a previously paid screen until recovery', async () => {
+  for (const failure of [new Error('offline'), new Error('timeout'), new backend.BackendError(408, 'timeout'),
+    new backend.BackendError(429, 'busy'), new backend.BackendError(503, 'billing_unavailable')]) {
+    const f = fixture(); f.setStatus(status(true)); f.store.setUser('a'); await flush();
+    f.setRead(async () => { throw failure; }); await f.store.refresh();
+    assert.equal(logic.subscriptionDestination(true, 'a', f.store.getSnapshot()), '/(tabs)/today');
+    assert.match(f.store.getSnapshot().error!, /Could not verify/);
+    assert.deepEqual(f.lostAccess, []);
+    const retry = deferred<BillingStatus>(); f.setRead(() => retry.promise);
+    const retrying = f.store.refresh();
+    assert.equal(f.store.getSnapshot().loading, true);
+    assert.ok(f.store.getSnapshot().error, 'keep the warning visible while retrying');
+    retry.resolve(status(true)); await retrying;
+    assert.equal(f.store.getSnapshot().error, null);
+  }
+});
+
+test('SDK and unpaid statuses cannot become an outage grant', async () => {
+  for (const previous of [null, status()]) {
+    const f = fixture({ customerInfo: async () => info(true) });
+    if (previous) f.setStatus(previous);
+    else f.setRead(async () => { throw new Error('offline'); });
+    f.store.setUser('a'); await flush();
+    f.setRead(async () => { throw new backend.BackendError(503, 'billing_unavailable'); });
+    await f.store.refresh();
+    assert.equal(f.store.getSnapshot().status, null);
+    assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
+  }
+});
+
+test('backend billing-off access survives failed refresh and soft invalidation until confirmed denial', async () => {
+  const granted = billingOff();
+  const f = fixture(); f.setStatus(granted); f.store.setUser('a'); await flush();
+  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), true);
+  for (const failure of [new Error('offline'), new backend.BackendError(503, 'unavailable')]) {
+    f.setRead(async () => { throw failure; }); await f.store.refresh();
+    assert.equal(f.store.getSnapshot().status, granted);
+    assert.equal(logic.subscriptionDestination(true, 'a', f.store.getSnapshot()), '/(tabs)/today');
+    assert.ok(f.store.getSnapshot().error);
+    assert.deepEqual(f.lostAccess, []);
+  }
+  const retry = deferred<BillingStatus>(); f.setRead(() => retry.promise);
+  f.store.invalidate('a');
+  assert.equal(f.store.getSnapshot().status, granted);
+  assert.ok(f.store.getSnapshot().error, 'the retry warning stays visible while checking');
+  retry.resolve(granted); await flush();
+  assert.equal(f.store.getSnapshot().error, null);
+  f.setRead(async () => status()); await f.store.refresh();
+  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
+  assert.deepEqual(f.lostAccess, ['a']);
+});
+
+for (const granted of [status(true), billingOff()]) test(`authentication and non-transient errors clear the server grant (billing ${granted.enabled ? 'on' : 'off'})`, async () => {
+  for (const httpStatus of [400, 401, 403]) {
+    const f = fixture(); f.setStatus(granted); f.store.setUser('a'); await flush();
+    f.setRead(async () => { throw new backend.BackendError(httpStatus, 'request rejected'); });
+    await f.store.refresh();
+    assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
+    if (httpStatus === 401) assert.match(f.store.getSnapshot().error!, /session.*sign in again/);
+    assert.deepEqual(f.lostAccess, [], 'a generic HTTP error is not an exact subscription-required denial');
+  }
 });
 
 test('backend status is authoritative even when the SDK has no active entitlement', async () => {
@@ -103,34 +168,37 @@ test('only confirmed access loss clears protected memory; verification failures 
   f.store.deny('a'); assert.deepEqual(f.lostAccess, ['a', 'a']);
   await flush();
   f.setRead(async () => { throw new Error('offline'); }); await f.store.refresh();
-  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
+  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), true);
   assert.deepEqual(f.lostAccess, ['a', 'a']);
   f.setRead(async () => status()); await f.store.refresh();
   assert.deepEqual(f.lostAccess, ['a', 'a', 'a']);
   await f.store.refresh(); assert.deepEqual(f.lostAccess, ['a', 'a', 'a']);
 });
 
-test('expiry re-verification blocks access without clearing data before a renewal result', async () => {
+test('expiry re-verification keeps the paid screen until the server confirms renewal or denial', async () => {
   const f = fixture(); f.setStatus(status(true)); f.store.setUser('a'); await flush();
   const read = deferred<BillingStatus>(); f.setRead(() => read.promise);
   f.store.invalidate('a');
-  assert.equal(f.store.getSnapshot().status, null);
-  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
+  assert.equal(f.store.getSnapshot().status?.has_access, true);
+  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), true);
   assert.deepEqual(f.lostAccess, []);
   read.resolve(status(true)); await flush();
   assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), true);
   assert.deepEqual(f.lostAccess, []);
+  f.setRead(async () => status()); f.store.invalidate('a'); await flush();
+  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
+  assert.deepEqual(f.lostAccess, ['a']);
 });
 
-test('exact API denial clears once even after unavailable verification and fences an older grant', async () => {
-  const f = fixture(); f.setStatus(status(true)); f.store.setUser('a'); await flush();
+for (const granted of [status(true), billingOff()]) test(`exact API denial clears once after an outage and fences an older grant (billing ${granted.enabled ? 'on' : 'off'})`, async () => {
+  const f = fixture(); f.setStatus(granted); f.store.setUser('a'); await flush();
   f.setRead(async () => { throw new Error('billing_unavailable'); }); await f.store.refresh();
   assert.deepEqual(f.lostAccess, []);
   const old = deferred<BillingStatus>(); let reads = 0;
   f.setRead(() => ++reads === 1 ? old.promise : Promise.resolve(status()));
   const refreshing = f.store.refresh(); f.store.deny('a'); await flush();
   assert.deepEqual(f.lostAccess, ['a']);
-  old.resolve(status(true)); await refreshing;
+  old.resolve(granted); await refreshing;
   assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
   f.store.deny('a'); await flush(); assert.deepEqual(f.lostAccess, ['a']);
 });
@@ -167,6 +235,21 @@ test('late account reads and failures cannot overwrite the next account or logou
     assert.equal(f.store.getSnapshot().error, null);
     f.store.setUser(null);
     assert.equal(logic.subscriptionAllowsAccess(true, null, f.store.getSnapshot()), false);
+  }
+});
+
+for (const granted of [status(true), billingOff()]) test(`account change and signout discard an outage grant and fence older responses (billing ${granted.enabled ? 'on' : 'off'})`, async () => {
+  for (const nextUser of ['b', null]) {
+    const f = fixture(); f.setStatus(granted); f.store.setUser('a'); await flush();
+    f.setRead(async () => { throw new Error('offline'); }); await f.store.refresh();
+    assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), true);
+    const old = deferred<BillingStatus>();
+    f.setRead(id => id === 'a' ? old.promise : Promise.reject(new Error('offline')));
+    const refreshing = f.store.refresh(); f.store.setUser(nextUser); await flush();
+    assert.equal(logic.subscriptionAllowsAccess(true, nextUser, f.store.getSnapshot()), false);
+    old.resolve(granted); await refreshing;
+    assert.equal(f.store.getSnapshot().owner, nextUser);
+    assert.equal(f.store.getSnapshot().status, null);
   }
 });
 
@@ -223,7 +306,9 @@ test('purchase, restore, and management sync timeouts clear busy and recover wit
     http.expire(); await pending;
     const failed = f.store.getSnapshot();
     assert.equal(failed.busy, null); assert.equal(failed.loading, false);
-    assert.equal(failed.status, null); assert.equal(failed.confirming, kind !== 'manage');
+    assert.equal(failed.status?.has_access ?? false, kind !== 'purchase');
+    assert.equal(logic.subscriptionAllowsAccess(true, 'a', failed), kind !== 'purchase');
+    assert.equal(failed.confirming, kind !== 'manage');
     assert.match(failed.error!, kind === 'purchase' ? /purchase is confirmed/
       : kind === 'restore' ? /was restored/ : /Could not verify/);
     assert.deepEqual(f.lostAccess, []);
@@ -356,11 +441,11 @@ test('trial and grace discovered after an unavailable purchase check replace the
   }
 });
 
-test('Customer Center verification failure blocks access without revoking memory; presentation failure does not invent access', async () => {
+test('Customer Center verification failure keeps paid access; presentation failure does not invent access', async () => {
   const f = fixture(); f.setStatus(status(true)); f.store.setUser('a'); await flush();
   f.setSync(async () => { throw new Error('503'); }); await f.store.manage();
-  assert.equal(f.store.getSnapshot().status, null);
-  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), false);
+  assert.equal(f.store.getSnapshot().status?.has_access, true);
+  assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), true);
   assert.deepEqual(f.lostAccess, []);
   f.setSync(async () => status()); await f.store.manage(); assert.deepEqual(f.lostAccess, ['a']);
   const unavailable = fixture({ manage: async () => { throw new Error('Use a development build'); } });
@@ -538,4 +623,13 @@ test('account and paywall describe denied trial/grace without active-access prom
   const unknown = subscriptionScreen('paywall', { status: null, error: 'Could not verify your subscription.' });
   assert.equal(unknown.calls.length, 0); assert.equal(unknown.button('Choose a plan')?.props.disabled, true);
   assert.ok(unknown.button('Retry subscription check'));
+});
+
+test('the purchase sheet only auto-opens for an explicit backend denial, never a clock-based or unknown state', () => {
+  for (const billing of [null, { ...status(true), expires_at: '2000-01-01T00:00:00Z' }]) {
+    const f = subscriptionScreen('paywall', { status: billing });
+    assert.equal(f.calls.includes('purchase'), false);
+  }
+  const denied = subscriptionScreen('paywall', { status: status() });
+  assert.deepEqual(denied.calls, ['purchase']);
 });

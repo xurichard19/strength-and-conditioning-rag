@@ -137,6 +137,7 @@ test('chat opens above the current page with one global launcher and requires pa
     'expo-splash-screen': { preventAutoHideAsync: () => {} }, 'expo-status-bar': { StatusBar: 'status' },
     '@/components/chat-launcher': { default: 'launcher', __esModule: true },
     '@/components/glass-surface': { GlassProvider: 'glass-provider' },
+    '@/components/subscription-notice': { SubscriptionNotice: 'subscription-notice' },
     '@/components/ui': {}, '@/state/app-context': { AppProvider: 'provider', useApp: () => app },
     'react-native-gesture-handler': { GestureHandlerRootView: 'gesture-root' },
     '@/state/subscription-context': { SubscriptionProvider: 'subscription-provider', useSubscription: () => subscription },

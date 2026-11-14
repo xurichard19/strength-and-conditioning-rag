@@ -8,7 +8,7 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { AppState, Platform } from 'react-native';
 
-import { createBackend, deviceTimezone } from './backend';
+import { BackendError, createBackend, deviceTimezone } from './backend';
 export type { Answers, SavedMessage } from './backend';
 export { deviceTimezone, profileFromApi, surveyAnswers } from './backend';
 
@@ -146,7 +146,7 @@ export function backendFor(userId: string) {
   return createBackend(async (path, options = {}) => {
     if (!apiBaseUrl) throw new Error('The API is not configured.');
     const session = await getAuthSession();
-    if (!session || session.user.id !== userId) throw new Error('Please sign in again.');
+    if (!session || session.user.id !== userId) throw new BackendError(401, 'Please sign in again.');
     const headers = new Headers(options.headers);
     headers.set('Authorization', `Bearer ${session.access_token}`);
     if (!headers.has('Accept')) headers.set('Accept', 'application/json');

@@ -46,6 +46,8 @@ class BillingEntitlementRecord(BillingSnapshot):
     environment: BillingEnvironment
     entitlement_key: Literal["arcel_pro"] = "arcel_pro"
     verified_at: AwareDatetime | None = None
+    outage_access_until: AwareDatetime | None = None
+    verification_retry_at: AwareDatetime | None = None
     sync_revision: int = Field(ge=0)
     updated_at: AwareDatetime
 

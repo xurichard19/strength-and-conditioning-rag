@@ -12,11 +12,13 @@ from app.config import get_billing_settings
 from app.contracts import BillingAccessDecision, BillingEntitlementRecord, BillingEnvironment
 from app.db.supabase import billing
 from app.db.supabase.transport import SupabaseDataError
-from app.integrations.revenuecat import RevenueCatError, fetch_entitlement
+from app.integrations.revenuecat import RevenueCatError, RevenueCatUnavailable, fetch_entitlement
 
 
 logger = logging.getLogger(__name__)
 FRESHNESS = timedelta(minutes=5)
+VERIFICATION_BUDGET_SECONDS = 10
+VERIFICATION_POLL_SECONDS = 0.25
 _lock = Lock()
 _inflight: dict[tuple[UUID, str], Future] = {}
 _attempts: OrderedDict[tuple[UUID, str], list[float]] = OrderedDict()
@@ -46,6 +48,25 @@ def _fresh(record: BillingEntitlementRecord | None, now: datetime) -> bool:
     return record is not None and record.verified_at is not None and -timedelta(seconds=30) <= now - record.verified_at <= FRESHNESS
 
 
+def has_fresh_verification(record: BillingEntitlementRecord | None, now: datetime | None = None) -> bool:
+    """Fresh verification cannot cover a paid expiry crossed since that check."""
+    now = now or datetime.now(UTC)
+    return _fresh(record, now) and not (record.active and record.expires_at is not None
+        and record.verified_at < record.expires_at <= now)
+
+
+def _outage_allowed(record: BillingEntitlementRecord | None, now: datetime) -> bool:
+    # SQL fixes this deadline at paid verification + 24h, capped by paid expiry.
+    # The retry marker proves a temporary failure; webhook invalidation clears both.
+    return (record is not None and record.verification_retry_at is not None
+        and record.outage_access_until is not None and now < record.outage_access_until
+        and billing_access(record, now).has_access)
+
+
+def _retry_pending(record: BillingEntitlementRecord | None, now: datetime) -> bool:
+    return record is not None and record.verification_retry_at is not None and now < record.verification_retry_at
+
+
 def billing_access(record: BillingEntitlementRecord, now: datetime | None = None) -> BillingAccessDecision:
     """Grant only a verified paid period; retain trial/grace phases for account messaging."""
 
@@ -66,21 +87,36 @@ def billing_access(record: BillingEntitlementRecord, now: datetime | None = None
 
 
 def _verify(user_id: UUID, environment: BillingEnvironment) -> BillingEntitlementRecord:
-    """claim a revision, fetch provider state, and reject superseded verification results"""
+    """Verify once, or wait for the newer claim that superseded this request."""
 
-    claims = billing.invalidate_entitlements([user_id], environment)
-    if len(claims) != 1:
-        raise BillingUnavailable()
     key = get_billing_settings().revenuecat_api_key
     if key is None:
         raise BillingUnavailable()
-    snapshot = fetch_entitlement(user_id, environment, key.get_secret_value())
-    saved = billing.commit_entitlement(user_id, environment, claims[0].sync_revision, snapshot)
-    if saved is None:
-        saved = billing.get_entitlement(user_id, environment)
-        if not _fresh(saved, datetime.now(UTC)):
+    deadline = time.monotonic() + VERIFICATION_BUDGET_SECONDS
+    claim = billing.claim_verification(user_id, environment)
+    remaining = deadline - time.monotonic()
+    if claim is None or remaining <= 0:
+        raise BillingUnavailable()
+    try:
+        snapshot = fetch_entitlement(user_id, environment, key.get_secret_value(), timeout=min(8, remaining))
+    except RevenueCatUnavailable:
+        billing.defer_verification(user_id, environment, claim.sync_revision)
+    else:
+        billing.commit_entitlement(user_id, environment, claim.sync_revision, snapshot)
+    while True:
+        if time.monotonic() >= deadline:
             raise BillingUnavailable()
-    return saved
+        current = billing.get_entitlement(user_id, environment)
+        if current is None:
+            raise BillingUnavailable()
+        if has_fresh_verification(current) or _retry_pending(current, datetime.now(UTC)):
+            return current
+        remaining = deadline - time.monotonic()
+        if current.sync_revision <= claim.sync_revision or remaining <= 0:
+            raise BillingUnavailable()
+        # Reclaiming here would invalidate another server's in-flight verification.
+        # A webhook or abandoned claim may never complete; the original deadline still applies.
+        time.sleep(min(VERIFICATION_POLL_SECONDS, remaining))
 
 
 def _coalesced_verify(user_id: UUID, environment: BillingEnvironment) -> BillingEntitlementRecord:
@@ -104,7 +140,7 @@ def _coalesced_verify(user_id: UUID, environment: BillingEnvironment) -> Billing
         else:
             owner = False
     if not owner:
-        return pending.result(timeout=45)
+        return pending.result(timeout=12)
     try:
         result = _verify(user_id, environment)
         pending.set_result(result)
@@ -117,13 +153,15 @@ def _coalesced_verify(user_id: UUID, environment: BillingEnvironment) -> Billing
             _inflight.pop(identity, None)
 
 
-def get_verified_entitlement(user_id: str | UUID, *, force: bool = False) -> BillingEntitlementRecord | None:
+def get_verified_entitlement(user_id: str | UUID, *, force: bool = False,
+                             allow_outage: bool = False) -> BillingEntitlementRecord | None:
     """
-    read a fresh canonical record and revision, or none when billing is disabled
+    read a canonical authorization record, or none when billing is disabled
 
     - **user_id**: identity already verified by supabase auth
     - **force**: request a bounded refresh after purchase/restore; no client claims are trusted
-    - **returns**: verified record, including inactive state; disabled billing avoids all provider/database calls
+    - **allow_outage**: ordinary requests may reuse bounded paid access; planning requires fresh verification
+    - **returns**: authorized verification source, including fresh inactive state
     """
 
     if not billing_enabled():
@@ -133,16 +171,21 @@ def get_verified_entitlement(user_id: str | UUID, *, force: bool = False) -> Bil
     try:
         record = billing.get_entitlement(owner, environment)
         now = datetime.now(UTC)
-        expired = (record is not None and record.active and record.expires_at is not None
-            and record.verified_at is not None and record.verified_at < record.expires_at <= now)
-        if force or not _fresh(record, now) or expired:
-            record = _coalesced_verify(owner, environment)
-        # Re-read after coalescing so a webhook delivered during a provider call cannot be hidden.
-        current = billing.get_entitlement(owner, environment)
-        if current is None or current.sync_revision != record.sync_revision or not _fresh(current, datetime.now(UTC)):
-            raise BillingUnavailable()
-        billing_access(current)  # Reject malformed historical rows before returning an authorization proof.
-        return current
+        if not force and has_fresh_verification(record, now):
+            billing_access(record, now)
+            return record
+        # Explicit purchase/restore sync can retry now; ordinary requests share a persisted cooldown.
+        if force or not _retry_pending(record, now):
+            verified = _coalesced_verify(owner, environment)
+            # Re-read after coalescing so a later webhook cannot be hidden from a waiter.
+            record = billing.get_entitlement(owner, environment)
+            if record is None or record.sync_revision < verified.sync_revision:
+                raise BillingUnavailable()
+        now = datetime.now(UTC)
+        if has_fresh_verification(record, now) or allow_outage and _outage_allowed(record, now):
+            billing_access(record, now)
+            return record
+        raise BillingUnavailable()
     except (SupabaseDataError, RevenueCatError, ValidationError, OSError, ValueError) as exc:
         logger.warning("billing verification unavailable error_type=%s", type(exc).__name__)
         raise BillingUnavailable() from exc
@@ -151,7 +194,7 @@ def get_verified_entitlement(user_id: str | UUID, *, force: bool = False) -> Bil
 def get_billing_status(user_id: str | UUID, *, force: bool = False) -> BillingAccessDecision:
     """Return the shared paid-only decision for an authenticated account."""
 
-    record = get_verified_entitlement(user_id, force=force)
+    record = get_verified_entitlement(user_id, force=force, allow_outage=True)
     return billing_access(record) if record is not None else BillingAccessDecision(enabled=False, has_access=True)
 
 

@@ -19,6 +19,10 @@ class RevenueCatError(Exception):
     """provider state could not be verified; callers must not infer inactive access"""
 
 
+class RevenueCatUnavailable(RevenueCatError):
+    """Temporary provider failure; a previous paid verification may cover this outage."""
+
+
 def _date(value: object) -> datetime | None:
     """parse an optional provider timestamp and reject missing timezone information"""
 
@@ -102,7 +106,7 @@ def normalize_subscriber(payload: object, environment: BillingEnvironment, now: 
         active=active, expires_at=expires_at, grace_expires_at=grace, will_renew=will_renew)
 
 
-def fetch_entitlement(user_id: UUID, environment: BillingEnvironment, api_key: str) -> BillingSnapshot:
+def fetch_entitlement(user_id: UUID, environment: BillingEnvironment, api_key: str, *, timeout: float = 8) -> BillingSnapshot:
     """
     verify subscription status with a bounded server-to-server request
 
@@ -115,13 +119,18 @@ def fetch_entitlement(user_id: UUID, environment: BillingEnvironment, api_key: s
     request = Request(f"https://api.revenuecat.com/v1/subscribers/{quote(str(user_id), safe='')}",
         headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"})
     try:
-        with urlopen(request, timeout=8) as response:
+        with urlopen(request, timeout=timeout) as response:
             body = response.read(MAX_RESPONSE_BYTES + 1)
         if len(body) > MAX_RESPONSE_BYTES:
             raise RevenueCatError("provider response too large")
         payload = json.loads(body)
-    except (HTTPError, OSError, HTTPProtocolError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RevenueCatError("provider unavailable") from exc
+    except HTTPError as exc:
+        error = RevenueCatUnavailable if exc.code == 429 or 500 <= exc.code < 600 else RevenueCatError
+        raise error("provider request failed") from exc
+    except (OSError, HTTPProtocolError) as exc:
+        raise RevenueCatUnavailable("provider unavailable") from exc
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RevenueCatError("invalid provider response") from exc
     return normalize_subscriber(payload, environment, datetime.now(UTC))
 
 

@@ -22,7 +22,7 @@ export default function PaywallScreen() {
       router.replace(subscription.destination);
       return;
     }
-    if (!recovery && subscription.status && !subscription.loading && !subscription.busy && !subscription.error
+    if (!recovery && subscription.status?.has_access === false && !subscription.loading && !subscription.busy && !subscription.error
       && !subscription.message && attempted.current !== authSession!.user.id) {
       attempted.current = authSession!.user.id;
       void subscription.purchase();

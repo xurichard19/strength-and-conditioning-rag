@@ -31,13 +31,13 @@ def sync_status(background: BackgroundTasks, payload: RequestModel | None = None
     """verify this account after purchase/restore; accepts no client entitlement claims"""
 
     try:
-        record = billing.get_verified_entitlement(user.id, force=True)
+        record = billing.get_verified_entitlement(user.id, force=True, allow_outage=True)
         if record is None:
             return BillingStatusResponse(enabled=False, has_access=True)
         status = BillingStatusResponse.model_validate(billing.billing_access(record))
     except billing.BillingUnavailable as exc:
         raise HTTPException(503, "billing_unavailable", headers=PRIVATE_HEADERS) from exc
-    if status.has_access:
+    if status.has_access and billing.has_fresh_verification(record):
         # The entitlement commit has already persisted any needed planning wake.
         # Immediate activation is optional and reuses that same verified revision.
         background.add_task(planning_access.after_verification, user.id,

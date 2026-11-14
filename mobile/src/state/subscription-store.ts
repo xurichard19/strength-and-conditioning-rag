@@ -19,10 +19,14 @@ const message = (error: unknown, fallback: string) => error && typeof error === 
 
 /** Access always comes from the server and belongs to one authenticated account. */
 export function subscriptionAllowsAccess(enabled: boolean, userId: string | null, state: SubscriptionState) {
-  const status = state.status;
-  const expired = status?.enabled && status.expires_at && Date.parse(status.expires_at) <= Date.now();
-  return !enabled || Boolean(userId && state.owner === userId && status?.has_access && !state.error && !expired);
+  return !enabled || Boolean(userId && state.owner === userId && state.status?.has_access);
 }
+
+const grantedStatus = (status: BillingStatus | null) => status?.has_access === true;
+const errorStatus = (error: unknown) => error && typeof error === 'object' && 'status' in error
+  && typeof error.status === 'number' ? error.status : undefined;
+const temporaryFailure = (status: number | undefined) => status === undefined || status === 0
+  || status === 408 || status === 429 || status >= 500 && status < 600;
 
 /** A known non-paid period needs subscription management, not another purchase or sync loop. */
 export function subscriptionRecoveryMessage(status: BillingStatus | null) {
@@ -50,7 +54,7 @@ export function purchaseError(error: unknown) {
   };
 }
 
-/** Resolve existing destinations without letting a loading or failed check unlock the app. */
+/** Unknown accounts stay blocked; a temporary check failure preserves server-granted access. */
 export function subscriptionDestination(enabled: boolean, userId: string | null,
   state: SubscriptionState, destination: SubscriptionDestination = '/(tabs)/today') {
   return subscriptionAllowsAccess(enabled, userId, state) ? destination : '/paywall';
@@ -98,13 +102,23 @@ export function createSubscriptionStore(options: {
     if (state.owner === userId) initializedUser = userId;
   };
 
-  /** Failed verification blocks access while preserving private memory until a confirmed denial. */
+  const verificationFailed = (error: unknown) => {
+    const status = errorStatus(error);
+    restoredAccess = false;
+    // Keep the server's grant, including staged rollouts with backend billing off; never trust SDK data.
+    publish({ status: grantedStatus(state.status) && temporaryFailure(status) ? state.status : null,
+      loading: false, message: null, confirming: pendingSync,
+      error: status === 401 ? 'Your session could not be verified. Please sign in again.'
+        : pendingSync ? confirmationMessage : 'Could not verify your subscription. Please try again.' });
+  };
+
+  /** Keep an existing screen during outages; the backend still authorizes every request. */
   const refresh = async (sync = false): Promise<void> => {
     const userId = state.owner;
     if (!options.enabled || !userId || state.busy) return;
     const epoch = generation; const ticket = ++request;
     const current = () => generation === epoch && request === ticket;
-    publish({ loading: true, error: null });
+    publish({ loading: true, error: grantedStatus(state.status) ? state.error : null });
     try {
       const api = options.api(userId);
       const status = await (sync || pendingSync ? api.syncBilling() : api.getBillingStatus());
@@ -114,13 +128,8 @@ export function createSubscriptionStore(options: {
         try { await identify(userId); }
         catch (error) { if (current()) publish({ message: message(error, 'Could not connect to the App Store. Please try again.') }); }
       }
-    } catch {
-      if (current()) {
-        restoredAccess = false;
-        publish({ status: null, loading: false, message: null,
-          error: pendingSync ? confirmationMessage
-            : 'Could not verify your subscription. Please try again.' });
-      }
+    } catch (error) {
+      if (current()) verificationFailed(error);
     }
   };
 
@@ -173,8 +182,7 @@ export function createSubscriptionStore(options: {
       const failure = purchaseError(error);
       if (failure.cancelled) return;
       if (verifying) {
-        publish({ status: null, loading: false, confirming: pendingSync,
-          error: pendingSync ? confirmationMessage : 'Could not verify your subscription. Please try again.' });
+        verificationFailed(error);
       } else if (failure.pending) {
         pendingSync = true; confirmationMessage = failure.message;
         publish({ loading: false, confirming: true, message: failure.message });
@@ -192,7 +200,7 @@ export function createSubscriptionStore(options: {
     if (!options.enabled || state.owner !== userId) return;
     ++request;
     restoredAccess = false;
-    publish({ status: null, error: null, message: null });
+    publish({ status: grantedStatus(state.status) ? state.status : null, message: null });
     if (state.busy) { refreshQueued = true; return; }
     void refresh();
   };
@@ -219,6 +227,7 @@ export function createSubscriptionStore(options: {
     deny(userId: string) {
       if (!options.enabled || state.owner !== userId) return;
       revoke();
+      publish({ status: null, error: null });
       invalidate(userId);
     },
     sdkChanged() {
