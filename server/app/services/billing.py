@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 FRESHNESS = timedelta(minutes=5)
 VERIFICATION_BUDGET_SECONDS = 10
 VERIFICATION_POLL_SECONDS = 0.25
+SUPERSEDED_WAIT_SECONDS = 2
 _lock = Lock()
 _inflight: dict[tuple[UUID, str], Future] = {}
 _attempts: OrderedDict[tuple[UUID, str], list[float]] = OrderedDict()
@@ -87,36 +88,46 @@ def billing_access(record: BillingEntitlementRecord, now: datetime | None = None
 
 
 def _verify(user_id: UUID, environment: BillingEnvironment) -> BillingEntitlementRecord:
-    """Verify once, or wait for the newer claim that superseded this request."""
+    """Verify, wait briefly for a newer claim, then re-claim once if it produced no result."""
 
     key = get_billing_settings().revenuecat_api_key
     if key is None:
         raise BillingUnavailable()
     deadline = time.monotonic() + VERIFICATION_BUDGET_SECONDS
-    claim = billing.claim_verification(user_id, environment)
-    remaining = deadline - time.monotonic()
-    if claim is None or remaining <= 0:
-        raise BillingUnavailable()
-    try:
-        snapshot = fetch_entitlement(user_id, environment, key.get_secret_value(), timeout=min(8, remaining))
-    except RevenueCatUnavailable:
-        billing.defer_verification(user_id, environment, claim.sync_revision)
-    else:
-        billing.commit_entitlement(user_id, environment, claim.sync_revision, snapshot)
-    while True:
+    for attempt in range(2):
         if time.monotonic() >= deadline:
             raise BillingUnavailable()
-        current = billing.get_entitlement(user_id, environment)
-        if current is None:
-            raise BillingUnavailable()
-        if has_fresh_verification(current) or _retry_pending(current, datetime.now(UTC)):
-            return current
+        claim = billing.claim_verification(user_id, environment)
         remaining = deadline - time.monotonic()
-        if current.sync_revision <= claim.sync_revision or remaining <= 0:
+        if claim is None or remaining <= 0:
             raise BillingUnavailable()
-        # Reclaiming here would invalidate another server's in-flight verification.
-        # A webhook or abandoned claim may never complete; the original deadline still applies.
-        time.sleep(min(VERIFICATION_POLL_SECONDS, remaining))
+        try:
+            snapshot = fetch_entitlement(user_id, environment, key.get_secret_value(), timeout=min(8, remaining))
+        except RevenueCatUnavailable:
+            billing.defer_verification(user_id, environment, claim.sync_revision)
+        else:
+            billing.commit_entitlement(user_id, environment, claim.sync_revision, snapshot)
+        # Reclaiming at once would invalidate another server's in-flight verification, so give
+        # a newer claim time to finish. A webhook or abandoned claim never produces a result:
+        # after that short wait, verify once more instead of holding the request to the deadline.
+        # The last attempt cannot reclaim again, so use its entire remaining wait budget.
+        patience = min(deadline, time.monotonic() + SUPERSEDED_WAIT_SECONDS) if attempt == 0 else deadline
+        while True:
+            now = time.monotonic()
+            if now >= deadline:
+                raise BillingUnavailable()
+            current = billing.get_entitlement(user_id, environment)
+            now = time.monotonic()
+            if current is None or now >= deadline:
+                raise BillingUnavailable()
+            if has_fresh_verification(current) or _retry_pending(current, datetime.now(UTC)):
+                return current
+            if current.sync_revision <= claim.sync_revision:
+                raise BillingUnavailable()
+            if now >= patience:
+                break
+            time.sleep(min(VERIFICATION_POLL_SECONDS, patience - now, deadline - now))
+    raise BillingUnavailable()
 
 
 def _coalesced_verify(user_id: UUID, environment: BillingEnvironment) -> BillingEntitlementRecord:

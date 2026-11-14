@@ -16,7 +16,7 @@ from tests.backend.test_billing import NOW, OWNER, record, settings
 
 
 class BillingVerificationConcurrencyTests(unittest.TestCase):
-    def check_two_instances(self, outcome):
+    def check_two_instances(self, outcome, *, slow=False):
         # Loading twice gives each server its own lock, in-flight Future, and rate limit.
         instances = {}
         for name in ('first', 'second'):
@@ -29,7 +29,10 @@ class BillingVerificationConcurrencyTests(unittest.TestCase):
         original_allowance = row.outage_access_until
         lock = Lock()
         first_claimed, second_claimed, first_waiting, second_finished = (Event() for _ in range(4))
+        first_reclaimed, second_reclaimed, final_wait = (Event() for _ in range(3))
         counts = {'claims': 0, 'provider': 0}
+        attempts = {'first': 0, 'second': 0}
+        elapsed = 0
         results, errors = {}, []
 
         def wait(event):
@@ -43,15 +46,26 @@ class BillingVerificationConcurrencyTests(unittest.TestCase):
                 wait(first_claimed)
             with lock:
                 counts['claims'] += 1
+                attempts[name] += 1
                 row = row.model_copy(update={'sync_revision': row.sync_revision + 1,
                     'verified_at': None, 'verification_retry_at': None})
                 (first_claimed if name == 'first' else second_claimed).set()
+                if attempts[name] == 2:
+                    (first_reclaimed if name == 'first' else second_reclaimed).set()
                 return row
 
         def fetch(*args, **kwargs):
             with lock:
                 counts['provider'] += 1
-            wait(second_claimed if current_thread().name == 'first' else first_waiting)
+            name = current_thread().name
+            if slow:
+                # A/B first claim at t0, A reclaims at t2, B at t4. Hold B's last
+                # response until t7, beyond A's second two-second wait but before t10.
+                waits = {('first', 1): second_claimed, ('second', 1): first_reclaimed,
+                    ('first', 2): second_reclaimed, ('second', 2): final_wait}
+                wait(waits[(name, attempts[name])])
+            else:
+                wait(second_claimed if name == 'first' else first_waiting)
             if outcome == 'outage':
                 raise RevenueCatUnavailable('temporary')
             return BillingSnapshot(active=outcome == 'paid', period_type='normal',
@@ -80,6 +94,13 @@ class BillingVerificationConcurrencyTests(unittest.TestCase):
                 return row
 
         def poll_delay(seconds):
+            nonlocal elapsed
+            if slow:
+                elapsed += seconds
+                if current_thread().name == 'first' and attempts['first'] == 2 and elapsed >= 7:
+                    final_wait.set()
+                    wait(second_finished)
+                return
             first_waiting.set()
             wait(second_finished)
 
@@ -97,7 +118,7 @@ class BillingVerificationConcurrencyTests(unittest.TestCase):
                 self.enterContext(patch.object(instance, 'get_billing_settings', return_value=settings()))
                 self.enterContext(patch.object(instance, 'fetch_entitlement', side_effect=fetch))
                 self.enterContext(patch.object(instance, 'time', SimpleNamespace(
-                    monotonic=time.monotonic, sleep=poll_delay)))
+                    monotonic=(lambda: elapsed) if slow else time.monotonic, sleep=poll_delay)))
             threads = [Thread(target=run, args=(name,), name=name) for name in instances]
             for thread in threads:
                 thread.start()
@@ -105,8 +126,11 @@ class BillingVerificationConcurrencyTests(unittest.TestCase):
                 thread.join(3)
             self.assertFalse(any(thread.is_alive() for thread in threads))
         self.assertEqual(errors, [])
-        self.assertEqual(counts, {'claims': 2, 'provider': 2})
-        self.assertEqual(row.sync_revision, original_revision + 2)
+        expected = 4 if slow else 2
+        self.assertEqual(counts, {'claims': expected, 'provider': expected})
+        self.assertEqual(row.sync_revision, original_revision + expected)
+        if slow:
+            self.assertEqual(elapsed, 7)
         self.assertEqual(set(results), set(instances))
         self.assertEqual(results['first'], results['second'])
         self.assertEqual(results['first'].has_access, outcome != 'inactive')
@@ -125,3 +149,9 @@ class BillingVerificationConcurrencyTests(unittest.TestCase):
 
     def test_newer_inactive_result_replaces_the_older_paid_state(self):
         self.check_two_instances('inactive')
+
+    def test_slow_paid_verification_survives_both_instances_reclaiming_once(self):
+        self.check_two_instances('paid', slow=True)
+
+    def test_slow_outage_verification_survives_both_instances_reclaiming_once(self):
+        self.check_two_instances('outage', slow=True)

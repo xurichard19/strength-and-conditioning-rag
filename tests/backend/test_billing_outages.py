@@ -173,7 +173,20 @@ class BillingOutageTests(unittest.TestCase):
         self.claim.assert_called_once()
         self.commit.assert_called_once()
 
-    def test_webhooks_while_waiting_do_not_reset_the_deadline_or_start_another_claim(self):
+    def test_webhook_during_verification_reclaims_once_after_a_short_wait(self):
+        self.fetch.side_effect = None; self.fetch.return_value = self.paid_snapshot()
+        saves = []
+        def webhook_then_save(*args):
+            saves.append(args)
+            return self.invalidate() if len(saves) == 1 else self.commit_row(*args)
+        self.commit.side_effect = webhook_then_save
+        self.assertTrue(billing.get_billing_status(OWNER, force=True).has_access)
+        self.assertEqual(self.elapsed, billing.SUPERSEDED_WAIT_SECONDS)
+        self.assertEqual(self.claim.call_count, 2)
+        self.assertEqual(self.fetch.call_count, 2)
+        self.assertEqual(self.row.verified_at, NOW)
+
+    def test_repeated_webhooks_allow_one_reclaim_and_never_a_third_claim(self):
         self.fetch.side_effect = None; self.fetch.return_value = self.paid_snapshot()
         self.commit.side_effect = lambda *args: self.invalidate()
         def another_webhook(seconds):
@@ -182,8 +195,8 @@ class BillingOutageTests(unittest.TestCase):
         with patch.object(billing.time, 'sleep', side_effect=another_webhook), self.assertRaises(billing.BillingUnavailable):
             billing.get_billing_status(OWNER)
         self.assertEqual(self.elapsed, billing.VERIFICATION_BUDGET_SECONDS)
-        self.claim.assert_called_once()
-        self.fetch.assert_called_once()
+        self.assertEqual(self.claim.call_count, 2)
+        self.assertEqual(self.fetch.call_count, 2)
 
     def test_stalled_newer_claim_wait_uses_only_the_remaining_provider_budget(self):
         read_times = []
@@ -217,6 +230,31 @@ class BillingOutageTests(unittest.TestCase):
         self.claim.assert_called_once()
         self.fetch.assert_called_once()
 
+    def test_slow_poll_cannot_reclaim_after_deadline_or_clear_newer_paid_result(self):
+        self.fetch.side_effect = None; self.fetch.return_value = self.paid_snapshot()
+        self.commit.side_effect = lambda *args: self.invalidate()
+        def slow_poll(*args):
+            observed = self.row
+            if self.elapsed == billing.SUPERSEDED_WAIT_SECONDS:
+                # Another verifier succeeds while an older query response is still in flight.
+                self.commit_row(OWNER, 'sandbox', self.row.sync_revision, self.paid_snapshot())
+                self.advance_time(9)
+            return observed
+        self.read.side_effect = slow_poll
+        with self.assertRaises(billing.BillingUnavailable):
+            billing._verify(OWNER, 'sandbox')
+        self.assertGreater(self.elapsed, billing.VERIFICATION_BUDGET_SECONDS)
+        self.assertEqual(self.row.verified_at, NOW)
+        self.claim.assert_called_once()
+        self.fetch.assert_called_once()
+
+    def test_expired_budget_does_not_start_a_claim(self):
+        with patch.object(billing.time, 'monotonic', side_effect=[0, billing.VERIFICATION_BUDGET_SECONDS]), \
+                self.assertRaises(billing.BillingUnavailable):
+            billing._verify(OWNER, 'sandbox')
+        self.claim.assert_not_called()
+        self.fetch.assert_not_called()
+
     def test_expired_cooldown_on_a_newer_claim_does_not_end_the_wait(self):
         self.fetch.side_effect = None; self.fetch.return_value = self.paid_snapshot()
         def expired_deferral(*args):
@@ -225,8 +263,9 @@ class BillingOutageTests(unittest.TestCase):
         self.commit.side_effect = expired_deferral
         with self.assertRaises(billing.BillingUnavailable):
             billing.get_billing_status(OWNER)
+        # The stale marker is never returned; the final attempt uses the remaining budget.
         self.assertEqual(self.elapsed, billing.VERIFICATION_BUDGET_SECONDS)
-        self.claim.assert_called_once()
+        self.assertEqual(self.claim.call_count, 2)
 
     def test_account_removed_during_verification_stops_without_waiting(self):
         self.read.side_effect = [self.row, None]
