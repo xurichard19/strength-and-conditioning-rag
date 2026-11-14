@@ -103,18 +103,21 @@ export function profileFromApi(profile: ApiProfile, onboarding: Onboarding | nul
 
 /** HTTP shapes only; auth is supplied by the mobile adapter. */
 export function createBackend(request: ApiRequest, onSubscriptionRequired?: () => void) {
-  async function check(response: Response): Promise<Response> {
+  async function check(response: Response, signal?: AbortSignal): Promise<Response> {
     try { return await checked(response); }
     catch (error) {
-      if (error instanceof BackendError && error.status === 403 && error.detail === 'subscription_required') onSubscriptionRequired?.();
+      if (!signal?.aborted && error instanceof BackendError && error.status === 403 && error.detail === 'subscription_required') onSubscriptionRequired?.();
       throw error;
     }
   }
   async function json<T>(path: string, options?: RequestInit, retryConflict = false): Promise<T> {
     if (options?.method && options.method !== 'GET') return (await check(await request(path, options))).json();
+    return timedJson<T>(path, options, retryConflict);
+  }
+  async function timedJson<T>(path: string, options?: RequestInit, retryConflict = false): Promise<T> {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    // Bound the whole read, including auth and response decoding, even if a transport ignores abort.
+    // Bound verification and reads, including auth and decoding, even if a transport ignores abort.
     const deadline = new Promise<T>((_, reject) => {
       timer = setTimeout(() => { reject(new Error('Request timed out. Please try again.')); controller.abort(); }, 15_000);
     });
@@ -123,13 +126,13 @@ export function createBackend(request: ApiRequest, onSubscriptionRequired?: () =
         const config = { ...options, signal: controller.signal };
         let response = await request(path, config);
         if (retryConflict && response.status === 409 && !controller.signal.aborted) response = await request(path, config);
-        return (await check(response)).json() as Promise<T>;
+        return (await check(response, controller.signal)).json() as Promise<T>;
       })()]);
     } finally { clearTimeout(timer); }
   }
   return {
     getBillingStatus: () => json<BillingStatus>('/billing/status'),
-    syncBilling: () => json<BillingStatus>('/billing/sync', { method: 'POST' }),
+    syncBilling: () => timedJson<BillingStatus>('/billing/sync', { method: 'POST' }),
     getProfile: () => json<ApiProfile>('/profile'),
     getOnboarding: () => json<Onboarding | null>('/onboarding'),
     saveTimezone: (timezone: string) => json<ApiProfile>('/profile', {

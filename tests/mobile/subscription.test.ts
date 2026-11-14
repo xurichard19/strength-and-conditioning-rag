@@ -4,7 +4,7 @@ import type Purchases from 'react-native-purchases';
 import type { CustomerInfo, PurchasesOffering } from 'react-native-purchases';
 import type { BillingStatus } from '../../mobile/src/services/backend';
 import type { PurchasesAdapter } from '../../mobile/src/services/purchases';
-import { deferred, load, plain, jsx, nodes, type TestValue, type TestNode, type TestModule } from './helpers.ts';
+import { deferred, load, jsx, nodes, type TestValue, type TestNode, type TestModule } from './helpers.ts';
 
 const logic = load<typeof import('../../mobile/src/state/subscription-store')>('state/subscription-store.ts');
 const adapterModule = load<typeof import('../../mobile/src/services/purchases')>('services/purchases.ts', {
@@ -35,6 +35,20 @@ function fixture(overrides: Partial<PurchasesAdapter> = {}, enabled = true) {
   }) });
   return { store, calls, lostAccess, setStatus: (next: BillingStatus) => { value = next; },
     setRead: (next: typeof read) => { read = next; }, setSync: (next: typeof sync) => { sync = next; } };
+}
+
+function timedBillingSync(request: Parameters<typeof backend.createBackend>[0]) {
+  const timers = new Set<() => void>();
+  const timedBackend = load<typeof import('../../mobile/src/services/backend')>('services/backend.ts', {}, {
+    setTimeout: (callback: () => void, delay: number) => {
+      assert.equal(delay, 15_000); timers.add(callback); return callback;
+    },
+    clearTimeout: (callback: () => void) => { timers.delete(callback); },
+  });
+  return { api: timedBackend.createBackend(request), expire() {
+    assert.equal(timers.size, 1);
+    for (const callback of [...timers]) callback();
+  }, timers };
 }
 
 test('disabled billing performs no SDK or backend calls and preserves existing destinations', async () => {
@@ -186,6 +200,67 @@ test('failed purchase reconciliation is retried as sync without another purchase
   f.setSync(async () => status(true)); await f.store.refresh();
   assert.equal(f.store.getSnapshot().status?.has_access, true);
   assert.equal(f.calls.filter(call => call === 'sync:a').length, 2);
+});
+
+test('purchase, restore, and management sync timeouts clear busy and recover without repeating the native action', async () => {
+  for (const kind of ['purchase', 'restore', 'manage'] as const) {
+    let nativeCalls = 0; let syncs = 0; let signal: AbortSignal | null | undefined;
+    const late = deferred<Response>();
+    const http = timedBillingSync(async (path, options) => {
+      assert.equal(path, '/billing/sync');
+      if (++syncs === 1) { signal = options?.signal; return late.promise; }
+      return new Response(JSON.stringify(status(true)));
+    });
+    const f = fixture({
+      paywall: async () => { nativeCalls++; return 'purchased'; },
+      restore: async () => { nativeCalls++; return info(true); },
+      manage: async () => { nativeCalls++; },
+    });
+    f.setStatus(status(kind !== 'purchase')); f.setSync(() => http.api.syncBilling());
+    f.store.setUser('a'); await flush();
+    const pending = f.store[kind](); await flush();
+    assert.equal(f.store.getSnapshot().busy, kind);
+    http.expire(); await pending;
+    const failed = f.store.getSnapshot();
+    assert.equal(failed.busy, null); assert.equal(failed.loading, false);
+    assert.equal(failed.status, null); assert.equal(failed.confirming, kind !== 'manage');
+    assert.match(failed.error!, kind === 'purchase' ? /purchase is confirmed/
+      : kind === 'restore' ? /was restored/ : /Could not verify/);
+    assert.deepEqual(f.lostAccess, []);
+    assert.equal(signal?.aborted, true); assert.equal(http.timers.size, 0);
+    assert.equal(syncs, 1, 'timing out must not automatically retry the request');
+    if (kind !== 'manage') { await f.store.purchase(); assert.equal(nativeCalls, 1); }
+
+    f.setStatus(status(true)); await f.store.refresh();
+    assert.equal(logic.subscriptionAllowsAccess(true, 'a', f.store.getSnapshot()), true);
+    assert.equal(f.store.getSnapshot().confirming, false);
+    assert.equal(f.store.getSnapshot().error, null);
+    assert.equal(nativeCalls, 1);
+    assert.equal(syncs, kind === 'manage' ? 1 : 2);
+    const recovered = f.store.getSnapshot();
+    late.resolve(new Response(JSON.stringify(status()))); await flush();
+    assert.equal(f.store.getSnapshot(), recovered, 'a late response cannot undo successful recovery');
+    assert.deepEqual(f.lostAccess, []);
+  }
+});
+
+test('a timed-out billing grant cannot override a later denial or unlock a replacement account', async () => {
+  for (const replaceAccount of [false, true]) {
+    const late = deferred<Response>();
+    const http = timedBillingSync(async () => late.promise);
+    const f = fixture(); f.setStatus(status(true)); f.setSync(() => http.api.syncBilling());
+    f.store.setUser('a'); await flush();
+    const pending = f.store.manage(); await flush(); http.expire(); await pending;
+    f.setStatus(status());
+    if (replaceAccount) f.store.setUser('b'); else f.store.deny('a');
+    await flush();
+    const denied = f.store.getSnapshot();
+    late.resolve(new Response(JSON.stringify(status(true)))); await flush();
+    assert.equal(f.store.getSnapshot(), denied);
+    assert.equal(denied.owner, replaceAccount ? 'b' : 'a');
+    assert.equal(logic.subscriptionAllowsAccess(true, denied.owner, denied), false);
+    assert.deepEqual(f.lostAccess, replaceAccount ? [] : ['a']);
+  }
 });
 
 test('both explicit and paywall empty restores report no purchase without trapping the user', async () => {
@@ -344,7 +419,9 @@ test('billing HTTP calls are scoped, empty-body, and subscription-required notif
   assert.deepEqual(calls.map(call => call[0]), ['/billing/status', '/billing/sync']);
   assert.ok(calls[0][1].signal instanceof AbortSignal);
   assert.equal(calls[0][1].body, undefined);
-  assert.deepEqual(plain(calls[1][1]), { method: 'POST' });
+  assert.equal(calls[1][1].method, 'POST');
+  assert.equal(calls[1][1].body, undefined);
+  assert.ok(calls[1][1].signal instanceof AbortSignal);
   const failing = backend.createBackend(async () => new Response(JSON.stringify({ detail: 'subscription_required' }), { status: 403 }), () => { denied++; });
   await assert.rejects(failing.getConversations(), error => {
     assert.equal((error as InstanceType<typeof backend.BackendError>).status, 403); return true;

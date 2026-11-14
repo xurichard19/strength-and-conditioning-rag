@@ -108,7 +108,6 @@ export default function AccountScreen() {
           <BackendNotice />
           {authSession ? <SubscriptionActions /> : null}
           {authSession ? <SignedInActions /> : <AccountForm />}
-          <AppText tone="secondary" style={styles.footnote}>Profile, onboarding, and chat use the live API. Planning and workout syncing are not connected yet.</AppText>
           <PolicyLinks />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -136,5 +135,4 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, lineHeight: 17, marginTop: 8, marginLeft: 2 },
   input: { height: 56, borderRadius: radius.panel, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, fontFamily: fonts.regular, fontSize: 15 },
   message: { fontSize: 12, lineHeight: 18 },
-  footnote: { fontSize: 11, lineHeight: 18, textAlign: 'center', paddingHorizontal: 6, marginTop: 16 },
 });
