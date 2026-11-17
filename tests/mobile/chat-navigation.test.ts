@@ -127,19 +127,24 @@ test('glass dock preserves tab navigation and hides while the keyboard is open',
   assert.equal(listeners.size, 0);
 });
 
-test('chat opens above the current page with one global launcher', () => {
+test('chat opens above the current page with one global launcher and requires payment access', () => {
+  const subscription = { enabled: true, hasAccess: true };
   const { default: Root } = load('app/_layout.tsx', {
     react, 'react/jsx-runtime': runtime, 'react-native': native,
     '@expo-google-fonts/rubik': { useFonts: () => [true] },
     'expo-router': { DarkTheme: { colors: {} }, DefaultTheme: { colors: {} }, ThemeProvider: 'theme',
-      Stack: { Screen: 'route' }, useSegments: () => ['(tabs)', 'today'] },
+      Stack: { Screen: 'route', Protected: 'protected' }, useSegments: () => ['(tabs)', 'today'] },
     'expo-splash-screen': { preventAutoHideAsync: () => {} }, 'expo-status-bar': { StatusBar: 'status' },
     '@/components/chat-launcher': { default: 'launcher', __esModule: true },
     '@/components/glass-surface': { GlassProvider: 'glass-provider' },
+    '@/components/subscription-notice': { SubscriptionNotice: 'subscription-notice' },
     '@/components/ui': {}, '@/state/app-context': { AppProvider: 'provider', useApp: () => app },
     'react-native-gesture-handler': { GestureHandlerRootView: 'gesture-root' },
+    '@/state/subscription-context': { SubscriptionProvider: 'subscription-provider', useSubscription: () => subscription },
   });
-  const provider = Root().props.children;
+  const subscriptions = Root().props.children;
+  assert.equal(subscriptions.type, 'subscription-provider');
+  const provider = subscriptions.props.children;
   assert.equal(provider.type, 'glass-provider');
   const navigation = provider.props.children;
   const tree = navigation.type();
@@ -148,6 +153,18 @@ test('chat opens above the current page with one global launcher', () => {
     contentStyle: { backgroundColor: 'transparent' } });
   assert.equal(nodes(tree).filter(node => node.type === 'launcher').length, 1);
   assert.equal(nodes(tree).filter(node => node.type === 'gesture-root').length, 1);
+  const protectedRoutes = nodes(tree).find(node => node.type === 'protected')!;
+  assert.equal(protectedRoutes.props.guard, true);
+  assert.deepEqual(nodes(protectedRoutes).filter(node => node.type === 'route').map(node => node.props.name),
+    ['(tabs)', 'session/[id]', 'sports-workout', 'workout/[id]', 'chat']);
+  for (const hasAccess of [false, true]) {
+    subscription.hasAccess = hasAccess;
+    const current = navigation.type();
+    assert.equal(nodes(current).find(node => node.type === 'protected')?.props.guard, hasAccess);
+    assert.equal(nodes(current).filter(node => node.type === 'launcher').length, hasAccess ? 1 : 0);
+  }
+  subscription.enabled = false; subscription.hasAccess = false;
+  assert.equal(nodes(navigation.type()).find(node => node.type === 'protected')?.props.guard, true);
   assert.equal(load('app/chat.tsx', { '@/components/chat-window': { default: 'window', __esModule: true } }).default, 'window');
 });
 

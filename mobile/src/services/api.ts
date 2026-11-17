@@ -8,7 +8,7 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { AppState, Platform } from 'react-native';
 
-import { createBackend, deviceTimezone } from './backend';
+import { BackendError, createBackend, deviceTimezone } from './backend';
 export type { Answers, SavedMessage } from './backend';
 export { deviceTimezone, profileFromApi, surveyAnswers } from './backend';
 
@@ -17,6 +17,13 @@ const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '';
 
 export const liveApiConfigured = Boolean(apiBaseUrl && supabaseUrl && supabaseKey);
+const billingListeners = new Set<(userId: string) => void>();
+
+/** Bind subscription denials to the account whose request was rejected. */
+export function onSubscriptionRequired(listener: (userId: string) => void) {
+  billingListeners.add(listener);
+  return () => { billingListeners.delete(listener); };
+}
 
 // Expo Router renders web routes in Node before hydrating them in the browser.
 // AsyncStorage's web adapter requires `window`, so Supabase must not be created
@@ -139,11 +146,11 @@ export function backendFor(userId: string) {
   return createBackend(async (path, options = {}) => {
     if (!apiBaseUrl) throw new Error('The API is not configured.');
     const session = await getAuthSession();
-    if (!session || session.user.id !== userId) throw new Error('Please sign in again.');
+    if (!session || session.user.id !== userId) throw new BackendError(401, 'Please sign in again.');
     const headers = new Headers(options.headers);
     headers.set('Authorization', `Bearer ${session.access_token}`);
     if (!headers.has('Accept')) headers.set('Accept', 'application/json');
     if (options.body) headers.set('Content-Type', 'application/json');
     return expoFetch(`${apiBaseUrl}${path}`, { ...options, headers });
-  });
+  }, () => billingListeners.forEach(listener => listener(userId)));
 }

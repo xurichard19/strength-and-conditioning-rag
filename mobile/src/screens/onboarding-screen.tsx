@@ -16,6 +16,7 @@ import {
 } from '@/lib/onboarding';
 import { formatSessionDuration } from '@/lib/session-duration';
 import { useApp } from '@/state/app-context';
+import { useSubscription } from '@/state/subscription-context';
 
 const NOTE_PROMPTS = [
   "I'm training for something", 'I have some discomfort',
@@ -40,6 +41,7 @@ export default function OnboardingScreen() {
 
 function OnboardingFlow() {
   const { accountReady, colors, profile, onboardingAnswers, notice, finishOnboarding } = useApp();
+  const subscription = useSubscription();
   const { edit } = useLocalSearchParams<{ edit?: string }>();
   const editing = edit === '1' && profile.onboardingComplete;
   const [step, setStep] = useState(0);
@@ -59,8 +61,8 @@ function OnboardingFlow() {
   };
 
   useEffect(() => {
-    if (shouldRedirect) router.replace('/(tabs)/today');
-  }, [shouldRedirect]);
+    if (shouldRedirect) router.replace(subscription.next());
+  }, [shouldRedirect, subscription]);
 
   const move = (to: number) => {
     Keyboard.dismiss();
@@ -87,7 +89,11 @@ function OnboardingFlow() {
     const submission = onboardingSubmission(profile, draft, note);
     try {
       const saved = await finishOnboarding(submission.profile, submission.answers);
-      if (saved) router.replace(editing ? '/(tabs)/you' : '/(tabs)/today');
+      if (saved) {
+        const destination = editing ? '/(tabs)/you' : '/(tabs)/today';
+        subscription.rememberDestination(destination);
+        router.replace(subscription.next(destination));
+      }
     } finally {
       saveInFlight.current = false;
       setSaving(false);
@@ -127,7 +133,7 @@ function OnboardingFlow() {
         </ScrollView>
         {reviewing ? (
           <View style={styles.reviewFooter}>
-            <PrimaryButton loading={saving} onPress={() => void finish()}>{editing ? 'Save changes' : 'Save and open chat'}</PrimaryButton>
+            <PrimaryButton loading={saving} onPress={() => void finish()}>{editing ? 'Save changes' : 'Save and continue'}</PrimaryButton>
             <SecondaryButton disabled={saving} onPress={() => move(QUESTION_IDS.length)}>Back to my answers</SecondaryButton>
           </View>
         ) : (

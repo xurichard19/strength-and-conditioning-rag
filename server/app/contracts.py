@@ -4,7 +4,7 @@ import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 
 # -------------------- shared literals --------------------
@@ -19,6 +19,48 @@ ReplanKind = Literal["adjustment", "refresh"]
 PlanningChangeStatus = Literal["applied", "undone", "discarded"]
 ChangeWorkoutSide = Literal["before", "after"]
 ReplanJobStatus = Literal["pending", "running", "succeeded", "failed", "cancelled"]
+BillingEnvironment = Literal["sandbox", "production"]
+BillingPhase = Literal["inactive", "trial", "paid", "grace"]
+PlanningPauseReason = Literal["subscription_required", "billing_unavailable"]
+InitialPlanStatus = Literal["queued", "running", "deferred", "failed", "ready"]
+
+
+# -------------------- verified billing access --------------------
+
+class BillingSnapshot(BaseModel):
+    """provider-verified entitlement fields; database verification time is server-owned"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    product_id: str | None = None
+    store: str | None = None
+    period_type: str | None = None
+    active: bool = False
+    expires_at: AwareDatetime | None = None
+    grace_expires_at: AwareDatetime | None = None
+    will_renew: bool | None = None
+
+
+class BillingEntitlementRecord(BillingSnapshot):
+    user_id: UUID
+    environment: BillingEnvironment
+    entitlement_key: Literal["arcel_pro"] = "arcel_pro"
+    verified_at: AwareDatetime | None = None
+    outage_access_until: AwareDatetime | None = None
+    verification_retry_at: AwareDatetime | None = None
+    sync_revision: int = Field(ge=0)
+    updated_at: AwareDatetime
+
+
+class BillingAccessDecision(BaseModel):
+    enabled: bool
+    has_access: bool
+    entitlement: Literal["arcel_pro"] = "arcel_pro"
+    phase: BillingPhase = "inactive"
+    product_id: str | None = None
+    expires_at: datetime.datetime | None = None
+    will_renew: bool | None = None
+    verified_at: datetime.datetime | None = None
 
 
 # -------------------- retrieval --------------------
@@ -129,6 +171,9 @@ class PlanningScheduleRecord(BaseModel):
     horizon_end: datetime.date | None = None
     next_refresh_at: datetime.datetime
     revision: int = Field(default=0, ge=0)
+    billing_pause_reason: PlanningPauseReason | None = None
+    billing_recheck_at: datetime.datetime | None = None
+    billing_wake_token: UUID | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
@@ -286,8 +331,16 @@ class ClaimedReplanJob(BaseModel):
     horizon_end: datetime.date
 
 
+class PlanningBillingWork(BaseModel):
+    """One durable event or timed verification retry selected by the dispatcher."""
+
+    user_id: UUID
+    wake_token: UUID | None = None
+
+
 class ReplanDeliveryClaim(BaseModel):
-    status: Literal["claimed", "missing", "obsolete", "terminal", "busy", "not_ready"]
+    status: Literal["claimed", "missing", "obsolete", "terminal", "busy", "not_ready",
+                    "billing_required", "billing_unavailable", "onboarding_required"]
     claim: ClaimedReplanJob | None = None
 
     @model_validator(mode="after")

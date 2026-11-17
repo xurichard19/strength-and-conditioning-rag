@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.errors import PRIVATE_HEADERS, database_errors, private_response
 from app.api.schemas import RevisionResponse, WorkoutDetailResponse, WorkoutResultsRequest
-from app.auth.supabase import AuthUser, require_user
+from app.auth.supabase import AuthUser
+from app.auth.billing import require_paid_user
 from app.contracts import ExerciseSetResult
 from app.db.supabase import workouts
 
@@ -13,7 +14,7 @@ router = APIRouter(prefix="/workouts", tags=["workouts"], dependencies=[Depends(
 
 
 @router.get("/{workout_id}", response_model=WorkoutDetailResponse)
-def get_workout(workout_id: UUID, user: AuthUser = Depends(require_user)) -> WorkoutDetailResponse:
+def get_workout(workout_id: UUID, user: AuthUser = Depends(require_paid_user)) -> WorkoutDetailResponse:
     """
     load current workout details with a revision suitable for saving results
 
@@ -23,7 +24,7 @@ def get_workout(workout_id: UUID, user: AuthUser = Depends(require_user)) -> Wor
     """
 
     with database_errors("workouts.get_workout"):
-        result = workouts.get_workout_snapshot(user.id, workout_id, user.access_token)
+        result = workouts.get_workout_snapshot(user.id, workout_id, None)
         if result is None:
             raise HTTPException(404, "workout not found", headers=PRIVATE_HEADERS)
         return WorkoutDetailResponse.model_validate(result)
@@ -31,7 +32,7 @@ def get_workout(workout_id: UUID, user: AuthUser = Depends(require_user)) -> Wor
 
 @router.put("/{workout_id}/results", response_model=RevisionResponse)
 def save_results(
-    workout_id: UUID, payload: WorkoutResultsRequest, user: AuthUser = Depends(require_user),
+    workout_id: UUID, payload: WorkoutResultsRequest, user: AuthUser = Depends(require_paid_user),
 ) -> RevisionResponse:
     """
     atomically save workout status and supplied set results without editing prescriptions

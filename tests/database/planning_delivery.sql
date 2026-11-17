@@ -82,8 +82,8 @@ begin
   if public.claim_replan_delivery(j.id, j.delivery_token)->>'status' <> 'terminal' then
     raise exception 'generation attempt limit ignored';
   end if;
-  if has_function_privilege('authenticated', 'public.claim_replan_delivery(uuid,uuid,integer)', 'execute')
-    or has_function_privilege('anon', 'public.list_replan_deliveries(integer)', 'execute') then
+  if has_function_privilege('authenticated', 'public.claim_replan_delivery(uuid,uuid,integer,text,bigint)', 'execute')
+    or has_function_privilege('anon', 'public.list_replan_deliveries(integer,boolean)', 'execute') then
     raise exception 'delivery functions exposed to clients';
   end if;
 end;

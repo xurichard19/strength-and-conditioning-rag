@@ -11,7 +11,8 @@ from app.ai.workflows.chat.state import WorkflowContext
 from app.api.errors import PRIVATE_HEADERS, database_errors, private_response
 from app.api.parameters import message_cursor
 from app.api.schemas import ConversationUpdate, ConversationResponse, ChatSavedEvent, ChatDoneEvent, ChatErrorEvent, ChatRequest, ChatSourcesEvent, ChatStatusEvent, ChatTextEvent, MessageResponse
-from app.auth.supabase import AuthUser, require_user
+from app.auth.supabase import AuthUser
+from app.auth.billing import require_paid_user
 from app.db.supabase import messages
 from app.observability import capture_failure
 
@@ -21,38 +22,38 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/conversations", response_model=list[ConversationResponse])
-def get_conversations(before: UUID | None = None, user: AuthUser = Depends(require_user)):
+def get_conversations(before: UUID | None = None, user: AuthUser = Depends(require_paid_user)):
     """list the owner's saved threads; before is the last id from the previous 50-row page"""
     with database_errors("chat.get_conversations"):
         return [ConversationResponse.model_validate(row) for row in
-            messages.get_conversations(user.id, user.access_token, before=before)]
+            messages.get_conversations(user.id, None, before=before)]
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
-def get_conversation(conversation_id: UUID, user: AuthUser = Depends(require_user)):
+def get_conversation(conversation_id: UUID, user: AuthUser = Depends(require_paid_user)):
     """read an owned conversation's title and creation time; return 404 if inaccessible"""
     with database_errors("chat.get_conversation"):
-        row = messages.get_conversation(user.id, conversation_id, user.access_token)
+        row = messages.get_conversation(user.id, conversation_id, None)
         if row is None:
             raise HTTPException(404, "conversation not found", headers=PRIVATE_HEADERS)
         return ConversationResponse.model_validate(row)
 
 
 @router.patch("/conversations/{conversation_id}", response_model=ConversationResponse)
-def rename_conversation(conversation_id: UUID, payload: ConversationUpdate, user: AuthUser = Depends(require_user)):
+def rename_conversation(conversation_id: UUID, payload: ConversationUpdate, user: AuthUser = Depends(require_paid_user)):
     """rename an owned conversation using payload.title; return its saved record or 404"""
     with database_errors("chat.rename_conversation"):
-        row = messages.rename_conversation(user.id, conversation_id, payload.title, user.access_token)
+        row = messages.rename_conversation(user.id, conversation_id, payload.title, None)
         if row is None:
             raise HTTPException(404, "conversation not found", headers=PRIVATE_HEADERS)
         return ConversationResponse.model_validate(row)
 
 
 @router.delete("/conversations/{conversation_id}", status_code=204)
-def delete_conversation(conversation_id: UUID, user: AuthUser = Depends(require_user)):
+def delete_conversation(conversation_id: UUID, user: AuthUser = Depends(require_paid_user)):
     """permanently delete an owned thread and all its messages; missing threads are a no-op"""
     with database_errors("chat.delete_conversation"):
-        messages.delete_conversation(user.id, conversation_id, user.access_token)
+        messages.delete_conversation(user.id, conversation_id, None)
     return Response(status_code=204, headers=PRIVATE_HEADERS)
 
 
@@ -71,7 +72,7 @@ def get_messages(
     conversation_id: UUID,
     limit: int = Query(20, ge=1, le=100),
     cursor: tuple[datetime | None, UUID | None] = Depends(message_cursor),
-    user: AuthUser = Depends(require_user),
+    user: AuthUser = Depends(require_paid_user),
 ) -> list[MessageResponse]:
     """
     read one page of persisted human/assistant messages, oldest to newest
@@ -85,7 +86,7 @@ def get_messages(
 
     with database_errors("chat.get_messages"):
         return [MessageResponse.model_validate(item) for item in messages.get_recent_messages(
-            user.id, user.access_token, limit, conversation_id=conversation_id, before_created_at=cursor[0], before_id=cursor[1])]
+            user.id, None, limit, conversation_id=conversation_id, before_created_at=cursor[0], before_id=cursor[1])]
 
 
 @router.post("", response_class=StreamingResponse, responses={200: {
@@ -93,7 +94,7 @@ def get_messages(
     "description": "newline-separated ChatStreamEvent objects: optional saved/status events, text, sources, then done or error",
 }})
 async def chat_reply(
-    payload: ChatRequest, request: Request, user: AuthUser = Depends(require_user),
+    payload: ChatRequest, request: Request, user: AuthUser = Depends(require_paid_user),
     x_chat_saved_events: str | None = Header(None),
     x_chat_status_events: str | None = Header(None),
 ) -> StreamingResponse:
@@ -124,7 +125,7 @@ async def chat_reply(
         raise HTTPException(503, "chat unavailable", headers=PRIVATE_HEADERS)
 
     with database_errors("chat.save_user"):
-        human = await asyncio.to_thread(messages.append_message, user.id, "user", payload.text, user.access_token, conversation_id=payload.conversation_id)
+        human = await asyncio.to_thread(messages.append_message, user.id, "user", payload.text, None, conversation_id=payload.conversation_id)
 
     context = WorkflowContext(user_id=user.id, access_token=user.access_token,
         conversation_id=human.conversation_id, message_id=human.id, message_created_at=human.created_at)

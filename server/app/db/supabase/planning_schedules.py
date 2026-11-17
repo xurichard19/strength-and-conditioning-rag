@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import TypeAdapter
 
-from app.contracts import PlanningScheduleRecord
+from app.contracts import PlanningBillingWork, PlanningScheduleRecord
 from app.db.supabase._queries import identifier, rpc_row
 from app.db.supabase.transport import call_rpc, select_rows
 
@@ -81,3 +81,51 @@ def invalidate_planning_inputs(user_id: str | UUID) -> int:
 
     return TypeAdapter(int).validate_python(call_rpc("invalidate_planning_inputs",
         {"p_user_id": identifier(user_id)}, None), strict=True)
+
+
+def list_billing_work(limit: int = 20) -> list[PlanningBillingWork]:
+    """alternate explicit wakes and due verification retries without polling dormant unpaid users"""
+    if not 1 <= limit <= 20:
+        raise ValueError("billing work limit must be between 1 and 20")
+    return TypeAdapter(list[PlanningBillingWork]).validate_python(call_rpc("list_planning_billing_work",
+        {"p_limit": limit}, None))
+
+
+def defer_planning(
+    user_id: str | UUID, reason: str, retry_seconds: int | None, *,
+    billing_environment: str | None = None, billing_revision: int | None = None,
+    wake_token: UUID | None = None,
+) -> bool:
+    """fence permanent unpaid waiting; only acknowledge an explicitly observed wake"""
+    if reason not in {"subscription_required", "billing_unavailable"}:
+        raise ValueError("invalid payment wait reason")
+    if reason == "subscription_required" and retry_seconds is not None:
+        raise ValueError("confirmed unpaid planning waits for an event, not a timer")
+    if reason == "billing_unavailable" and (retry_seconds is None or not 1 <= retry_seconds <= 3600):
+        raise ValueError("billing retry delay must be between 1 and 3600 seconds")
+    return TypeAdapter(bool).validate_python(call_rpc("defer_planning_for_billing", {
+        "p_user_id": identifier(user_id), "p_reason": reason, "p_retry_seconds": retry_seconds,
+        "p_billing_environment": billing_environment, "p_billing_revision": billing_revision,
+        "p_wake_token": identifier(wake_token) if wake_token is not None else None,
+    }, None), strict=True)
+
+
+def resume_planning(
+    user_id: str | UUID, *, billing_environment: str | None = None, billing_revision: int | None = None,
+    wake_token: UUID | None = None,
+) -> bool:
+    """clear waiting and prepare due work once; a supplied paid revision is rechecked atomically"""
+    return TypeAdapter(bool).validate_python(call_rpc("resume_planning_after_billing", {
+        "p_user_id": identifier(user_id), "p_billing_environment": billing_environment,
+        "p_billing_revision": billing_revision,
+        "p_wake_token": identifier(wake_token) if wake_token is not None else None,
+    }, None), strict=True)
+
+
+def request_billing_recheck(user_ids: list[str | UUID]) -> None:
+    """wake affected schedules after billing invalidation, without granting access"""
+    if len(user_ids) > 100:
+        raise ValueError("at most 100 billing accounts may be requested")
+    call_rpc("request_planning_billing_recheck", {
+        "p_user_ids": [identifier(value) for value in user_ids],
+    }, None)

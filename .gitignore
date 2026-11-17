@@ -51,3 +51,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# local database/tunnel runtime files and credentials
+.local-dev/

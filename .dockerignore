@@ -22,3 +22,6 @@ data/
 tests/
 
 .DS_Store
+
+# Local development helpers, overlays and worktrees
+.local-dev/

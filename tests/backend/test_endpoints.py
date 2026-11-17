@@ -66,9 +66,10 @@ class EndpointTests(unittest.TestCase):
             self.assertEqual(anonymous.get('/health').json(), {'status': 'ok'})
 
     def test_schedule_read_configure_and_validation(self):
+        self.enterContext(patch.object(planning.replan_jobs, 'get_latest_initial_job', return_value=None))
         with patch.object(planning.planning_schedules, 'get_planning_schedule', return_value=None) as get:
             self.assertIsNone(self.client.get('/planning/schedule').json())
-            get.assert_called_once_with(USER.id, USER.access_token)
+            get.assert_called_once_with(USER.id, None)
         with patch.object(planning.planning_schedules, 'configure_planning_schedule', return_value=SCHEDULE) as save:
             self.assertEqual(self.client.put('/planning/schedule', json={'next_refresh_at': NOW}).status_code, 200)
             self.assertEqual(save.call_args.args[0], USER.id)
@@ -109,7 +110,7 @@ class EndpointTests(unittest.TestCase):
     def test_history_and_undo_redo_pass_explicit_revision(self):
         with patch.object(planning.planning_changes, 'get_history_page', return_value=PlanningHistoryPage(changes=[], revision=8)) as history:
             self.assertEqual(self.client.get('/planning/changes?before_revision=5').json()['revision'], 8)
-            history.assert_called_once_with(USER.id, USER.access_token, 20, 5)
+            history.assert_called_once_with(USER.id, None, 20, 5)
         with patch.object(planning.planning_changes, 'get_change_preview', return_value=None):
             self.assertEqual(self.client.get(f'/planning/changes/{ID}').status_code, 404)
         for action in ('undo', 'redo'):
@@ -130,7 +131,7 @@ class EndpointTests(unittest.TestCase):
                 response = self.client.request(method, url, json=body)
                 self.assertEqual(response.status_code, expected)
                 self.assertEqual(handler.call_args.args[0], USER.id)
-                self.assertEqual(handler.call_args.args[-1], USER.access_token)
+                self.assertIsNone(handler.call_args.args[-1])
                 self.assertEqual(response.headers['cache-control'], 'private, no-store')
                 if name == 'create_sports_workout':
                     self.assertIs(type(handler.call_args.args[1]), SportsWorkoutInput)
@@ -147,7 +148,7 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()['start_time'], '23:30:00')
         self.assertEqual(response.json()['scheduled_date'], '2026-09-20')
-        insert.assert_called_once_with('sports_workouts', {'user_id': str(USER.id), **body}, USER.access_token)
+        insert.assert_called_once_with('sports_workouts', {'user_id': str(USER.id), **body}, None)
 
     def test_sports_creation_requires_client_uuid_and_forbids_owner_or_status(self):
         base = {'sport': 'running', 'scheduled_date': str(DAY)}
@@ -166,7 +167,7 @@ class EndpointTests(unittest.TestCase):
             response = self.client.post('/sports-workouts', json=body)
             self.assertEqual(response.status_code, 201)
             self.assertEqual(response.json()['id'], str(ID))
-            read.assert_called_once_with(USER.id, ID, USER.access_token)
+            read.assert_called_once_with(USER.id, ID, None)
             read.return_value = None
             conflict = self.client.post('/sports-workouts', json=body)
         self.assertEqual(conflict.status_code, 409)
@@ -202,14 +203,14 @@ class EndpointTests(unittest.TestCase):
             response = self.client.patch(path, json={'title': '  Named chat  '})
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()['title'], 'Named chat')
-            rename.assert_called_once_with(USER.id, ID, 'Named chat', USER.access_token)
+            rename.assert_called_once_with(USER.id, ID, 'Named chat', None)
             for title in (' ', 'x' * 121):
                 self.assertEqual(self.client.patch(path, json={'title': title}).status_code, 422)
         with patch.object(chat.messages, 'get_conversation', return_value=None):
             self.assertEqual(self.client.get(path).status_code, 404)
         with patch.object(chat.messages, 'delete_conversation') as delete:
             self.assertEqual(self.client.delete(path).status_code, 204)
-            delete.assert_called_once_with(USER.id, ID, USER.access_token)
+            delete.assert_called_once_with(USER.id, ID, None)
 
     def test_chat_persists_only_user_and_completed_assistant_then_signals_done(self):
         prior = MessageRecord(conversation_id=ID, id=ID, user_id=USER.id, role='assistant', content='previous', created_at=NOW)
@@ -236,7 +237,7 @@ class EndpointTests(unittest.TestCase):
             self.assertEqual(events[-1]['message_id'], str(ID))
             self.assertEqual(events[-1]['message']['id'], str(ID))
             self.assertEqual([call.args[1:3] for call in save.call_args_list], [('user', 'hi'), ('assistant', 'hello')])
-            self.assertEqual(save.call_args_list[0].args[-1], USER.access_token)
+            self.assertIsNone(save.call_args_list[0].args[-1])
             self.assertIsNone(save.call_args_list[1].args[-1])
             self.assertTrue(all(call.kwargs['conversation_id'] == ID for call in save.call_args_list))
 
@@ -307,7 +308,7 @@ class EndpointTests(unittest.TestCase):
             self.assertEqual(events[-1]['type'], 'error')
             self.assertNotIn('private provider error', response.text)
             self.assertNotIn('done', [event['type'] for event in events])
-            save.assert_called_once_with(USER.id, 'user', 'hi', USER.access_token, conversation_id=ID)
+            save.assert_called_once_with(USER.id, 'user', 'hi', None, conversation_id=ID)
             capture.assert_called_once()
             self.assertIsInstance(capture.call_args.args[0], RuntimeError)
 

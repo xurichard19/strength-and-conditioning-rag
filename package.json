@@ -8,8 +8,8 @@
     "db:migrations": "supabase migration list",
     "db:new": "supabase migration new",
     "db:pull": "supabase db pull",
-    "db:push:check": "supabase db push --dry-run",
-    "db:push": "supabase db push"
+    "db:push:check": "supabase db push --linked --include-all --dry-run",
+    "db:push": "supabase db push --linked --include-all"
   },
   "devDependencies": {
     "supabase": "^2.109.1"

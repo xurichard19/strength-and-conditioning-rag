@@ -172,10 +172,11 @@ test('native slider reaches both ends by touch and steps through every position 
   assert.equal(balance, 'cardio');
 });
 
-function fixture(editing = false, savedAnswers: Answers = {}) {
+function fixture(editing = false, savedAnswers: Answers = {}, hasAccess = true) {
   const slots: TestValue[] = [];
   let cursor = 0;
   const paths: string[] = [];
+  const destinations: string[] = [];
   const saves: { profile: Profile; answers: Answers }[] = [];
   let complete!: (success: boolean) => void;
   const state = {
@@ -212,6 +213,10 @@ function fixture(editing = false, savedAnswers: Answers = {}) {
     '@/lib/onboarding': { ...onboarding, TRAINING_DAYS: [...onboarding.TRAINING_DAYS], SPORTS: [...onboarding.SPORTS], QUESTION_IDS: [...onboarding.QUESTION_IDS] },
     '@/lib/session-duration': { ...sessionDuration, SESSION_DURATIONS: [...sessionDuration.SESSION_DURATIONS] },
     '@/state/app-context': { useApp: () => state },
+    '@/state/subscription-context': { useSubscription: () => ({
+      rememberDestination: (path: string) => destinations.push(path),
+      next: (path = '/(tabs)/today') => hasAccess ? path : '/paywall',
+    }) },
   } satisfies Stubs;
   const { default: Screen } = load('screens/onboarding-screen.tsx', modules);
   function expand(node: TestValue): TestNode[] {
@@ -235,7 +240,7 @@ function fixture(editing = false, savedAnswers: Answers = {}) {
     press('Tennis'); press('Next'); press('Next'); press('Next'); press('Next'); press('Next'); press('Next');
     press('0'); press('Next');
   }
-  return { render, press, button, input, text, toNotes, paths, saves, state, complete: (success: boolean) => complete(success) };
+  return { render, press, button, input, text, toNotes, paths, destinations, saves, state, complete: (success: boolean) => complete(success) };
 }
 
 test('question flow uses the workout sports, keeps manual navigation, and retains answers on Back', () => {
@@ -264,7 +269,7 @@ test('duration wheel choice survives navigation and is shown in hours before sav
   assert.equal(wheel().props.minutes, 105);
   f.press('Next'); f.press('Next'); f.press('0'); f.press('Next'); f.press('Review answers');
   assert.ok(f.text('3 days · 1 hour 45 min\nMon · Wed · Fri'));
-  f.press('Save and open chat'); f.complete(true); await new Promise(setImmediate);
+  f.press('Save and continue'); f.complete(true); await new Promise(setImmediate);
   assert.equal(f.saves[0].answers.sessionMinutes, 105);
 });
 
@@ -277,7 +282,7 @@ test('notes and unsent text survive review and save once; a failed save can be r
   f.press('Review answers'); f.press('Back to my answers');
   assert.ok(f.text('Shoulder discomfort overhead'));
   f.press('Review answers');
-  const save = f.button('Save and open chat').props.onPress;
+  const save = f.button('Save and continue').props.onPress;
   save(); save();
   assert.equal(f.saves.length, 1);
   assert.deepEqual(plain(f.saves[0].answers.notes), ['I have some discomfort', 'Shoulder discomfort overhead']);
@@ -286,7 +291,7 @@ test('notes and unsent text survive review and save once; a failed save can be r
   f.state.notice = 'Unable to save'; f.complete(false); await new Promise(setImmediate);
   assert.ok(f.text('Unable to save'));
   assert.deepEqual(f.paths, []);
-  f.press('Save and open chat'); f.complete(true); await new Promise(setImmediate);
+  f.press('Save and continue'); f.complete(true); await new Promise(setImmediate);
   assert.deepEqual(f.paths, ['/(tabs)/today']);
 });
 
@@ -315,4 +320,22 @@ test('completed users are not forced into v2 and slow account hydration initiali
   delayed.state.accountReady = true;
   delayed.press('Update my answers');
   assert.equal(delayed.button('Swimming').props.accessibilityState.checked, true);
+});
+
+
+test('onboarding saves before payment gating and retains the correct destination after purchase', async () => {
+  for (const editing of [false, true]) {
+    const f = fixture(editing, {}, false); f.toNotes(); f.press('Review answers');
+    f.press(editing ? 'Save changes' : 'Save and continue');
+    assert.equal(f.saves.length, 1);
+    assert.deepEqual(f.paths, []);
+    assert.deepEqual(f.destinations, []);
+    f.complete(false); await new Promise(setImmediate);
+    assert.deepEqual(f.paths, []);
+    assert.deepEqual(f.destinations, []);
+    f.press(editing ? 'Save changes' : 'Save and continue');
+    f.complete(true); await new Promise(setImmediate);
+    assert.deepEqual(f.destinations, [editing ? '/(tabs)/you' : '/(tabs)/today']);
+    assert.deepEqual(f.paths, ['/paywall']);
+  }
 });

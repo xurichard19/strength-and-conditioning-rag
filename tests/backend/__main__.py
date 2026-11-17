@@ -26,11 +26,16 @@ def main() -> int:
         "OPENAI_API_KEY": "test", "COHERE_API_KEY": "test", "TAVILY_API_KEY": "test",
         "SUPABASE_URL": "https://test.invalid", "SUPABASE_PUBLISHABLE_KEY": "test",
         "SUPABASE_SECRET_KEY": "test", "ENVIRONMENT": "test", "PLANNING_ENABLED": "false",
+        "BILLING_ENABLED": "false", "REVENUECAT_API_KEY": "test",
+        "REVENUECAT_WEBHOOK_AUTHORIZATION": "test", "REVENUECAT_WEBHOOK_SIGNING_SECRET": "",
+        "REVENUECAT_APP_IDS": "[]", "BILLING_SANDBOX_USER_IDS": "[]",
         "LANGSMITH_TRACING": "false", "LANGCHAIN_TRACING_V2": "false", "LANGCHAIN_TRACING": "false",
         "LANGSMITH_API_KEY": "test", "LANGCHAIN_API_KEY": "test", "SENTRY_DSN": "",
     })
-    from app.config import DatabaseSettings, RuntimeSettings, Settings
+    from app.config import AISettings, BillingSettings, DatabaseSettings, RuntimeSettings, Settings
 
+    AISettings.model_config["env_file"] = None
+    BillingSettings.model_config["env_file"] = None
     Settings.model_config["env_file"] = None
     DatabaseSettings.model_config["env_file"] = None
     RuntimeSettings.model_config["env_file"] = None

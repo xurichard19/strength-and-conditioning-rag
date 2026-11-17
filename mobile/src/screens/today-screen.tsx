@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { AppState, Pressable, StyleSheet, View } from 'react-native';
 
 import { SportsWorkoutDetails } from '@/components/sports-workout-details';
+import { InitialPlanStatus } from '@/components/initial-plan-status';
 import { WorkoutDetails } from '@/components/workout-details';
 import { AppText, Card, PrimaryButton, Screen, SecondaryButton, SectionTitle } from '@/components/ui';
 import { milestones } from '@/data/mock';
@@ -10,6 +11,7 @@ import { calendarLabel, calendarTime, shiftDays, type CalendarEntry } from '@/li
 import { todayIso } from '@/lib/dates';
 import { useApp } from '@/state/app-context';
 import { useCalendarRange } from '@/state/use-calendar-range';
+import { useInitialPlan } from '@/state/use-initial-plan';
 
 /** Feature planned workouts; other sessions stay compact and open their saved details. */
 function DailyWorkout({ session, onOpen }: { session: CalendarEntry; onOpen: () => void }) {
@@ -63,6 +65,8 @@ export default function TodayScreen() {
   const [today, setToday] = useState(todayIso);
   const [opened, setOpened] = useState<{ id: string; kind: CalendarEntry['kind']; userId: string } | null>(null);
   const { data, loading, error, refresh } = useCalendarRange(today, today);
+  const initialPlan = useInitialPlan();
+  const refreshToday = async () => { await Promise.all([refresh(), initialPlan.refresh()]); };
   const sessions = data?.entries.filter(session => session.date === today && session.status !== 'cancelled') ?? [];
   const selected = opened?.userId === authSession?.user.id
     ? sessions.find(session => session.id === opened?.id && session.kind === opened?.kind) : undefined;
@@ -77,7 +81,9 @@ export default function TodayScreen() {
   }, [today]);
 
   return <Screen title="Today" subtitle={calendarLabel(today, { weekday: 'long', month: 'long', day: 'numeric' })}
-    onRefresh={refresh} refreshing={loading} preview={false}>
+    onRefresh={refreshToday} refreshing={loading || initialPlan.loading} preview={false}>
+    <InitialPlanStatus schedule={initialPlan.schedule} loading={initialPlan.loading} error={initialPlan.error}
+      retrying={initialPlan.retrying} onRetry={initialPlan.retry} onRefresh={initialPlan.refresh} />
     <SectionTitle>Your session</SectionTitle>
     {error ? <Card style={styles.session}>
       <AppText style={{ color: colors.danger }}>{error}</AppText>
@@ -85,7 +91,7 @@ export default function TodayScreen() {
       <SecondaryButton onPress={() => void refresh()}>Retry workouts</SecondaryButton>
     </Card> : null}
     {sessions.map(session => <DailyWorkout key={`${session.kind}:${session.id}`} session={session} onOpen={() => open(session)} />)}
-    {data && !loading && !error && !sessions.length ? <Card style={styles.rest}>
+    {initialPlan.schedule?.initial_plan_status === 'ready' && data && !loading && !error && !sessions.length ? <Card style={styles.rest}>
       <Moon size={26} color={colors.textSecondary} strokeWidth={1.5} />
       <AppText style={styles.restTitle}>No workout today.</AppText>
       <AppText tone="secondary" style={styles.body}>Take it easy and enjoy a little recovery.</AppText>

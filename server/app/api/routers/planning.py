@@ -8,11 +8,31 @@ from app.api.schemas import (
     JobResponse, RevisionRequest, ScheduleRequest, ScheduleResponse,
 )
 from app.auth.supabase import AuthUser, require_user
+from app.auth.billing import require_paid_user
 from app.db.supabase import planning_changes, planning_schedules, replan_jobs
 from app.jobs.scheduler import dispatch_after_commit
+from app.contracts import PlanningScheduleRecord
 
 
-router = APIRouter(prefix="/planning", tags=["planning"], dependencies=[Depends(private_response)])
+router = APIRouter(prefix="/planning", tags=["planning"],
+    dependencies=[Depends(private_response), Depends(require_paid_user)])
+
+
+def _schedule_response(schedule: PlanningScheduleRecord) -> ScheduleResponse:
+    """Keep terminal first-plan failures visible after they leave the live jobs list."""
+    response = ScheduleResponse.model_validate(schedule)
+    if schedule.horizon_end is not None:
+        response.initial_plan_status = "ready"
+        return response
+    job = replan_jobs.get_latest_initial_job(schedule.user_id)
+    response.initial_plan_job = JobResponse.model_validate(job) if job is not None else None
+    if job is not None and job.status == "running":
+        response.initial_plan_status = "running"
+    elif job is not None and job.status in ("failed", "cancelled"):
+        response.initial_plan_status = "failed"
+    elif schedule.billing_pause_reason is not None:
+        response.initial_plan_status = "deferred"
+    return response
 
 
 @router.get("/schedule", response_model=ScheduleResponse | None)
@@ -25,12 +45,12 @@ def get_schedule(user: AuthUser = Depends(require_user)) -> ScheduleResponse | N
     """
 
     with database_errors("planning.get_schedule"):
-        result = planning_schedules.get_planning_schedule(user.id, user.access_token)
-        return ScheduleResponse.model_validate(result) if result is not None else None
+        result = planning_schedules.get_planning_schedule(user.id, None)
+        return _schedule_response(result) if result is not None else None
 
 
 @router.put("/schedule", response_model=ScheduleResponse)
-def configure_schedule(payload: ScheduleRequest, user: AuthUser = Depends(require_user)) -> ScheduleResponse:
+def configure_schedule(payload: ScheduleRequest, user: AuthUser = Depends(require_paid_user)) -> ScheduleResponse:
     """
     initialize or explicitly change refresh settings, not generate workouts
 
@@ -45,12 +65,13 @@ def configure_schedule(payload: ScheduleRequest, user: AuthUser = Depends(requir
     """
 
     with database_errors("planning.configure_schedule"):
-        return ScheduleResponse.model_validate(planning_schedules.configure_planning_schedule(user.id, payload.next_refresh_at,
-            payload.horizon_days, payload.refresh_interval_days))
+        result = planning_schedules.configure_planning_schedule(user.id, payload.next_refresh_at,
+            payload.horizon_days, payload.refresh_interval_days)
+        return _schedule_response(result)
 
 
 @router.post("/adjustments", response_model=JobResponse, status_code=202)
-def request_adjustment(payload: AdjustmentRequest, user: AuthUser = Depends(require_user)) -> JobResponse:
+def request_adjustment(payload: AdjustmentRequest, user: AuthUser = Depends(require_paid_user)) -> JobResponse:
     """
     accept an explicit adjustment request within existing coverage
 
@@ -117,7 +138,7 @@ def cancel_job(job_id: UUID, user: AuthUser = Depends(require_user)) -> JobRespo
 
 
 @router.post("/jobs/{job_id}/retry", response_model=JobResponse, status_code=202)
-def retry_job(job_id: UUID, user: AuthUser = Depends(require_user)) -> JobResponse:
+def retry_job(job_id: UUID, user: AuthUser = Depends(require_paid_user)) -> JobResponse:
     """
     explicitly retry a terminal failure/cancellation without allocating a new key
 
@@ -149,7 +170,7 @@ def list_changes(
 
     with database_errors("planning.list_changes"):
         return HistoryResponse.model_validate(
-            planning_changes.get_history_page(user.id, user.access_token, limit, before_revision))
+            planning_changes.get_history_page(user.id, None, limit, before_revision))
 
 
 @router.get("/changes/{change_id}", response_model=ChangePreviewResponse)
@@ -163,7 +184,7 @@ def get_change(change_id: UUID, user: AuthUser = Depends(require_user)) -> Chang
     """
 
     with database_errors("planning.get_change"):
-        result = planning_changes.get_change_preview(user.id, change_id, user.access_token)
+        result = planning_changes.get_change_preview(user.id, change_id, None)
         if result is None:
             raise HTTPException(404, "change not found", headers=PRIVATE_HEADERS)
         return ChangePreviewResponse.model_validate(result)

@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 from app.contracts import (
-    ChatMode, MessageRole, PlanningChangeStatus, ReplanJobStatus, ReplanKind, SetResultStatus,
+    BillingPhase, ChatMode, InitialPlanStatus, MessageRole, PlanningChangeStatus, ReplanJobStatus, ReplanKind, SetResultStatus,
     SportsWorkoutIntensity, SportsWorkoutStatus, WorkoutStatus,
 )
 
@@ -29,6 +29,56 @@ class RevisionRequest(RequestModel):
 
 class RevisionResponse(ResponseModel):
     revision: int = Field(ge=0)
+
+
+# -------------------- billing --------------------
+
+class BillingStatusResponse(ResponseModel):
+    enabled: bool
+    has_access: bool
+    entitlement: Literal["arcel_pro"] = "arcel_pro"
+    phase: BillingPhase = "inactive"
+    product_id: str | None = None
+    expires_at: datetime.datetime | None = None
+    will_renew: bool | None = None
+    verified_at: datetime.datetime | None = None
+
+
+class RevenueCatWebhookEvent(BaseModel):
+    """provider-owned envelope tolerates new fields and event types"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(min_length=1, max_length=255)
+    type: str = Field(min_length=1, max_length=100)
+    app_id: str | None = None
+    environment: str | None = None
+    app_user_id: str | None = None
+    original_app_user_id: str | None = None
+    aliases: list[str] = Field(default_factory=list, max_length=100)
+    transferred_from: list[str] = Field(default_factory=list, max_length=100)
+    transferred_to: list[str] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def bounded_identities(self) -> Self:
+        """bound distinct account invalidations across all provider identity fields"""
+
+        users = set()
+        for value in [self.app_user_id, self.original_app_user_id, *self.aliases, *self.transferred_from, *self.transferred_to]:
+            if value is not None:
+                try:
+                    users.add(UUID(value))
+                except ValueError:
+                    continue
+        if len(users) > 100:
+            raise ValueError("too many webhook identities")
+        return self
+
+
+class RevenueCatWebhookRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    event: RevenueCatWebhookEvent
 
 
 # -------------------- workout inputs --------------------
@@ -323,6 +373,8 @@ class ScheduleResponse(ResponseModel):
     revision: int = Field(default=0, ge=0)
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    initial_plan_status: InitialPlanStatus = "queued"
+    initial_plan_job: JobResponse | None = None
 
 
 class ChangeResponse(ResponseModel):

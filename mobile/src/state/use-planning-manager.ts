@@ -4,20 +4,21 @@ import { AppState } from 'react-native';
 
 import { shiftDays, type CalendarSnapshot } from '@/lib/calendar';
 import { errorMessage } from '@/lib/errors';
+import { initialPlanPending } from '@/lib/initial-plan';
 import { backendFor } from '@/services/api';
 import type { PlanningChange, PlanningJob, PlanningSchedule } from '@/services/backend';
 import { useApp } from '@/state/app-context';
 
 type State = {
   userId?: string; jobs: PlanningJob[]; changes: PlanningChange[]; jobsLoaded: boolean; loaded: boolean;
-  loading: boolean; loadingMore: boolean; hasMore: boolean; error: string | null;
+  loading: boolean; loadingMore: boolean; retrying: boolean; hasMore: boolean; error: string | null;
   fetchedAt: number; cacheVersion: number;
   schedule: PlanningSchedule | null; calendar: CalendarSnapshot | null; overviewLoaded: boolean; overviewError: string | null; checkedAt: number;
 };
 const empty: State = { jobs: [], changes: [], jobsLoaded: false, loaded: false, loading: false, loadingMore: false,
-  hasMore: false, error: null, fetchedAt: -Infinity, cacheVersion: -1,
+  retrying: false, hasMore: false, error: null, fetchedAt: -Infinity, cacheVersion: -1,
   schedule: null, calendar: null, overviewLoaded: false, overviewError: null, checkedAt: 0 };
-type Action = 'focus' | 'refresh' | 'more' | 'poll';
+type Action = 'focus' | 'refresh' | 'more' | 'poll' | 'retry';
 
 /** Reuse fresh views for a minute; edits, manual refresh and active jobs bypass the TTL. */
 export function usePlanningManager() {
@@ -88,17 +89,21 @@ export function usePlanningManager() {
 
     async function load(action: Action) {
       if (!visible || !foreground || pending || (action === 'more' && !snapshot.hasMore)) return;
+      if (action === 'retry' && (snapshot.schedule?.initial_plan_status !== 'failed' || !snapshot.schedule.initial_plan_job)) return;
       if (action === 'focus' && snapshot.loaded && snapshot.overviewLoaded && !snapshot.error && !snapshot.overviewError
           && !snapshot.jobs.some(job => job.status === 'pending' || job.status === 'running')
+          && !initialPlanPending(snapshot.schedule)
           && snapshot.cacheVersion === calendarCache.version && Date.now() - snapshot.fetchedAt < 60_000) return;
       clearTimeout(timer);
       pending = true;
       refreshOnResume = false;
       const cacheVersion = calendarCache.version;
-      snapshot = { ...snapshot, loading: action === 'refresh' || !snapshot.loaded, loadingMore: action === 'more', error: null,
+      snapshot = { ...snapshot, loading: action === 'refresh' || !snapshot.loaded, loadingMore: action === 'more', retrying: action === 'retry', error: null,
         ...(action !== 'more' ? { fetchedAt: -Infinity } : {}) };
       publish();
       try {
+        if (action === 'retry') await api.retryPlanningJob(snapshot.schedule!.initial_plan_job!.id);
+        if (!visible) return;
         // Read history and coverage after jobs so a completed job's publication cannot be missed.
         const jobs = action === 'more' ? snapshot.jobs : await api.getPlanningJobs();
         if (!visible) return;
@@ -112,10 +117,10 @@ export function usePlanningManager() {
       } finally {
         pending = false;
         if (visible) {
-          snapshot = { ...snapshot, loading: false, loadingMore: false };
+          snapshot = { ...snapshot, loading: false, loadingMore: false, retrying: false };
           publish();
           if (foreground && (refreshOnResume || cacheVersion !== calendarCache.version)) void load('poll');
-          else if (foreground && snapshot.jobs.some(job => job.status === 'pending' || job.status === 'running')) {
+          else if (foreground && (initialPlanPending(snapshot.schedule) || snapshot.jobs.some(job => job.status === 'pending' || job.status === 'running'))) {
             timer = setTimeout(() => void load('poll'), 10_000);
           }
         }
@@ -146,5 +151,5 @@ export function usePlanningManager() {
   };
   const current = state.userId === userId ? state : { ...empty, loading: Boolean(userId) };
   return { ...current, error: userId ? current.error : 'Sign in to see your plans.',
-    refresh: () => run('refresh'), loadMore: () => run('more') };
+    refresh: () => run('refresh'), loadMore: () => run('more'), retryInitialPlan: () => run('retry') };
 }

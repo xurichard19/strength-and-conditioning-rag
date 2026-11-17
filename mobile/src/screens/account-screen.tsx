@@ -8,6 +8,9 @@ import { AppText, Card, PrimaryButton, SecondaryButton } from '@/components/ui';
 import { fonts, radius } from '@/design/tokens';
 import { liveApiConfigured } from '@/services/api';
 import { useApp } from '@/state/app-context';
+import { useSubscription } from '@/state/subscription-context';
+import { subscriptionRecoveryMessage } from '@/state/subscription-store';
+import { PolicyLinks } from '@/components/policy-links';
 
 function ConnectionStatus() {
   const { colors, authSession } = useApp();
@@ -33,6 +36,31 @@ function SignedInActions() {
       <SecondaryButton icon={LogOut} onPress={() => void signOut()}>Sign out</SecondaryButton>
     </View>
   );
+}
+
+function SubscriptionActions() {
+  const subscription = useSubscription();
+  if (!subscription.enabled) return null;
+  const busy = Boolean(subscription.busy) || subscription.loading;
+  const status = subscription.status;
+  const recovery = subscriptionRecoveryMessage(status);
+  const expiry = status?.expires_at ? new Date(status.expires_at).toLocaleDateString() : null;
+  const expiryLabel = subscription.hasAccess ? status?.will_renew ? 'Renews' : 'Access until'
+    : status?.phase === 'trial' ? 'Trial ends' : status?.phase === 'grace' ? 'Paid period ended' : null;
+  return <Card>
+    <AppText weight="semibold">Subscription</AppText>
+    <AppText tone="secondary" style={styles.infoCopy}>{subscription.loading ? 'Checking subscription…'
+      : subscription.hasAccess ? status?.enabled === false ? 'Subscription access is not required in this environment.'
+        : 'Arcel Pro is active.' : recovery ?? 'No verified active subscription.'}</AppText>
+    {expiry && expiryLabel ? <AppText tone="secondary" style={styles.infoCopy}>{expiryLabel} {expiry}</AppText> : null}
+    {subscription.error || subscription.message && subscription.message !== recovery ? <AppText accessibilityRole="alert" style={styles.infoCopy}>{subscription.error ?? subscription.message}</AppText> : null}
+    <View style={styles.form}>
+      <SecondaryButton disabled={busy} onPress={() => void subscription.refresh()}>Refresh subscription</SecondaryButton>
+      <SecondaryButton disabled={busy} loading={subscription.busy === 'restore'} onPress={() => void subscription.restore()}>Restore purchases</SecondaryButton>
+      <PrimaryButton disabled={busy} loading={subscription.busy === 'manage'} onPress={() => void subscription.manage()}>Manage subscription</PrimaryButton>
+      {!subscription.hasAccess && !recovery ? <SecondaryButton disabled={busy} onPress={() => router.replace('/paywall')}>View plans</SecondaryButton> : null}
+    </View>
+  </Card>;
 }
 
 function AccountForm() {
@@ -64,17 +92,23 @@ function AccountForm() {
 
 export default function AccountScreen() {
   const { colors, authSession } = useApp();
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    // Billing rechecks can remove protected routes from the stack. Reuse the entry guards.
+    else router.replace('/');
+  };
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={[styles.header, { borderBottomColor: colors.separator }]}><Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={styles.back}><ArrowLeft color={colors.text} size={21} strokeWidth={1.5} /></Pressable><AppText weight="medium" style={styles.headerLabel}>Your account</AppText><View style={styles.back} /></View>
+        <View style={[styles.header, { borderBottomColor: colors.separator }]}><Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={goBack} style={styles.back}><ArrowLeft color={colors.text} size={21} strokeWidth={1.5} /></Pressable><AppText weight="medium" style={styles.headerLabel}>Your account</AppText><View style={styles.back} /></View>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.intro}><AppText style={styles.title}>Account & sync</AppText><AppText tone="secondary" style={styles.subtitle}>Manage your connection to Arcel.</AppText></View>
           <ConnectionStatus />
           <BackendNotice />
+          {authSession ? <SubscriptionActions /> : null}
           {authSession ? <SignedInActions /> : <AccountForm />}
-          <AppText tone="secondary" style={styles.footnote}>Profile, onboarding, and chat use the live API. Planning and workout syncing are not connected yet.</AppText>
+          <PolicyLinks />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -101,5 +135,4 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, lineHeight: 17, marginTop: 8, marginLeft: 2 },
   input: { height: 56, borderRadius: radius.panel, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, fontFamily: fonts.regular, fontSize: 15 },
   message: { fontSize: 12, lineHeight: 18 },
-  footnote: { fontSize: 11, lineHeight: 18, textAlign: 'center', paddingHorizontal: 6, marginTop: 16 },
 });

@@ -37,6 +37,7 @@ function stopChatRun(run: ChatRun) {
 type AuthActionResult = { ok: true; message?: string } | { ok: false; message: string };
 
 type AppContextValue = {
+  clearProtectedData: (userId: string) => void;
   chatDraft: RefObject<string>;
   chatMode: ChatMode;
   setChatMode: (mode: ChatMode) => void;
@@ -142,6 +143,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const listRequest = useRef(0);
   const owner = useRef<string | null>(null);
   const epoch = useRef(0);
+  const protectedEpoch = useRef(0);
   const [cache] = useState(() => createChatCache());
   const [calendarCache] = useState(() => createCalendarCache());
   const runs = useRef(new Map<string, ChatRun>());
@@ -151,45 +153,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ? systemScheme === 'dark' ? 'dark' : 'light' : profile.theme;
   const colors = palettes[colorScheme];
 
+  /** Losing paid access clears protected memory without resetting profile or onboarding. */
+  const clearProtectedData = useCallback((userId: string) => {
+    if (owner.current !== userId) return;
+    protectedEpoch.current++;
+    chatDraft.current = '';
+    conversation.current = null;
+    setActiveConversationId(null);
+    setChatTitle('Ask Arcel');
+    setChatMode('quick');
+    chatEpoch.current++;
+    listRequest.current++;
+    cache.clear();
+    calendarCache.clear();
+    runs.current.forEach(stopChatRun);
+    runs.current.clear();
+    historyBusy.current = false;
+    setConversations([]);
+    setConversationsLoading(false);
+    setConversationsError(null);
+    setHasOlderConversations(false);
+    setChatMessages([]);
+    setChatBusy(false);
+    setChatLoading(false);
+    setChatError(null);
+    setHasOlderMessages(false);
+  }, [cache, calendarCache]);
+
   // Identity changes clear memory immediately; old async responses may never repopulate it.
   const acceptSession = useCallback((session: AuthSession | null) => {
     const userId = session?.user.id ?? null;
     if (owner.current !== userId) {
+      if (owner.current) clearProtectedData(owner.current);
       owner.current = userId;
-      chatDraft.current = '';
-      conversation.current = null;
-      setActiveConversationId(null);
-      setChatTitle('Ask Arcel');
-      setChatMode('quick');
-      chatEpoch.current += 1;
-      listRequest.current += 1;
-      cache.clear();
-      calendarCache.clear();
-      setConversations([]);
-      setConversationsLoading(false);
-      setConversationsError(null);
-      setHasOlderConversations(false);
       epoch.current += 1;
       accountRequest.current += 1;
-      runs.current.forEach(stopChatRun);
-      runs.current.clear();
-      historyBusy.current = false;
       setProfile(emptyProfile);
       setOnboardingAnswers({});
       setSessions(initialWeek);
       setProposal(initialProposal);
-      setChatMessages([]);
-      setChatBusy(false);
-      setChatLoading(false);
-      setChatError(null);
-      setHasOlderMessages(false);
       setAccountError(null);
       setNotice(null);
       setPasswordRecovery(false);
       setAccountReady(!userId);
     }
     setAuthSession(session);
-  }, [cache, calendarCache]);
+  }, [clearProtectedData]);
 
   useEffect(() => {
     const activeRuns = runs.current;
@@ -340,8 +349,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const id = conversation.current;
     if (!userId || !id || runs.current.has(id)) throw new Error('Wait for the reply to finish.');
     const generation = epoch.current;
+    const access = protectedEpoch.current;
     const saved = await backendFor(userId).renameConversation(id, title);
-    if (epoch.current !== generation) return;
+    if (epoch.current !== generation || protectedEpoch.current !== access) return;
     cache.putConversation(saved);
     listRequest.current += 1;
     setConversationsLoading(false);
@@ -353,8 +363,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const id = conversation.current;
     if (!userId || !id || runs.current.has(id)) throw new Error('Wait for the reply to finish.');
     const generation = epoch.current;
+    const access = protectedEpoch.current;
     await backendFor(userId).deleteConversation(id);
-    if (epoch.current !== generation) return;
+    if (epoch.current !== generation || protectedEpoch.current !== access) return;
     cache.removeConversation(id);
     listRequest.current += 1;
     setConversationsLoading(false);
@@ -615,6 +626,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const value: AppContextValue = {
+    clearProtectedData,
     chatDraft, chatMode, setChatMode,
     hydrated, accountReady, accountError, passwordRecovery, profile, onboardingAnswers,
     sessions, proposal, block: currentBlock, metrics: progressMetrics, authSession,

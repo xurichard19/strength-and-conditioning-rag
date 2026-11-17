@@ -65,7 +65,8 @@ function fixture(sessions: TestModule[] = [], state: TestModule = {}, today = '2
   const timers = new Map<number, () => void>(); let timerId = 0;
   const events = new Set<(state: string) => void>();
   let owner: string | null = 'owner';
-  const refresh = async () => {};
+  let refreshes = 0;
+  const refresh = async () => { refreshes++; };
   const colors = load('design/tokens.ts').palettes.dark;
   const { default: Screen } = load(`screens/${page}-screen.tsx`, {
     react: {
@@ -88,6 +89,12 @@ function fixture(sessions: TestModule[] = [], state: TestModule = {}, today = '2
     'expo-router': { router: { push: (path: TestValue) => routes.push(path) } },
     'lucide-react-native': { Check: 'check', ChevronLeft: 'left', ChevronRight: 'right', Clock3: 'clock' },
     '@/components/ui': { AppText: 'text', Card: 'card', Screen: 'screen', SectionTitle: 'heading', SecondaryButton: 'retry', PrimaryButton: 'primary' },
+    '@/components/initial-plan-status': load('components/initial-plan-status.tsx', {
+      'react/jsx-runtime': { jsx, jsxs: jsx }, 'react-native': { StyleSheet: { create: value => value } },
+      '@/components/ui': { AppText: 'text', Card: 'card', SecondaryButton: 'retry' },
+    }),
+    '@/state/use-initial-plan': { useInitialPlan: () => ({ schedule: { initial_plan_status: 'ready' },
+      loading: false, retrying: false, error: null, retry: refresh, refresh, ...state.initialPlan }) },
     '@/components/calendar-day-actions': { CalendarDayActions: 'day-actions' },
     '@/components/sports-workout-details': { SportsWorkoutDetails: 'sport-details' },
     '@/components/workout-details': { WorkoutDetails: 'workout-details' },
@@ -110,7 +117,7 @@ function fixture(sessions: TestModule[] = [], state: TestModule = {}, today = '2
   };
   const render = () => { cursor = 0; return expand(Screen()); };
   const find = (label: string) => nodes(render()).find(node => node.props.accessibilityLabel === label);
-  return { render, refresh, routes, ranges, find,
+  return { render, refresh, routes, ranges, find, get refreshes() { return refreshes; },
     midnight: (date: string) => { today = date; const work = [...timers.values()]; timers.clear(); work.forEach(fn => fn()); },
     resume: (date: string) => { today = date; events.forEach(fn => fn('active')); },
     unmount: () => slots.forEach(slot => slot?.cleanup?.()),
@@ -124,6 +131,21 @@ function fixture(sessions: TestModule[] = [], state: TestModule = {}, today = '2
     days: () => nodes(render()).filter(node => /^\w+, \w+ \d+, \d{4}(?:, today)?\./.test(node.props.accessibilityLabel ?? '')),
   };
 }
+
+test('Today never labels initial generation or a failed status read as a rest day', () => {
+  const state: TestModule = { initialPlan: { schedule: null, loading: true } };
+  const f = fixture([], state, '2026-01-31', 'today');
+  assert.match(f.text(), /Checking your plan/); assert.doesNotMatch(f.text(), /No workout today/);
+  state.initialPlan = { schedule: null, loading: false, error: 'Could not check your plan.' };
+  assert.match(f.text(), /Could not check your plan/); assert.doesNotMatch(f.text(), /No workout today/);
+  for (const status of ['queued', 'running', 'deferred', 'failed']) {
+    state.initialPlan = { schedule: { initial_plan_status: status, initial_plan_job: { id: 'job' } } };
+    assert.doesNotMatch(f.text(), /No workout today/);
+  }
+  assert.match(f.text(), /Retry plan/);
+  state.initialPlan = { schedule: { initial_plan_status: 'ready' } };
+  assert.match(f.text(), /No workout today/); f.unmount();
+});
 
 test('Today features only planned workouts and opens real details for every workout type without demo navigation', () => {
   const entries = calendar.calendarSnapshot({ revision: 1, workouts: [
@@ -152,7 +174,7 @@ test('Today features only planned workouts and opens real details for every work
   screen.unmount();
 });
 
-test('Today distinguishes rest days from loading and failed reads and keeps pull-to-refresh', () => {
+test('Today distinguishes rest days from loading and failed reads and keeps pull-to-refresh', async () => {
   for (const [state, expected, rest] of [
     [{}, /Take it easy/, true],
     [{ data: undefined, loading: true }, /Your session/, false],
@@ -162,7 +184,8 @@ test('Today distinguishes rest days from loading and failed reads and keeps pull
     const screen = fixture([], state, '2026-01-31', 'today');
     assert.match(screen.text(), expected);
     assert.equal(screen.text().includes('No workout today.'), rest);
-    assert.equal(screen.render().props.onRefresh, screen.refresh);
+    await screen.render().props.onRefresh();
+    assert.equal(screen.refreshes, 2, 'pull-to-refresh checks both workouts and initial plan status');
     assert.equal(screen.render().props.refreshing, 'loading' in state && state.loading);
     assert.doesNotMatch(screen.text(), /Loading today's workouts/);
     assert.equal(nodes(screen.render()).some(node => node.type === 'primary'), false);

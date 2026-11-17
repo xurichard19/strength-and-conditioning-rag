@@ -16,6 +16,7 @@ const preview: PlanningChangePreview = { change: history.changes[0], before: [],
   superseded_at: null, exercises: [{ id: 'exercise', name: 'Squat' }],
 }], revision: 3 };
 const schedule: PlanningSchedule = { user_id: 'user', horizon_days: 21, refresh_interval_days: 7,
+  initial_plan_status: 'ready', initial_plan_job: null,
   horizon_end: '2026-11-07', next_refresh_at: '2026-10-25T12:00:00Z', revision: 3,
   created_at: '2026-10-18T12:00:00Z', updated_at: '2026-10-18T12:00:00Z' };
 
@@ -35,6 +36,19 @@ test('planning reads use authenticated GETs and encode preview ids as one path s
   assert.deepEqual(await api.getPlanningHistory(), history);
   assert.deepEqual(await api.getPlanningChange('a/b?c#d'), preview);
   assert.deepEqual(calls, ['/planning/jobs?limit=20', '/planning/schedule', '/planning/changes?limit=20', '/planning/changes/a%2Fb%3Fc%23d']);
+});
+
+test('explicit job retries use the existing endpoint and never replay an ambiguous write', async () => {
+  const api = createBackend(async (path, options) => {
+    assert.equal(path, '/planning/jobs/a%2Fb%3Fc%23d/retry');
+    assert.equal(options?.method, 'POST');
+    return response(job, 202);
+  });
+  assert.deepEqual(await api.retryPlanningJob('a/b?c#d'), job);
+  let calls = 0;
+  const failing = createBackend(async () => { calls++; throw new Error('offline'); });
+  await assert.rejects(failing.retryPlanningJob('job'), /offline/);
+  assert.equal(calls, 1);
 });
 
 test('planning history preserves revision cursors, zero, and empty pages', async () => {
