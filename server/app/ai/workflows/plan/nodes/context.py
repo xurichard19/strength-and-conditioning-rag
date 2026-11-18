@@ -4,17 +4,9 @@ from itertools import chain
 
 from langgraph.runtime import Runtime
 
-from app.ai.services.user_context import compact_training
+from app.ai.services.context_formatting import compact_record
 from app.ai.workflows.plan.state import MAX_CONTEXT_CHARS, PlanState, WorkflowContext
 from app.services.planning import training_weekdays, workout_has_results
-
-
-def compact_record(record, *, keep_id: bool = False) -> dict:
-    """omit storage metadata and nested ids while retaining prescriptions and results"""
-    data = compact_training(record.model_dump(mode="json", exclude_none=True))
-    if keep_id:
-        data["id"] = str(record.id)
-    return data
 
 
 async def context_node(state: PlanState, runtime: Runtime[WorkflowContext]) -> dict:

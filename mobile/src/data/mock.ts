@@ -1,4 +1,4 @@
-import type { Block, Exercise, Profile, ProgressMetric, Proposal, Session } from '@/domain/types';
+import type { Block, Exercise, ProgressMetric, Proposal, Session } from '@/domain/types';
 
 const iso = (offsetDays: number) => {
   const date = new Date();
@@ -169,19 +169,6 @@ export const initialProposal: Proposal = {
     { accent: 'intervals', label: 'Intervals', delta: '6 → 4 rounds' },
   ],
   protectedNote: 'Weights stay the same',
-};
-
-export const defaultProfile: Profile = {
-  displayName: '',
-  goal: 'Strong and fit',
-  experienceLevel: 'intermediate',
-  trainingDays: ['Mon', 'Tue', 'Thu', 'Sat'],
-  daysPerWeek: 4,
-  sessionMinutes: 45,
-  equipment: 'Full gym',
-  cardio: 'Running',
-  theme: 'system',
-  onboardingComplete: false,
 };
 
 export const consistency = [

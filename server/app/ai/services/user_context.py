@@ -1,19 +1,10 @@
 import asyncio
 from datetime import date, timedelta
 
+from app.ai.services.context_formatting import compact_training
 from app.db.supabase.calendar import get_calendar
 from app.db.supabase._queries import date_range
 from app.db.supabase.onboarding_responses import get_onboarding_response
-
-
-def compact_training(value):
-    """remove storage ids and timestamps from nested training data"""
-    if isinstance(value, list):
-        return [compact_training(item) for item in value]
-    if isinstance(value, dict):
-        return {key: compact_training(item) for key, item in value.items()
-            if key not in {"id", "created_at", "updated_at"} and not key.endswith("_id")}
-    return value
 
 
 async def load_profile_context(context) -> dict:
