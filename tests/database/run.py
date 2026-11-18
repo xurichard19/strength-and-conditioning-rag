@@ -48,11 +48,19 @@ def main() -> None:
 
         for path in [TESTS / "bootstrap.sql", *migrations, *suites]:
             transition = path.name.endswith("_event_driven_planning_billing.sql")
+            restore_refresh_helper = path.name.endswith("_restore_latest_refresh_occurrence.sql")
             if transition:
                 check_sql(TESTS / "migrations/event_driven_before.sql")
+            if restore_refresh_helper:
+                check_sql(TESTS / "migrations/refresh_helper_before.sql")
             check_sql(path)
             if transition:
                 check_sql(TESTS / "migrations/event_driven_after.sql")
+            if restore_refresh_helper:
+                check_sql(TESTS / "migrations/refresh_helper_after.sql")
+                # a fresh database already has the helper; replacement must also be safe.
+                check_sql(path)
+                check_sql(TESTS / "migrations/refresh_helper_after.sql")
         subprocess.run([sys.executable, "-u", str(TESTS / "concurrency.py"), container],
             cwd=ROOT, check=True, timeout=120)
         subprocess.run([sys.executable, "-u", str(TESTS / "billing_concurrency.py"), container],
