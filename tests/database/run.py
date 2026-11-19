@@ -77,6 +77,12 @@ def main() -> None:
             "-v", "ON_ERROR_STOP=1", "--quiet",
         ], input=b"begin;\n" + staged.read_bytes() + access_test.read_bytes() + b"\nrollback;\n",
             check=True, timeout=120)
+        # Inactivity enforcement waits for foreground reporting to ship. Test the
+        # staged SQL only after compatibility checks against ordinary migrations.
+        check_sql(ROOT / "supabase/staged/planning_inactivity.sql")
+        check_sql(TESTS / "staged/planning_inactivity.sql")
+        subprocess.run([sys.executable, "-u", str(TESTS / "activity_concurrency.py"), container],
+            cwd=ROOT, check=True, timeout=120)
         print(f"Passed {len(suites)} SQL suites and concurrent database checks", flush=True)
     finally:
         cleanup = subprocess.run(["docker", "rm", "--force", "--volumes", container],
