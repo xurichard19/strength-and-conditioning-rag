@@ -22,6 +22,7 @@ export function useCalendarRange(start: string, end: string) {
     const cached = calendarCache.peek(start, end);
     const pending = { key, data: cached?.data, loading: force || !cached?.fresh, error: null };
     setState(pending);
+    if (!pending.loading) return;
     try {
       const data = await calendarCache.load(backendFor(userId), start, end, force);
       if (request.current === id && data) setState({ key, data, loading: false, error: null });

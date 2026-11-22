@@ -1,11 +1,11 @@
 import { useEffect } from 'react'
-import { ArrowLeft, ArrowUpRight } from 'lucide-react'
+import { ArrowUpRight } from 'lucide-react'
 import { pageContent } from '../pages/info-content'
 import type { InfoContent, InfoSection } from '../pages/legal-content'
 import { getPathForPage, type InfoPageName } from '../routing'
-import appIcon from '../../../mobile/assets/images/splash-icon.png'
 import AboutPage from './AboutPage'
 import { LaunchFooter } from './LaunchFooter'
+import { LaunchHeader } from './LaunchHeader'
 import './LandingPage.css'
 import './PublicInfoPage.css'
 
@@ -41,16 +41,7 @@ export default function PublicInfoPage({ page }: { page: InfoPageName }) {
 
   return (
     <div className="arcel-landing arcel-policy">
-      <a className="landing-skip" href="#main-content">Skip to content</a>
-      <header className="landing-nav landing-container">
-        <a className="landing-wordmark" href="/" aria-label="Arcel home">
-          <img src={appIcon} width="36" height="36" alt="" />
-          <span>Arcel</span>
-        </a>
-        <nav aria-label="Main navigation">
-          <a className="landing-nav-link" href="/"><ArrowLeft size={16} aria-hidden="true" /> Back to home</a>
-        </nav>
-      </header>
+      <LaunchHeader />
       <main className="policy-main landing-container" id="main-content">
         <header className="policy-hero">
           <p className="policy-category">{content.eyebrow} & information</p>
