@@ -139,7 +139,6 @@ export function Screen({
         {...scrollProps}>
         <Animated.View style={[styles.pageHeader, entranceStyle]}>
           <View style={styles.pageHeaderCopy}>
-            <AppText tone="tint" weight="medium" style={styles.brandLabel}>ARCEL</AppText>
             <AppText style={styles.largeTitle}>{title}</AppText>
             {subtitle ? <AppText tone="secondary" style={styles.subtitle}>{subtitle}</AppText> : null}
           </View>
@@ -313,7 +312,6 @@ const styles = StyleSheet.create({
   sections: { gap: 14 },
   pageHeader: { minHeight: 122, paddingTop: 24, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 16 },
   pageHeaderCopy: { flex: 1 },
-  brandLabel: { fontSize: 10, lineHeight: 15, letterSpacing: 2.3, marginBottom: 10 },
   largeTitle: { fontSize: 38, lineHeight: 43, letterSpacing: -1.6 },
   subtitle: { marginTop: 8, fontSize: 13, lineHeight: 19 },
   pressed: { opacity: 0.72 },
