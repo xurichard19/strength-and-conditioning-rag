@@ -24,7 +24,9 @@ The Expo/React Native mobile client connects to the containerized FastAPI backen
 
 #### Mobile App Demo
 
-https://github.com/user-attachments/assets/b91a3d4c-24e4-497a-b0c3-b5eb1353975a
+https://github.com/user-attachments/assets/ab2527a8-cb4b-4c80-9c36-a42bb7afa7e1
+
+A boxer adds Tuesday practice, sees a lift move to Wednesday, and opens the paper behind a training answer. This dark-mode demo uses sample plan and chat data. [Download the MP4](docs/media/arcel-app-demo.mp4?raw=true).
 
 #### App Infrastructure
 ```mermaid
