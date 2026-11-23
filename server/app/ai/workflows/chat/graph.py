@@ -17,7 +17,10 @@ from app.contracts import ChatMode
 
 
 def retrieval_nodes(state: ChatState) -> list[str]:
-    """select independent reads to run together, or generate when neither is needed"""
+    """ select independent reads to run together, or generate when neither is needed
+
+    - **state**: chat route, selected context and search providers
+    - **returns**: context and/or search nodes, or the generation node when neither is needed """
     nodes = []
     if state["route"].user_context != "none":
         nodes.append("context")
@@ -27,12 +30,15 @@ def retrieval_nodes(state: ChatState) -> list[str]:
 
 
 def after_retrieval(state: ChatState) -> str:
-    """evaluate only after a search and while another search round is available"""
+    """ evaluate only after a search and while another search round is available
+
+    - **state**: selected search providers and remaining retries
+    - **returns**: evaluation when another search is possible, otherwise generation """
     return "evaluate" if state["search"].providers != "none" and state["retries_left"] > 0 else "generate"
 
 
 def build_chat_workflow():
-    """compile the chat workflow with parallel optional reads and bounded search retries"""
+    """ **inputs**: none. **returns**: the compiled chat graph """
 
     graph = StateGraph(ChatState, context_schema=WorkflowContext)
 
@@ -62,16 +68,15 @@ async def stream_chat(
     context: WorkflowContext,
     mode: ChatMode = "quick",
 ) -> AsyncIterator[dict[str, Any]]:
-    """
-    run the chat workflow and stream progress, answer text and sources
+    """ stream status, answer deltas, sources and completion. the chat mode sets the history,
+    search and time budgets
 
     - **graph**: compiled chat workflow
     - **message**: current user message
     - **context**: user credentials, conversation id and current message id/timestamp
     - **mode**: quick or deep; sets history count, result count, retries and timeout
-    - **yields**: status events with a stage, final-answer text events with a delta,
-      a sources event with source records, then a done event
-    """
+    - **yields**: status events with a stage, final-answer text events with a delta, a sources event with
+      source records, then a done event """
 
     sources = []
 

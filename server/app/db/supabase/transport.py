@@ -11,17 +11,8 @@ from app.http import get_http_client
 
 
 class SupabaseDataError(Exception):
-    """
-    database/transport failure passed to the application without http translation
-
-    - **message**: human-readable error; transport and local guard messages are lowercase
-    - **status_code**: upstream http status, or none for local/network/decoding failures
-    - **code**: postgres/postgrest error identifier when supplied, otherwise none
-
-    callers decide the public response and retry policy. a missing status code
-    does not prove a write failed to commit. keep the structured code for debugging
-    and avoid exposing raw database diagnostics directly to a client.
-    """
+    """ database or transport failure. status_code and code are optional. a write may have
+    committed even when its response failed """
 
     def __init__(
         self,
@@ -29,6 +20,10 @@ class SupabaseDataError(Exception):
         status_code: int | None = None,
         code: str | None = None,
     ) -> None:
+        """ - **message**: human-readable description of the database failure
+        - **status_code**: upstream http status, if available
+        - **code**: database error code, if supplied
+        - **returns**: none. stores the upstream status and database code when available """
         super().__init__(message)
         self.status_code = status_code
         self.code = code
@@ -46,30 +41,9 @@ def _request(
     prefer: str | None = None,
     rpc: bool = False,
 ) -> Any:
-    """
-    send one supabase request without automatic write retries
-
-    pooled synchronous call with 10-second network timeouts and a 5-second pool
-    wait, not an overall handler deadline. use a worker thread from async routes. a user
-    token uses the publishable api key; none selects the backend secret API key
-    for apikey only. this does not authenticate the application
-    caller or authorize a user id on their behalf.
-
-    invalid resource names raise valueerror before network access. missing backend
-    credentials, http failures, and supported network/decoding failures become
-    supabasedataerror. request serialization errors are not wrapped. a timeout or
-    unreadable response leaves write completion uncertain; only an operation's
-    explicit idempotency contract can make a replay safe.
-
-    - **path**: validated table or function name
-    - **method**: http method for this operation
-    - **access_token**: user jwt, or none for backend service-role credentials
-    - **query_params**: optional query parameter tuples
-    - **body**: json-compatible request payload, or none
-    - **prefer**: optional postgrest preference header
-    - **rpc**: true routes the request to a postgres function
-    - **returns**: decoded json, or none for an empty response; failures raise structured errors
-    """
+    """ make one synchronous database request. a missing user token selects backend credentials,
+    so callers must authorize the owner. a transport or decoding failure leaves write
+    completion uncertain """
 
     if not re.fullmatch(r"[a-z_][a-z0-9_]*", path):
         raise ValueError("invalid supabase resource name")
@@ -123,12 +97,7 @@ def _request(
 
 
 def _rows(payload: Any) -> list[dict[str, Any]]:
-    """
-    validate a table response before returning rows to a handler
-
-    - **payload**: decoded supabase response
-    - **returns**: row dictionaries; raises if the response is not a list of objects
-    """
+    """ raise SupabaseDataError if the response is not a list of row objects """
 
     if not isinstance(payload, list) or any(not isinstance(row, dict) for row in payload):
         raise SupabaseDataError("supabase data api returned an unexpected response")
@@ -140,19 +109,12 @@ def select_rows(
     query_params: list[tuple[str, str]],
     access_token: str | None,
 ) -> list[dict[str, Any]]:
-    """
-    select rows from supabase table using supabase rest api
-
-    low-level single request: the caller must supply owner filters, ordering,
-    selection, and pagination. the server row cap still applies; this does not
-    fetch all pages or convert dictionaries into contracts. application code
-    should normally use a domain reader rather than construct these parameters.
+    """ fetch one page of visible rows. callers supply owner filters, ordering and pagination
 
     - **table**: table name
     - **query_params**: tuples representing query parameters for the request
     - **access_token**: user jwt, or none for backend service-role reads
-    - **returns**: matching row dictionaries, or an empty list
-    """
+    - **returns**: matching row dictionaries, or an empty list """
 
     return _rows(_request(table, "GET", access_token, query_params))
 
@@ -162,22 +124,13 @@ def call_rpc(
     payload: dict[str, Any],
     access_token: str | None,
 ) -> Any:
-    """
-    call a postgres function using supabase rest api
-
-    rpc runs multi-step database work in one transaction, so related writes
-    either all commit or all roll back; it does not cover external ai calls
-
-    payload values must already be json-compatible; dates and uuids are converted
-    by domain wrappers. this adapter neither unwraps table-valued result arrays
-    nor validates receipts. the current planning rpcs require service-role access;
-    use their domain wrappers to get credential selection and typed return values.
+    """ call a database function with json-compatible values. the raw result may be a row list,
+    scalar or receipt
 
     - **function_name**: postgres function name
     - **payload**: named function arguments encoded as json-compatible values
     - **access_token**: verified user jwt for rls; none uses backend service-role credentials
-    - **returns**: decoded rpc response; shape depends on the postgres return type
-    """
+    - **returns**: decoded rpc response; shape depends on the postgres return type """
 
     return _request(function_name, "POST", access_token, body=payload, rpc=True)
 
@@ -187,19 +140,13 @@ def insert_rows(
     rows: dict[str, Any] | list[dict[str, Any]],
     access_token: str | None,
 ) -> list[dict[str, Any]]:
-    """
-    insert rows into supabase table using supabase rest api
-
-    requests return=representation so database-generated ids/defaults are included.
-    this call is not a nested workout writer or an idempotent operation. callers
-    must enforce an appropriate unique key if retries should not create duplicates.
-    the input must be json-compatible; owner permissions are enforced by rls.
+    """ insert rows and return their stored values. a retry can duplicate rows without a unique
+    key
 
     - **table**: supabase table name
     - **rows**: json-compatible row or rows to save
     - **access_token**: verified user jwt for rls; none uses trusted backend credentials
-    - **returns**: inserted row dictionaries including database defaults
-    """
+    - **returns**: inserted row dictionaries including database defaults """
 
     return _rows(
         _request(table, "POST", access_token, body=rows, prefer="return=representation")
@@ -212,21 +159,14 @@ def upsert_rows(
     access_token: str,
     on_conflict: str,
 ) -> list[dict[str, Any]]:
-    """
-    upsert rows into supabase table using supabase rest api
-
-    uses merge-duplicates on the supplied unique-key columns and returns saved
-    rows. on_conflict must match a database unique constraint/index. this is not
-    a deep merge of json columns: a supplied answers object replaces that column.
-    omitted column handling follows postgrest defaults. replaying an older write
-    can overwrite newer values even though a duplicate row is not created.
+    """ merge rows on a unique database key. supplied json columns are replaced in full and a
+    late retry can overwrite a newer value
 
     - **table**: supabase table name
     - **rows**: json-compatible row or rows to save
     - **access_token**: verified user jwt used to enforce rls
     - **on_conflict**: comma-separated unique-key columns used to match existing rows
-    - **returns**: inserted or updated row dictionaries
-    """
+    - **returns**: inserted or updated row dictionaries """
 
     return _rows(
         _request(
@@ -241,12 +181,8 @@ def upsert_rows(
 
 
 def _has_row_filter(query_params: list[tuple[str, str]]) -> bool:
-    """
-    require a top-level predicate rather than only modifiers or embedded filters
-
-    - **query_params**: query parameter tuples for a mutation
-    - **returns**: true if at least one parameter filters the target table
-    """
+    """ require a predicate on the target table.
+    modifiers and embedded filters alone are insufficient """
 
     modifiers = {"select", "order", "limit", "offset", "columns", "on_conflict"}
     return any(
@@ -261,21 +197,14 @@ def update_rows(
     query_params: list[tuple[str, str]],
     access_token: str,
 ) -> list[dict[str, Any]]:
-    """
-    update rows in supabase table using supabase rest api
-
-    patches every visible row matching the predicates and returns the saved rows.
-    rejects empty/modifier-only/embedded-only queries, but a broad valid predicate
-    can still affect many rows. domain handlers must supply owner and target ids.
-    explicit null clears a column; omitted keys are not patched. no concurrency
-    revision or automatic retry is added by this primitive.
+    """ patch matching rows and return their saved values. callers must scope the owner and
+    target. explicit null clears a column
 
     - **table**: supabase table name
     - **values**: column values to update in every matching row
     - **query_params**: query parameter tuples; mutations require a top-level row predicate
     - **access_token**: verified user jwt used to enforce rls
-    - **returns**: updated row dictionaries, or an empty list if no rows match
-    """
+    - **returns**: updated row dictionaries, or an empty list if no rows match """
 
     if not _has_row_filter(query_params):
         raise ValueError("update filters are required")
@@ -297,20 +226,13 @@ def delete_rows(
     query_params: list[tuple[str, str]],
     access_token: str,
 ) -> list[dict[str, Any]]:
-    """
-    delete rows from supabase table using supabase rest api
-
-    deletes every visible row matching the predicates and returns removed rows.
-    database cascades and restrictions still apply. the filter guard prevents
-    modifier-only requests, not overly broad valid predicates; domain handlers
-    must scope ownership and target ids. an empty result means nothing visible
-    matched, including a repeated delete of an already-removed row.
+    """ delete matching rows and return their old values. callers must scope the owner and
+    target. an empty list means no visible row matched
 
     - **table**: supabase table name
     - **query_params**: query parameter tuples; mutations require a top-level row predicate
     - **access_token**: verified user jwt used to enforce rls
-    - **returns**: deleted row dictionaries, or an empty list if no rows match
-    """
+    - **returns**: deleted row dictionaries, or an empty list if no rows match """
 
     if not _has_row_filter(query_params):
         raise ValueError("delete filters are required")

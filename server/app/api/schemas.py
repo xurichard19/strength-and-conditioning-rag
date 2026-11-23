@@ -45,7 +45,7 @@ class BillingStatusResponse(ResponseModel):
 
 
 class RevenueCatWebhookEvent(BaseModel):
-    """provider-owned envelope tolerates new fields and event types"""
+    """ provider-owned envelope tolerates new fields and event types """
 
     model_config = ConfigDict(extra="ignore")
 
@@ -61,7 +61,10 @@ class RevenueCatWebhookEvent(BaseModel):
 
     @model_validator(mode="after")
     def bounded_identities(self) -> Self:
-        """bound distinct account invalidations across all provider identity fields"""
+        """ bound distinct account invalidations across all provider identity fields
+
+        - **inputs**: parsed revenue cat webhook event instance
+        - **returns**: the validated instance """
 
         users = set()
         for value in [self.app_user_id, self.original_app_user_id, *self.aliases, *self.transferred_from, *self.transferred_to]:
@@ -84,7 +87,7 @@ class RevenueCatWebhookRequest(BaseModel):
 # -------------------- workout inputs --------------------
 
 class SetResultRequest(RequestModel):
-    """complete result for one set; omitted actual values are cleared"""
+    """ complete result for one set; omitted actual values are cleared """
 
     id: UUID
     actual_reps: int | None = Field(default=None, ge=0)
@@ -102,6 +105,8 @@ class WorkoutResultsRequest(RevisionRequest):
 
     @model_validator(mode="after")
     def unique_sets(self) -> Self:
+        """ - **inputs**: parsed workout results request instance
+        - **returns**: the validated instance; raises ValueError if set ids repeat """
         if len({item.id for item in self.sets}) != len(self.sets):
             raise ValueError("set ids must be unique")
         return self
@@ -116,6 +121,9 @@ class ScheduleRequest(RequestModel):
 
     @model_validator(mode="after")
     def valid_schedule(self) -> Self:
+        """ - **inputs**: parsed schedule request instance
+        - **returns**: the validated instance; raises ValueError if the anchor lacks a timezone or the
+          interval exceeds the horizon """
         if self.next_refresh_at.utcoffset() is None:
             raise ValueError("next refresh must include a timezone")
         if self.refresh_interval_days > self.horizon_days:
@@ -132,19 +140,22 @@ class AdjustmentRequest(RequestModel):
     @field_validator("deduplication_key", "reason")
     @classmethod
     def nonblank(cls, value: str) -> str:
+        """ **value**: adjustment reason or deduplication key. **returns**: the original nonblank value """
         if not value.strip():
             raise ValueError("value must not be blank")
         return value
 
     @model_validator(mode="after")
     def valid_window(self) -> Self:
+        """ - **inputs**: parsed adjustment request instance
+        - **returns**: the validated instance; raises ValueError if the end precedes the start """
         if not 0 <= (self.effective_through - self.effective_from).days <= 366:
             raise ValueError("adjustment window must be ordered and no longer than 366 days")
         return self
 
 
 class JobResponse(ResponseModel):
-    """client-safe status; internal lease tokens, worker errors, and retry keys are excluded"""
+    """ client-safe status; internal lease tokens, worker errors, and retry keys are excluded """
 
     id: UUID
     kind: ReplanKind
@@ -172,6 +183,7 @@ class SportsCreateRequest(RequestModel):
     @field_validator("sport")
     @classmethod
     def nonblank_sport(cls, value: str) -> str:
+        """ **value**: submitted sport name. **returns**: trimmed sport name """
         if not value.strip():
             raise ValueError("sport must not be blank")
         return value.strip()
@@ -179,6 +191,7 @@ class SportsCreateRequest(RequestModel):
     @field_validator("start_time")
     @classmethod
     def local_time(cls, value: datetime.time | None) -> datetime.time | None:
+        """ **value**: optional local start time. **returns**: the local time without a timezone, or none """
         if value is not None and value.tzinfo is not None:
             raise ValueError("start time must be a local time without an offset")
         return value
@@ -194,6 +207,9 @@ class SportsUpdateRequest(RequestModel):
 
     @model_validator(mode="after")
     def valid_patch(self) -> Self:
+        """ - **inputs**: parsed sports update request instance
+        - **returns**: the validated instance; raises ValueError if the patch is empty or clears a
+          required field """
         if not self.model_fields_set:
             raise ValueError("at least one sports field is required")
         for field in ("sport", "scheduled_date"):
@@ -218,6 +234,7 @@ class ConversationUpdate(RequestModel):
     @field_validator("title")
     @classmethod
     def nonblank_title(cls, value: str) -> str:
+        """ **value**: submitted conversation title. **returns**: trimmed conversation title """
         if not value.strip():
             raise ValueError("title must not be blank")
         return value.strip()
@@ -231,6 +248,7 @@ class ChatRequest(RequestModel):
     @field_validator("text")
     @classmethod
     def nonblank_text(cls, value: str) -> str:
+        """ **value**: submitted user message. **returns**: trimmed chat message """
         if not value.strip():
             raise ValueError("text must not be blank")
         return value.strip()
@@ -239,7 +257,7 @@ class ChatRequest(RequestModel):
 # -------------------- profile and onboarding --------------------
 
 class ProfileUpdate(RequestModel):
-    """editable http fields; omitted values remain unchanged"""
+    """ editable http fields; omitted values remain unchanged """
 
     display_name: str | None = Field(default=None, min_length=1, max_length=60)
     timezone: str = Field(default="UTC", min_length=1)
@@ -247,6 +265,7 @@ class ProfileUpdate(RequestModel):
     @field_validator("display_name")
     @classmethod
     def nonblank_display_name(cls, value: str | None) -> str | None:
+        """ **value**: display name or null to clear it. **returns**: validated display name or none """
         if value is not None:
             value = value.strip()
             if not value:
@@ -256,6 +275,7 @@ class ProfileUpdate(RequestModel):
     @field_validator("timezone")
     @classmethod
     def valid_timezone(cls, value: str) -> str:
+        """ **value**: submitted timezone name. **returns**: validated timezone name """
         try:
             ZoneInfo(value)
         except (ZoneInfoNotFoundError, ValueError) as exc:
@@ -264,13 +284,15 @@ class ProfileUpdate(RequestModel):
 
     @model_validator(mode="after")
     def nonempty_update(self) -> Self:
+        """ - **inputs**: parsed profile update instance
+        - **returns**: the validated instance; raises ValueError if no update fields were supplied """
         if not self.model_fields_set:
             raise ValueError("at least one profile field is required")
         return self
 
 
 class OnboardingSaveRequest(RequestModel):
-    """complete flexible answer object; completion timestamps are server-owned"""
+    """ complete flexible answer object; completion timestamps are server-owned """
 
     answers: dict[str, JsonValue]
 

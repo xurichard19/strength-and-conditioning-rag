@@ -15,16 +15,12 @@ router = APIRouter(prefix="/calendar", tags=["calendar"], dependencies=[Depends(
 
 @router.get("", response_model=CalendarResponse)
 def get_calendar(dates: tuple[date, date] = Depends(calendar_range), user: AuthUser = Depends(require_paid_user)) -> CalendarResponse:
-    """
-    load current generated workouts and non-cancelled sports for the calendar
-
-    use the returned revision for guarded mutations. none means planning has not
-    been configured; it is not revision zero. all data shares one database snapshot.
+    """ return workouts, sports and revision from one snapshot for inclusive local dates. a null
+    revision means no schedule exists
 
     - **dates**: inclusive local start_date/end_date query parameters
     - **user**: verified owner and caller jwt
-    - **returns**: separately ordered workout/sports lists and matching planning revision
-    """
+    - **returns**: separately ordered workout/sports lists and matching planning revision """
 
     with database_errors("calendar.get_calendar"):
         return CalendarResponse.model_validate(calendar.get_calendar_snapshot(user.id, *dates, None))

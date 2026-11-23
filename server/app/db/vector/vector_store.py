@@ -11,6 +11,7 @@ from uuid import uuid4
 class VectorDB:
 
     def __init__(self):
+        """ **inputs**: none. **returns**: none. initializes the vector store client """
         self.settings = get_ai_settings()
         self.client = chromadb.CloudClient(
             tenant=self.settings.chroma_tenant,
@@ -20,6 +21,7 @@ class VectorDB:
 
 
     def __len__(self) -> int:
+        """ **inputs**: none. **returns**: number of indexed chunks, or zero when the collection is missing """
         try: return self.system_doc_count()
         except (ValueError, NotFoundError): return 0
 
@@ -40,7 +42,10 @@ class VectorDB:
 
 
     def index_system_docs(self, batch_size: int | None = None) -> None:
-        """ initialize system db """
+        """ initialize system db
+
+        - **batch_size**: maximum chunks per indexing batch, or none for the default
+        - **returns**: none. replaces the collection with the indexed corpus """
         if batch_size is None:
             batch_size = self.settings.index_batch_size
 
@@ -66,7 +71,7 @@ class VectorDB:
     
 
     def reset_system_docs(self) -> Collection:
-        """ reboot system db """
+        """ **inputs**: none. **returns**: the newly created empty collection """
         schema = chromadb.Schema().create_index(key="sparse_embedding",
             config=chromadb.SparseVectorIndexConfig(source_key=chromadb.K.DOCUMENT,
                 embedding_function=ChromaBm25EmbeddingFunction(), bm25=True))

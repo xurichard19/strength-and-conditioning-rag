@@ -9,7 +9,12 @@ from app.config import RuntimeSettings
 
 
 def init_sentry(service: str, settings: RuntimeSettings | None = None) -> None:
-    """share error reporting across entrypoints without collecting bodies, locals or application logs"""
+    """ share error reporting across entrypoints without collecting bodies, locals or
+    application logs
+
+    - **service**: service name used for startup checks and error reporting
+    - **settings**: configuration for this service
+    - **returns**: none. initializes reporting when configured """
     settings = settings if settings is not None else RuntimeSettings()
     if not settings.sentry_dsn:
         return
@@ -36,6 +41,11 @@ def init_sentry(service: str, settings: RuntimeSettings | None = None) -> None:
 
 
 def capture_failure(error: Exception, operation: str) -> None:
-    """report a caught failure once and bound delivery before cloud run throttles an idle process"""
+    """ report a caught failure once and bound delivery before cloud run throttles an idle
+    process
+
+    - **error**: caught exception to report
+    - **operation**: stable operation name without user data
+    - **returns**: none. records and flushes the failure when reporting is active """
     if sentry_sdk.capture_exception(error, tags={"operation": operation}):
         sentry_sdk.flush(timeout=2)

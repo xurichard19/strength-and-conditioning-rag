@@ -5,12 +5,10 @@ from app.ai.workflows.chat.state import CHAT_POLICIES, ChatState
 
 
 async def search_node(state: ChatState) -> dict:
-    """
-    run one search round and merge its results with earlier sources
+    """ merge the current search round into the evidence and keep partial-failure warnings
 
     - **state**: query, providers, chat mode and previous search results
-    - **returns**: deduplicated sources, attempted queries and warnings
-    """
+    - **returns**: deduplicated sources, attempted queries and warnings """
 
     get_stream_writer()({"type": "status", "stage": "researching"})
     query = state["search"]

@@ -1,1 +1,1 @@
-"""Vector database storage and document ingestion."""
+""" vector database storage and document ingestion """

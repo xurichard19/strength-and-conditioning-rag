@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Document processing requires Tesseract and image/PDF support libraries.
+# tesseract and image libraries for parsing scanned pdfs
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     libgl1 \

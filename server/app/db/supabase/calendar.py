@@ -14,24 +14,14 @@ from app.db.supabase.workouts import get_recent_workouts, get_workouts_in_range
 
 
 def get_calendar(user_id: str | UUID, start_date: date, end_date: date, access_token: str | None) -> CalendarRecords:
-    """
-    read current app workouts and sports commitments for the same calendar range
-
-    combines two separately ordered lists: current app workouts (all statuses) and
-    non-cancelled sports commitments. dates are inclusive user-calendar dates; the
-    caller owns timezone selection and merging the lists for display. does not
-    synthesize rest-day entries.
-
-    the component reads paginate independently and are not a transaction snapshot.
-    use this for display; a worker needing a revision check should call
-    get_replan_context instead.
+    """ load current workouts and non-cancelled sports for inclusive local dates. these lists
+    paginate independently. use get_replan_context when a worker needs revision checks
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **start_date**: first calendar date to include
     - **end_date**: last calendar date to include
     - **access_token**: verified user jwt for rls; none uses backend service-role credentials
-    - **returns**: current workouts and non-cancelled sports commitments for the same date range
-    """
+    - **returns**: current workouts and non-cancelled sports commitments for the same date range """
 
     return CalendarRecords(
         workouts=get_workouts_in_range(user_id, start_date, end_date, access_token),
@@ -40,15 +30,13 @@ def get_calendar(user_id: str | UUID, start_date: date, end_date: date, access_t
 
 
 def get_calendar_snapshot(user_id: str | UUID, start_date: date, end_date: date, access_token: str | None) -> CalendarSnapshot:
-    """
-    read frontend calendar data and revision from one database snapshot
+    """ read workouts, sports and revision in one snapshot for up to 31 inclusive local dates
 
     - **user_id**: authenticated owner
     - **start_date**: inclusive first local date
     - **end_date**: inclusive last local date, at most 30 days after start_date
     - **access_token**: caller jwt, or none for backend access
-    - **returns**: current workouts, sports, and revision for later guarded writes
-    """
+    - **returns**: current workouts, sports, and revision for later guarded writes """
 
     if not 0 <= (end_date - start_date).days < 31:
         raise ValueError("calendar range must contain 1 to 31 days")
@@ -58,24 +46,13 @@ def get_calendar_snapshot(user_id: str | UUID, start_date: date, end_date: date,
 
 
 def get_replan_context(claim: ClaimedReplanJob, history_days: int = 30) -> ReplanContext:
-    """
-    load worker context through the horizon and reject input changes during the reads
-
-    verifies the claim revision, loads profile/onboarding, thirty-day history before
-    claimed_on and the whole remaining calendar, then checks revision again.
-    sport reads include three neighboring days for recovery context. these broader
-    reads never authorize edits outside the claim's window.
-
-    missing onboarding is allowed; missing profile raises a 404. missing/stale
-    schedule or a revision change during reads raises a 409. discard that context
-    and release/reclaim the job before regenerating. this is an optimistic consistency
-    check, not a database snapshot or a lease renewal. inputs may change afterward;
-    complete_replan_job performs the final lease/revision check.
+    """ load history and calendar data under the claim revision. a missing profile raises 404
+    and stale planning inputs raise 409. only the claimed dates may be edited, even when the
+    context includes neighboring days
 
     - **claim**: claimed job with its expected revision, edit window, and horizon end
     - **history_days**: number of prior calendar days to load, from 1 to 366
-    - **returns**: profile, onboarding, history, calendar, and schedule; raises on revision conflicts
-    """
+    - **returns**: profile, onboarding, history, calendar, and schedule; raises on revision conflicts """
 
     user_id = claim.job.user_id
     today = claim.job.claimed_on

@@ -16,15 +16,15 @@ MAX_RESPONSE_BYTES = 1024 * 1024
 
 
 class RevenueCatError(Exception):
-    """provider state could not be verified; callers must not infer inactive access"""
+    """ provider state could not be verified; callers must not infer inactive access """
 
 
 class RevenueCatUnavailable(RevenueCatError):
-    """Temporary provider failure; a previous paid verification may cover this outage."""
+    """ temporary provider failure; a previous paid verification may cover this outage """
 
 
 def _date(value: object) -> datetime | None:
-    """parse an optional provider timestamp and reject missing timezone information"""
+    """ parse an optional provider timestamp and reject missing timezone information """
 
     if value is None:
         return None
@@ -40,14 +40,10 @@ def _date(value: object) -> datetime | None:
 
 
 def normalize_subscriber(payload: object, environment: BillingEnvironment, now: datetime) -> BillingSnapshot:
-    """
-    select the configured entitlement and verify its actual store environment
-
-    - **payload**: customer info fetched directly from revenuecat
+    """ - **payload**: customer info fetched directly from revenuecat
     - **environment**: sandbox for test accounts, production for ordinary live accounts
     - **now**: timezone-aware server time used to evaluate expiration and store grace
-    - **returns**: normalized subscription state; ambiguous/malformed state raises an error
-    """
+    - **returns**: normalized subscription state; ambiguous/malformed state raises an error """
 
     if not isinstance(payload, dict) or not isinstance(payload.get("subscriber"), dict):
         raise RevenueCatError("invalid provider response")
@@ -68,7 +64,7 @@ def normalize_subscriber(payload: object, environment: BillingEnvironment, now: 
     if not isinstance(subscription, dict) or type(subscription.get("is_sandbox")) is not bool:
         raise RevenueCatError("invalid provider subscription")
     if subscription["is_sandbox"] != (environment == "sandbox"):
-        # CustomerInfo can combine environments. Never turn an ambiguous live subscription
+        # CustomerInfo can combine environments. never turn an ambiguous live subscription
         # into a definitive unpaid response just because the selected entitlement is sandbox.
         for candidate in subscriptions.values():
             if not isinstance(candidate, dict) or candidate.get("is_sandbox") is not (environment == "sandbox"):
@@ -84,7 +80,7 @@ def normalize_subscriber(payload: object, environment: BillingEnvironment, now: 
         return BillingSnapshot()
     expires_at = _date(entitlement.get("expires_date"))
     subscription_expiry = _date(subscription.get("expires_date"))
-    # Only recurring subscriptions are sold. Do not infer an unlimited grant from null dates.
+    # only recurring subscriptions are sold. do not infer an unlimited grant from null dates.
     if expires_at is None or subscription_expiry is None:
         raise RevenueCatError("subscription expiry is required")
     expires_at = min(expires_at, subscription_expiry)
@@ -97,8 +93,8 @@ def normalize_subscriber(payload: object, environment: BillingEnvironment, now: 
     period_type = subscription.get("period_type")
     if period_type is not None and not isinstance(period_type, str):
         raise RevenueCatError("invalid provider period")
-    # A refunded or fully expired subscription cannot grant access, even when its
-    # historical period is missing or unsupported. Live periods remain fail-closed.
+    # a refunded or fully expired subscription cannot grant access, even when its
+    # historical period is missing or unsupported. live periods remain fail-closed.
     if active and period_type not in {"normal", "intro", "trial"}:
         raise RevenueCatError("invalid provider period")
     will_renew = subscription.get("unsubscribe_detected_at") is None if "unsubscribe_detected_at" in subscription else None
@@ -107,14 +103,11 @@ def normalize_subscriber(payload: object, environment: BillingEnvironment, now: 
 
 
 def fetch_entitlement(user_id: UUID, environment: BillingEnvironment, api_key: str, *, timeout: float = 8) -> BillingSnapshot:
-    """
-    verify subscription status with a bounded server-to-server request
-
-    - **user_id**: verified supabase uuid also used as the revenuecat app user id
+    """ - **user_id**: verified supabase uuid also used as the revenuecat app user id
     - **environment**: desired store partition; never selected by the mobile request
     - **api_key**: dedicated server credential, kept out of logs and responses
-    - **returns**: normalized entitlement; upstream/decoding failures raise a safe provider error
-    """
+    - **timeout**: provider request timeout in seconds
+    - **returns**: normalized entitlement; upstream/decoding failures raise a safe provider error """
 
     request = Request(f"https://api.revenuecat.com/v1/subscribers/{quote(str(user_id), safe='')}",
         headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"})
@@ -136,16 +129,15 @@ def fetch_entitlement(user_id: UUID, environment: BillingEnvironment, api_key: s
 
 def authorized_webhook(authorization: str | None, expected: str, body: bytes,
                        signature: str | None, signing_secret: str | None) -> bool:
-    """
-    verify the configured authorization and optional signed raw request body
+    """ verify authorization and any configured signature against the raw body. signed
+    deliveries must be within five minutes
 
     - **authorization**: received authorization header
     - **expected**: complete configured header value
     - **body**: raw bytes before json parsing
     - **signature**: optional revenuecat timestamp/signature header
     - **signing_secret**: required verification secret when signing is configured
-    - **returns**: whether credentials and optional five-minute replay tolerance pass
-    """
+    - **returns**: whether credentials and optional five-minute replay tolerance pass """
 
     if not authorization or not hmac.compare_digest(authorization.encode(), expected.encode()):
         return False

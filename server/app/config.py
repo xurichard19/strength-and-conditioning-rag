@@ -29,13 +29,12 @@ class DatabaseSettings(RuntimeSettings):
     @field_validator("supabase_url")
     @classmethod
     def validate_supabase_url(cls, value: str, info: ValidationInfo) -> str:
-        """
-        require https except for local development and test supabase instances
+        """ require https except for local development and test instances. strip any trailing
+        slash
 
-        - **value**: configured supabase project URL
+        - **value**: configured supabase project url
         - **info**: previously validated settings, including the environment
-        - **returns**: validated URL without a trailing slash
-        """
+        - **returns**: validated url without a trailing slash """
         url = urlsplit(value)
         local_host = url.hostname == "localhost"
         try:
@@ -60,7 +59,7 @@ class DatabaseSettings(RuntimeSettings):
 
 
 class BillingSettings(DatabaseSettings):
-    """Subscription verification shared by the API, dispatcher, and worker."""
+    """ subscription verification shared by the api, dispatcher, and worker """
 
     billing_enabled: bool = False
     revenuecat_api_key: SecretStr | None = None
@@ -68,6 +67,8 @@ class BillingSettings(DatabaseSettings):
 
     @model_validator(mode="after")
     def validate_billing_credentials(self):
+        """ - **inputs**: parsed billing settings instance
+        - **returns**: the validated instance """
         if self.billing_enabled:
             for name in ("revenuecat_api_key", "supabase_secret_key"):
                 value = getattr(self, name)
@@ -77,7 +78,7 @@ class BillingSettings(DatabaseSettings):
 
 
 class AISettings(BillingSettings):
-    """Model and retrieval configuration shared by chat and planning generation."""
+    """ model and retrieval configuration shared by chat and planning generation """
 
     doc_source: str = "local"
     gcs_bucket: str | None = None
@@ -94,7 +95,7 @@ class AISettings(BillingSettings):
 
 
 class Settings(AISettings):
-    """Public API configuration, including webhook authentication."""
+    """ public api configuration, including webhook authentication """
 
     app_name: str = "arcel api"
     cors_origins: list[str] = Field(default_factory=lambda: [
@@ -107,13 +108,19 @@ class Settings(AISettings):
     @field_validator("revenuecat_webhook_signing_secret", mode="before")
     @classmethod
     def optional_webhook_signing_secret(cls, value):
-        """treat an unset/blank optional signing secret as disabled signing"""
+        """ treat an unset/blank optional signing secret as disabled signing
+
+        - **value**: configured signing secret, possibly blank
+        - **returns**: the configured value, or none when blank """
 
         return None if isinstance(value, str) and not value.strip() else value
 
     @model_validator(mode="after")
     def validate_billing_configuration(self):
-        """require backend credentials and app scoping only when billing is enabled"""
+        """ require backend credentials and app scoping only when billing is enabled
+
+        - **inputs**: parsed settings instance
+        - **returns**: the validated instance """
 
         if self.billing_enabled:
             authorization = self.revenuecat_webhook_authorization
@@ -128,22 +135,29 @@ class Settings(AISettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """ **inputs**: none. **returns**: cached settings for the public api """
     return Settings()
 
 
 @lru_cache
 def get_database_settings() -> DatabaseSettings:
-    """load background configuration without ai credentials"""
+    """ load background configuration without ai credentials
+
+    - **inputs**: none
+    - **returns**: cached database settings """
     return DatabaseSettings()
 
 
 @lru_cache
 def get_billing_settings() -> BillingSettings:
-    """Load verification credentials without AI or webhook configuration."""
+    """ load verification credentials without ai or webhook configuration
+
+    - **inputs**: none
+    - **returns**: cached billing verification settings """
     return BillingSettings()
 
 
 @lru_cache
 def get_ai_settings() -> AISettings:
-    """Load generation credentials without API webhook configuration."""
+    """ **inputs**: none. **returns**: cached model and retrieval settings """
     return AISettings()

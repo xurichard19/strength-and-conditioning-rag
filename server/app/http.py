@@ -1,4 +1,4 @@
-"""Shared, bounded HTTP connections for synchronous backend requests."""
+""" shared, bounded http connections for synchronous backend requests """
 
 from contextlib import asynccontextmanager
 from http.cookiejar import CookieJar, DefaultCookiePolicy
@@ -10,14 +10,14 @@ import httpx
 from app.observability import init_sentry
 
 
-# Request URLs can contain private database filters; retain named application spans.
+# request urls can contain private database filters; retain named application spans.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 _client: httpx.Client | None = None
 _lock = Lock()
 
 
 def get_http_client() -> httpx.Client:
-    """reuse one thread-safe pool per process; credentials belong to each request"""
+    """ **inputs**: none. **returns**: the process-wide synchronous http client """
     global _client
     with _lock:
         if _client is None:
@@ -31,7 +31,10 @@ def get_http_client() -> httpx.Client:
 
 
 def close_http_client() -> None:
-    """release idle connections after the service has drained its requests"""
+    """ release idle connections after the service has drained its requests
+
+    - **inputs**: none
+    - **returns**: none. closes the shared connection pool """
     global _client
     with _lock:
         if _client is not None:
@@ -41,16 +44,20 @@ def close_http_client() -> None:
 
 @asynccontextmanager
 async def http_lifespan(app, *, service: str | None = None):
-    """close the lazily created pool on shutdown, including failed startup"""
+    """ close the lazily created pool on shutdown, including failed startup
+
+    - **app**: service instance entering its lifespan
+    - **service**: optional service name for startup checks
+    - **yields**: control to the running service after startup checks """
     try:
         if service is not None:
             init_sentry(service)
         if service in ("planning-dispatcher", "planning-worker"):
             from app.config import get_billing_settings
-            get_billing_settings()  # Reject enabled-but-incomplete billing before accepting jobs.
+            get_billing_settings()  # reject enabled-but-incomplete billing before accepting jobs
         if service == "planning-worker":
             from app.config import get_ai_settings
-            get_ai_settings()  # Missing generation credentials must not consume job attempts.
+            get_ai_settings()  # missing generation credentials must not consume job attempts
         yield
     finally:
         close_http_client()

@@ -18,7 +18,7 @@ from app.services.planning import validate_proposal
 
 @lru_cache
 def build_plan_workflow():
-    """compile shared planning with one research retry and one proposal repair"""
+    """ **inputs**: none. **returns**: the compiled planning graph """
     graph = StateGraph(PlanState, context_schema=WorkflowContext)
     for name, node in {
         "context": context_node, "prepare": prepare_node, "search": search_node,
@@ -40,14 +40,13 @@ def build_plan_workflow():
 
 
 async def generate_plan(claim: ClaimedReplanJob, context: ReplanContext) -> PlanningProposal:
-    """
-    generate a validated proposal without database writes or a user access token
+    """ generate and validate changes without database writes.
+    reserve time for generation and allow a repair only if a full call fits
 
     - **claim**: worker's job with fixed dates and expected input revision
     - **context**: authoritative athlete data loaded by the worker
-    - **returns**: validated changes within three minutes; reserve one generation call
-      before further research, allowing a repair only when another full call fits
-    """
+    - **returns**: validated changes within three minutes; reserve one generation call before further
+      research, allowing a repair only when another full call fits """
     if claim.effective_from > claim.effective_through:
         return validate_proposal(claim, context, PlanningProposal(
             before_ids=[], workouts=[], day_decisions=[]))

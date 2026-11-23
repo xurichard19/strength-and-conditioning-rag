@@ -25,6 +25,8 @@ class AuthUser:
 def require_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> AuthUser:
+    """ - **credentials**: bearer credentials from the authorization header, if present
+    - **returns**: verified account and access token, or an authentication error """
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -36,6 +38,8 @@ def require_user(
 
 
 def verify_supabase_token(access_token: str) -> AuthUser:
+    """ - **access_token**: supabase access token to verify
+    - **returns**: account verified by supabase, including its access token """
     settings = get_settings()
     supabase_url = settings.supabase_url.rstrip("/")
     url = f"{supabase_url}/auth/v1/user"

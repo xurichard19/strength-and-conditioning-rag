@@ -21,7 +21,7 @@ logger = logging.getLogger("uvicorn.error")
 
 
 def build_chat_workflow():
-    """initialize ai dependencies during startup, not while importing api routes; return the compiled chat graph"""
+    """ **inputs**: none. **returns**: the compiled chat graph """
 
     from app.ai.workflows.chat.graph import build_chat_workflow as build
 
@@ -32,6 +32,8 @@ init_sentry("api", settings)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """ - **app**: service instance entering its lifespan
+    - **yields**: control to the api after the chat workflow is ready """
     async with http_lifespan(app):
         logger.info("app startup...")
         app.state.chat_graph = build_chat_workflow()
@@ -63,10 +65,12 @@ app.add_middleware(
 
 @app.get("/", response_model=AppResponse)
 async def root() -> AppResponse:
+    """ **inputs**: none. **returns**: the configured application name """
     return AppResponse(app=settings.app_name)
 
 
 if settings.environment == "development":
     @app.get("/sentry-debug")
     async def trigger_error():
+        """ **inputs**: none. **returns**: never returns. raises a deliberate error for the sentry check """
         division_by_zero = 1 / 0

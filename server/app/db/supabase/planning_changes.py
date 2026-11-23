@@ -12,15 +12,14 @@ CHANGE_COLUMNS = "id,user_id,revision,kind,status,reason,effective_from,effectiv
 
 
 def get_history_page(user_id: str | UUID, access_token: str | None, limit: int = 20, before_revision: int | None = None) -> PlanningHistoryPage:
-    """
-    read history with the current revision needed to request undo/redo
+    """ return history and its current revision, or 409 if it changes during the read.
+    page by original change revision
 
     - **user_id**: authenticated owner
-    - **access_token**: user JWT, or none for backend credentials after owner authorization
+    - **access_token**: user jwt, or none for backend credentials after owner authorization
     - **limit**: page size, 1-100
     - **before_revision**: exclusive original change revision cursor, not schedule revision
-    - **returns**: newest-first changes/current revision; 409 if state changes during reading
-    """
+    - **returns**: newest-first changes/current revision; 409 if state changes during reading """
 
     changes, revision = read_with_revision(user_id, access_token,
         lambda: get_recent_planning_changes(user_id, access_token, limit, before_revision=before_revision))
@@ -28,19 +27,15 @@ def get_history_page(user_id: str | UUID, access_token: str | None, limit: int =
 
 
 def get_change_preview(user_id: str | UUID, change_id: UUID, access_token: str | None) -> PlanningChangePreview | None:
-    """
-    resolve the original before/after versions for a change, including superseded workouts
-
-    the preview does not guarantee undo eligibility: ordering and recorded results
-    are checked by the mutation rpc. unchanged workouts are absent from both sides.
+    """ load before and after versions for changed workouts. the mutation checks undo
+    eligibility separately
 
     - **user_id**: authenticated owner
     - **change_id**: owned planning change to inspect
-    - **access_token**: user JWT, or none for backend credentials after owner authorization
-    - **returns**: change and workout trees with current revision, or none when missing
-    """
+    - **access_token**: user jwt, or none for backend credentials after owner authorization
+    - **returns**: change and workout trees with current revision, or none when missing """
 
-    def read():
+    def read() -> PlanningChangePreview | None:
         change = get_planning_change(user_id, change_id, access_token)
         if change is None:
             return None
@@ -57,19 +52,12 @@ def get_change_preview(user_id: str | UUID, change_id: UUID, access_token: str |
 
 
 def get_planning_change(user_id: str | UUID, change_id: str | UUID, access_token: str | None) -> PlanningChangeRecord | None:
-    """
-    read one user-owned planning change
-
-    returns metadata for an applied, undone, or discarded change without filtering
-    its status. to inspect the actual before/after content, load get_change_workouts
-    and resolve those ids with workouts.get_workouts_by_ids. this read does not undo
-    anything and does not establish that the change is currently eligible for undo.
+    """ look up change metadata in any status. use get_change_preview for the workout versions
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **change_id**: id of the user-owned planning change
     - **access_token**: verified user jwt for rls; none uses backend service-role credentials
-    - **returns**: planning change, or none if no visible change matches
-    """
+    - **returns**: planning change, or none if no visible change matches """
 
     rows = select_rows("planning_changes", [("select", CHANGE_COLUMNS), ("user_id", f"eq.{identifier(user_id)}"),
         ("id", f"eq.{identifier(change_id)}"), ("limit", "1")], access_token)
@@ -79,21 +67,14 @@ def get_planning_change(user_id: str | UUID, change_id: str | UUID, access_token
 def get_recent_planning_changes(
     user_id: str | UUID, access_token: str | None, limit: int = 20, *, before_revision: int | None = None,
 ) -> list[PlanningChangeRecord]:
-    """
-    read a history page newest first; use the last revision to fetch the next page
-
-    returns all history statuses, including discarded redo branches, ordered by
-    original commit revision descending. the cursor is the last record's revision,
-    not the current schedule revision. undo/redo changes status but does not reorder
-    the original revisions. an empty page means no more visible history. the caller
-    must not assume the first item is eligible for undo; the rpc validates ordering.
+    """ page history by descending original commit revision, including discarded changes. use
+    the last row's revision as the next cursor
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **access_token**: verified user jwt for rls; none uses backend service-role credentials
     - **limit**: maximum records to return, from 1 to 100
     - **before_revision**: exclusive revision cursor from the last change in the previous page
-    - **returns**: history page ordered by descending revision
-    """
+    - **returns**: history page ordered by descending revision """
 
     page_limit(limit)
     filters = [("select", CHANGE_COLUMNS), ("user_id", f"eq.{identifier(user_id)}"),
@@ -104,20 +85,13 @@ def get_recent_planning_changes(
 
 
 def get_change_workouts(user_id: str | UUID, change_id: str | UUID, access_token: str | None) -> list[PlanningChangeWorkoutRecord]:
-    """
-    read before/after workout references for a change
-
-    returns lightweight links, not full workout trees. side=before identifies
-    versions removed by this change and side=after identifies versions it introduced.
-    unchanged workouts have no links. an empty result can mean a metadata-only change
-    or a missing/inaccessible change; use get_planning_change if that distinction
-    matters. resolve the ids with the historical workout reader for previews.
+    """ read version links for changed workouts. no links can mean a metadata-only change or an
+    inaccessible change
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **change_id**: id of the user-owned planning change
     - **access_token**: verified user jwt for rls; none uses backend service-role credentials
-    - **returns**: before/after workout references ordered by side and workout id
-    """
+    - **returns**: before/after workout references ordered by side and workout id """
 
     rows = all_rows("planning_change_workouts", [("select", "change_id,workout_id,user_id,side"),
         ("user_id", f"eq.{identifier(user_id)}"), ("change_id", f"eq.{identifier(change_id)}"),
@@ -126,24 +100,13 @@ def get_change_workouts(user_id: str | UUID, change_id: str | UUID, access_token
 
 
 def undo_planning_change(user_id: str | UUID, change_id: str | UUID, expected_revision: int) -> WorkoutWriteResult:
-    """
-    undo the latest applied change without copying workouts
-
-    backend-only transaction targeting the latest applied change, not an arbitrary
-    historical row. reactivates before versions, deactivates after versions, restores
-    the prior horizon, and increments the schedule revision without moving refresh
-    cadence. neither side may contain recorded results.
-
-    pass the revision the user reviewed. an out-of-order target, stale revision, or
-    changed workout state conflicts. do not automatically repeat with a new revision:
-    reload calendar/history first. consecutive undos target the next latest applied
-    change with its newly read revision; no workout trees are copied.
+    """ undo the latest applied change at the reviewed revision. recorded results block undo.
+    reload history and the calendar after a conflict
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **change_id**: id of the user-owned planning change
     - **expected_revision**: planning revision the caller read; stale revisions are rejected
-    - **returns**: change id, restored workout ids, and new planning revision
-    """
+    - **returns**: change id, restored workout ids, and new planning revision """
 
     return WorkoutWriteResult.model_validate(call_rpc("undo_planning_change", {
         "p_user_id": identifier(user_id), "p_change_id": identifier(change_id),
@@ -152,23 +115,13 @@ def undo_planning_change(user_id: str | UUID, change_id: str | UUID, expected_re
 
 
 def redo_planning_change(user_id: str | UUID, change_id: str | UUID, expected_revision: int) -> WorkoutWriteResult:
-    """
-    redo the earliest undone change without copying workouts
-
-    backend-only transaction targeting the earliest undone change. reactivates its
-    after versions, deactivates before versions, restores its resulting horizon, and
-    increments revision without moving refresh cadence. recorded results block the
-    switch. a new committed planning change discards the redo branch.
-
-    supply an explicit target and the revision the user reviewed. repeated calls with
-    the old revision conflict rather than reapplying another change. refresh history
-    and calendar after success or an ambiguous timeout before deciding on another redo.
+    """ redo the earliest undone change at the reviewed revision. recorded results block redo
+    and a new commit discards the redo branch
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **change_id**: id of the user-owned planning change
     - **expected_revision**: planning revision the caller read; stale revisions are rejected
-    - **returns**: change id, reactivated workout ids, and new planning revision
-    """
+    - **returns**: change id, reactivated workout ids, and new planning revision """
 
     return WorkoutWriteResult.model_validate(call_rpc("redo_planning_change", {
         "p_user_id": identifier(user_id), "p_change_id": identifier(change_id),

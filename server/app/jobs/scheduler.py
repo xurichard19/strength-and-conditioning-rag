@@ -1,4 +1,4 @@
-"""Bounded scheduling and durable task dispatch; deploy separately with Cloud Run IAM."""
+""" bounded scheduling and durable task dispatch; deploy separately with cloud run iam """
 
 import logging
 from functools import partial
@@ -21,14 +21,14 @@ app = FastAPI(title="planning dispatcher", lifespan=partial(http_lifespan, servi
 
 
 def _eligible_delivery(job: ReplanJobRecord) -> ReplanJobRecord | None:
-    """Verify before task lookup/recovery, which must not exhaust unpaid deliveries."""
+    """ verify before task lookup/recovery, which must not exhaust unpaid deliveries """
     if not billing.billing_enabled():
         return job
     try:
         planning_access.permission_for(job.user_id)
     except planning_access.PlanningDeferred as exc:
         if not planning_access.defer(job.user_id, exc.reason, permission=exc.permission):
-            # A newer payment superseded this denial. Keep the delivery retryable.
+            # a newer payment superseded this denial. keep the delivery retryable.
             raise billing.BillingUnavailable("planning authorization changed") from exc
         return None
     current = replan_jobs.get_delivery_job(job.id, job.delivery_token)
@@ -36,7 +36,7 @@ def _eligible_delivery(job: ReplanJobRecord) -> ReplanJobRecord | None:
 
 
 def _submit_delivery(job: ReplanJobRecord, settings: TaskSettings) -> None:
-    """Submit a committed generation, then confirm it; either failure remains recoverable."""
+    """ submit a committed generation, then confirm it; either failure remains recoverable """
     task = ReplanTask(job_id=job.id, delivery_token=job.delivery_token)
     enqueue_replan(task, queue=settings.queue, worker_url=settings.worker_url, invoker_email=settings.invoker_email)
     replan_jobs.mark_replan_dispatched(task.job_id, task.delivery_token)
@@ -49,7 +49,11 @@ def dispatch_job(job: ReplanJobRecord, settings: TaskSettings) -> None:
 
 
 def dispatch_after_commit(job: ReplanJobRecord) -> None:
-    """try immediate submission after commit; a delivery failure must not erase durable acceptance"""
+    """ try immediate submission after commit; a delivery failure must not erase durable
+    acceptance
+
+    - **job**: job already committed to the database
+    - **returns**: none. unsuccessful submission is left for reconciliation """
     try:
         settings = get_task_settings()
         if settings.enabled and job.status == "pending" and job.dispatched_at is None:
@@ -59,7 +63,11 @@ def dispatch_after_commit(job: ReplanJobRecord) -> None:
 
 
 def _dispatch_delivery(job: ReplanJobRecord, settings: TaskSettings) -> bool:
-    """Authorize before recovery, then submit only a current delivery generation."""
+    """ authorize before recovery, then submit only a current delivery generation
+
+    - **job**: stored job and delivery generation
+    - **settings**: cloud tasks destination for this dispatch
+    - **returns**: true if this pass submitted a task """
     job = _eligible_delivery(job)
     if job is None:
         return False
@@ -78,17 +86,16 @@ def _dispatch_delivery(job: ReplanJobRecord, settings: TaskSettings) -> bool:
 
 
 def dispatch_due(settings: TaskSettings, limit: int = 20) -> dict:
-    """
-    discover due refreshes and reconcile a bounded page of task deliveries
+    """ queue due refreshes and reconcile deliveries in bounded batches. counts describe
+    dispatch activity, not completed plans
 
     - **settings**: validated queue and authenticated worker destination
     - **limit**: maximum due schedules and delivery records examined per tick
-    - **returns**: counts, not planning outcomes; later ticks retry submission failures
-    """
+    - **returns**: counts, not planning outcomes; later ticks retry submission failures """
     deadline = monotonic() + 45
     enabled = billing.billing_enabled()
-    # Queuing durable intent spends no generation attempt. Paused accounts stay out;
-    # payment is still verified before delivery and atomically at the worker claim.
+    # queueing a job does not spend a generation attempt
+    # skip paused accounts and verify payment before delivery and again when the worker claims the job
     counts = {"created": replan_jobs.enqueue_due_replans(limit, include_paused=not enabled),
               "dispatched": 0, "errors": 0}
     first_error = None
@@ -97,9 +104,8 @@ def dispatch_due(settings: TaskSettings, limit: int = 20) -> dict:
     if enabled:
         counts["reconciled"] = 0
 
-    # Alternate durable wake/retry work with deliveries so neither phase has to
-    # wait for an entire potentially slow provider batch. The deadline bounds new
-    # work admission; an operation already in progress retains its own timeout.
+    # alternate billing wakeups and retries with deliveries so a slow provider batch cannot block the queue
+    # stop starting work at the deadline and let in-flight calls use their own timeouts
     exhausted = False
     for recheck, job in zip_longest(work, deliveries):
         for kind, item in (("recheck", recheck), ("delivery", job)):
@@ -129,11 +135,13 @@ def dispatch_due(settings: TaskSettings, limit: int = 20) -> dict:
 
 @app.get("/health")
 def health():
+    """ **inputs**: none. **returns**: dispatcher liveness and whether dispatch is enabled """
     return {"status": "ok", "dispatch_enabled": get_task_settings().enabled}
 
 
 @app.post("/dispatch")
 def dispatch():
+    """ **inputs**: none. **returns**: dispatch counts. disabled or unsuccessful dispatch returns 503 """
     settings = get_task_settings()
     if not settings.enabled:
         raise HTTPException(503, "planning dispatch is disabled")

@@ -7,7 +7,10 @@ from app.ai.workflows.plan.state import RESULTS_PER_PROVIDER, PlanState
 
 
 async def search_node(state: PlanState) -> dict:
-    """retrieve provider-bounded evidence in parallel, preserving time for review"""
+    """ retrieve provider-bounded evidence in parallel, preserving time for review
+
+    - **state**: planning query, prior evidence and remaining research budget
+    - **returns**: merged evidence, attempted searches and provider warnings """
     remaining = state["research_deadline"] - monotonic() - DECISION_TIMEOUT_SECONDS
     if remaining <= 0:
         raise TimeoutError("planning search cannot consume evidence review budget")

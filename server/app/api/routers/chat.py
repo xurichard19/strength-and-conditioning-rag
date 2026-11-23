@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import AsyncIterator
 from datetime import datetime
 import logging
 import sentry_sdk
@@ -22,16 +23,24 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/conversations", response_model=list[ConversationResponse])
-def get_conversations(before: UUID | None = None, user: AuthUser = Depends(require_paid_user)):
-    """list the owner's saved threads; before is the last id from the previous 50-row page"""
+def get_conversations(before: UUID | None = None, user: AuthUser = Depends(require_paid_user)) -> list[ConversationResponse]:
+    """ list the owner's saved threads; before is the last id from the previous 50-row page
+
+    - **before**: exclusive id of the last thread on the previous page
+    - **user**: authenticated account from the request
+    - **returns**: one page of the owner's saved threads """
     with database_errors("chat.get_conversations"):
         return [ConversationResponse.model_validate(row) for row in
             messages.get_conversations(user.id, None, before=before)]
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
-def get_conversation(conversation_id: UUID, user: AuthUser = Depends(require_paid_user)):
-    """read an owned conversation's title and creation time; return 404 if inaccessible"""
+def get_conversation(conversation_id: UUID, user: AuthUser = Depends(require_paid_user)) -> ConversationResponse:
+    """ read an owned conversation's title and creation time; return 404 if inaccessible
+
+    - **conversation_id**: id of the thread owned by this account
+    - **user**: authenticated account from the request
+    - **returns**: the owned thread, or 404 if inaccessible """
     with database_errors("chat.get_conversation"):
         row = messages.get_conversation(user.id, conversation_id, None)
         if row is None:
@@ -40,8 +49,13 @@ def get_conversation(conversation_id: UUID, user: AuthUser = Depends(require_pai
 
 
 @router.patch("/conversations/{conversation_id}", response_model=ConversationResponse)
-def rename_conversation(conversation_id: UUID, payload: ConversationUpdate, user: AuthUser = Depends(require_paid_user)):
-    """rename an owned conversation using payload.title; return its saved record or 404"""
+def rename_conversation(conversation_id: UUID, payload: ConversationUpdate, user: AuthUser = Depends(require_paid_user)) -> ConversationResponse:
+    """ rename an owned conversation using payload.title; return its saved record or 404
+
+    - **conversation_id**: id of the thread owned by this account
+    - **payload**: new title for the owned thread
+    - **user**: authenticated account from the request
+    - **returns**: the saved thread with its updated title """
     with database_errors("chat.rename_conversation"):
         row = messages.rename_conversation(user.id, conversation_id, payload.title, None)
         if row is None:
@@ -50,15 +64,24 @@ def rename_conversation(conversation_id: UUID, payload: ConversationUpdate, user
 
 
 @router.delete("/conversations/{conversation_id}", status_code=204)
-def delete_conversation(conversation_id: UUID, user: AuthUser = Depends(require_paid_user)):
-    """permanently delete an owned thread and all its messages; missing threads are a no-op"""
+def delete_conversation(conversation_id: UUID, user: AuthUser = Depends(require_paid_user)) -> Response:
+    """ permanently delete an owned thread and all its messages; missing threads are a no-op
+
+    - **conversation_id**: id of the thread owned by this account
+    - **user**: authenticated account from the request
+    - **returns**: empty 204 response, including when the thread was already absent """
     with database_errors("chat.delete_conversation"):
         messages.delete_conversation(user.id, conversation_id, None)
     return Response(status_code=204, headers=PRIVATE_HEADERS)
 
 
 async def stream_workflow(graph, **kwargs):
-    """load the workflow adapter only when streaming; yield its events without initializing ai during router import"""
+    """ load the workflow adapter only when streaming; yield its events without initializing ai
+    during router import
+
+    - **graph**: compiled chat workflow
+    - **kwargs**: message, request context and chat mode forwarded to the workflow
+    - **yields**: events emitted by the chat workflow, in order """
 
     from app.ai.workflows.chat.graph import stream_chat
 
@@ -74,15 +97,14 @@ def get_messages(
     cursor: tuple[datetime | None, UUID | None] = Depends(message_cursor),
     user: AuthUser = Depends(require_paid_user),
 ) -> list[MessageResponse]:
-    """
-    read one page of persisted human/assistant messages, oldest to newest
+    """ page older messages using the first row's timestamp and id. each page is in
+    chronological order
 
     - **conversation_id**: thread to read, scoped to the verified owner
     - **limit**: page size, 1-100
     - **cursor**: oldest item timestamp/id from the previous page; omit both for newest history
     - **user**: verified owner and jwt
-    - **returns**: chronological messages; first item supplies the next older-page cursor
-    """
+    - **returns**: chronological messages; first item supplies the next older-page cursor """
 
     with database_errors("chat.get_messages"):
         return [MessageResponse.model_validate(item) for item in messages.get_recent_messages(
@@ -98,27 +120,21 @@ async def chat_reply(
     x_chat_saved_events: str | None = Header(None),
     x_chat_status_events: str | None = Header(None),
 ) -> StreamingResponse:
-    """
-    persist a user turn, stream the existing chat workflow, and save the completed reply
-
-    passes only the current message to the workflow; history retrieval belongs in
-    workflow nodes. send one turn at a time per user; concurrent turns are not
-    serialized. a disconnected/failed stream can leave the user message without a
-    saved reply. do not automatically replay post: messages have no request key.
-    this chat does not automatically enqueue planning changes.
+    """ save the user message and stream the reply as ndjson. set x-chat-saved-events or
+    x-chat-status-events to 1 for persistence receipts or progress. a disconnect can leave
+    only the user message saved, so check history before retrying
 
     - **payload**: nonblank text, quick/deep mode and conversation_id; use a fresh uuid for a new thread,
       or the saved thread id to continue it. clients cannot submit assistant/system roles
     - **request**: application with initialized chat_graph
-    - **x_chat_saved_events**: set to "1" to receive the saved-human event; omitted
-      for older clients that accept only text, sources, done, and error
-    - **x_chat_status_events**: set to "1" to receive transient progress; omitted for
-      clients that do not recognize status events. progress is never saved as a message
     - **user**: verified owner; human writes use the jwt and assistant writes use backend credentials
-    - **returns**: saved human record, text/sources events, then done with saved
-      message_id and assistant record for client cache reconciliation;
-      errors after streaming starts are error events, not a new http status
-    """
+    - **x_chat_saved_events**: set to "1" to receive the saved-human event; omitted for older clients that
+      accept only text, sources, done, and error
+    - **x_chat_status_events**: set to "1" to receive transient progress; omitted for clients that do not
+      recognize status events. progress is never saved as a message
+    - **returns**: saved human record, text/sources events, then done with saved message_id and assistant
+      record for client cache reconciliation; errors after streaming starts are error events, not a new
+      http status """
 
     graph = getattr(request.app.state, "chat_graph", None)
     if graph is None:
@@ -130,7 +146,9 @@ async def chat_reply(
     context = WorkflowContext(user_id=user.id, access_token=user.access_token,
         conversation_id=human.conversation_id, message_id=human.id, message_created_at=human.created_at)
 
-    async def events():
+    async def events() -> AsyncIterator[str]:
+        """ - **inputs**: none
+        - **yields**: newline-delimited chat events, including a saved reply receipt on completion """
         chunks = []
         try:
             if x_chat_saved_events == "1":

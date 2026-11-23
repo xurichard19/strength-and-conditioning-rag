@@ -10,14 +10,13 @@ from app.services.planning import training_weekdays, workout_has_results
 
 
 async def context_node(state: PlanState, runtime: Runtime[WorkflowContext]) -> dict:
-    """
-    prepare bounded model context from the worker's revision-checked database read
+    """ build model context from the verified owner and revision.
+    expose only editable workout ids and exclude credentials and lease tokens
 
     - **state**: execution budgets; no user message is required
     - **runtime**: authoritative claim and athlete records, including protected sessions
-    - **returns**: sanitized task and context with exact editable workout ids;
-      credentials, lease values and profile identity never enter model messages
-    """
+    - **returns**: sanitized task and context with exact editable workout ids; credentials, lease values
+      and profile identity never enter model messages """
     claim, data = runtime.context.claim, runtime.context.data
     if (data.profile.id != claim.job.user_id or data.schedule.user_id != claim.job.user_id
             or data.onboarding is not None and data.onboarding.user_id != claim.job.user_id

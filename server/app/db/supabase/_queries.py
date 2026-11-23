@@ -12,18 +12,13 @@ T = TypeVar("T")
 
 
 def read_with_revision(user_id: str | UUID, access_token: str | None, read: Callable[[], T]) -> tuple[T, int | None]:
-    """
-    bracket a frontend data read with planning revision checks
-
-    prevents returning stale data labelled with a newer revision. this is an
-    optimistic check, not a transaction snapshot; mutations must still supply
-    the returned revision. no configured schedule is represented by none.
+    """ return the read result and matching revision. a change during the read raises 409.
+    writes still need the returned revision
 
     - **user_id**: authenticated owner
     - **access_token**: user jwt or none for backend reads
     - **read**: zero-argument read operation, never a write
-    - **returns**: data and matching revision; raises a 409 if revision changed
-    """
+    - **returns**: data and matching revision; raises a 409 if revision changed """
 
     filters = [("select", "revision"), ("user_id", f"eq.{identifier(user_id)}"), ("limit", "1")]
     before = select_rows("planning_schedules", filters, access_token)
@@ -35,18 +30,12 @@ def read_with_revision(user_id: str | UUID, access_token: str | None, read: Call
 
 
 def rpc_row(name: str, payload: dict) -> dict:
-    """
-    unwrap the single-row array returned by a table-valued backend rpc
-
-    internal adapter for functions returning a table/composite row, whose http
-    response is a one-element array. always uses service-role credentials. do not
-    use for json receipts, scalars, or claim_replan_job's nullable json result.
-    raises supabasedataerror on wrong cardinality/shape before contract validation.
+    """ unwrap a service-role rpc that must return exactly one row. unexpected shapes raise
+    SupabaseDataError
 
     - **name**: name of the table-valued postgres function
     - **payload**: named function arguments encoded as json-compatible values
-    - **returns**: the single result row; raises if the rpc returns any other shape
-    """
+    - **returns**: the single result row; raises if the rpc returns any other shape """
 
     rows = call_rpc(name, payload, None)
     if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
@@ -55,75 +44,45 @@ def rpc_row(name: str, payload: dict) -> dict:
 
 
 def identifier(value: str | UUID) -> str:
-    """
-    normalize a uuid before placing it in a query filter
-
-    validates and canonicalizes before interpolating an id into postgrest filters;
-    this prevents raw caller text from becoming filter syntax. accepts a uuid object
-    or string and raises valueerror if invalid. this is format validation, not proof
-    of ownership or existence.
+    """ validate a uuid before interpolating it into a database filter
 
     - **value**: uuid value to validate and normalize
-    - **returns**: normalized uuid string; raises for an invalid uuid
-    """
+    - **returns**: normalized uuid string; raises for an invalid uuid """
 
     return str(UUID(str(value)))
 
 
 def date_range(start: date, end: date) -> None:
-    """
-    reject reversed or excessive calendar ranges
-
-    shared calendar range guard. equal endpoints are valid; the difference between
-    end and start may be at most 366 days, meaning up to 367 inclusive dates.
-    does not validate local today, planning coverage, or timezone; those are separate
-    application/rpc concerns. raises valueerror before a range query is sent.
+    """ validate inclusive dates up to 366 days apart. equal endpoints select one day
 
     - **start**: inclusive first date
     - **end**: inclusive last date
-    - **returns**: none; raises for reversed ranges or spans exceeding 366 days
-    """
+    - **returns**: none; raises for reversed ranges or spans exceeding 366 days """
 
     if not 0 <= (end - start).days <= 366:
         raise ValueError("date range must be ordered and no longer than 366 days")
 
 
 def page_limit(limit: int) -> None:
-    """
-    bound a single history page
-
-    shared bound for single-page history/status handlers, not worker batch sizes
-    or the internal all_rows page size. raises valueerror for out-of-range limits;
-    the server may still return fewer rows than requested.
+    """ reject limits outside the supported bounds before requesting a history page
 
     - **limit**: maximum records to return, from 1 to 100
-    - **returns**: none; raises unless the limit is between 1 and 100
-    """
+    - **returns**: none; raises unless the limit is between 1 and 100 """
 
     if not 1 <= limit <= 100:
         raise ValueError("limit must be between 1 and 100")
 
 
 def all_rows(table: str, filters: list[tuple[str, str]], access_token: str | None, *, max_rows: int | None = None) -> list[dict]:
-    """
-    read all matching rows without silently hitting the server row cap
-
-    internal offset-pagination helper requesting 200 rows at a time until an empty
-    page. does not stop on a short page because the server row cap may be smaller.
-    the caller must include owner scoping and deterministic ordering with a unique
-    tie-breaker, and must not supply its own limit/offset.
-
-    stops when an optional known maximum is reached, avoiding an empty final read.
-    otherwise collects the full result in memory with no total-row cap. concurrent inserts,
-    deletes, or version switches can cause skips/duplicates across pages; use the
-    worker's revision checks for planning, not this helper as a snapshot guarantee.
+    """ page until empty or the requested maximum. callers supply owner filters and stable
+    ordering with a unique tie-breaker. concurrent writes can shift offset-based pages
 
     - **table**: supabase table name
     - **filters**: ordered query filters with deterministic ordering for pagination
     - **access_token**: verified user jwt for rls; none uses backend service-role credentials
     - **max_rows**: known upper bound from the query, such as its unique requested ids
-    - **returns**: all matching rows across server pages; concurrent writes can change results between pages
-    """
+    - **returns**: all matching rows across server pages; concurrent writes can change results between
+      pages """
 
     rows = []
     while max_rows is None or len(rows) < max_rows:

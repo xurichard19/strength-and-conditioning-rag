@@ -9,13 +9,11 @@ from app.ai.workflows.chat.state import CHAT_POLICIES, ChatState, WorkflowContex
 from app.db.supabase.profiles import get_profile
 
 async def history_node(state: ChatState, runtime: Runtime[WorkflowContext]) -> dict:
-    """
-    load recent messages and the profile timezone concurrently
+    """ load recent messages and resolve the user's local date concurrently
 
     - **state**: chat mode used to choose the history count
     - **runtime**: user credentials, conversation id and current message cursor
-    - **returns**: chronological history and the current message's local date
-    """
+    - **returns**: chronological history and the current message's local date """
 
     get_stream_writer()({"type": "status", "stage": "fetching_user_context"})
     context = runtime.context

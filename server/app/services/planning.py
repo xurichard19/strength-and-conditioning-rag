@@ -1,4 +1,5 @@
 from collections import defaultdict
+from collections.abc import Iterator
 from datetime import timedelta
 from itertools import chain, islice
 from math import isfinite
@@ -19,14 +20,17 @@ WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 
 def workout_has_results(workout: WorkoutRecord) -> bool:
-    """protect the same workout timestamps, statuses and set results as publication"""
+    """ protect the same workout timestamps, statuses and set results as publication
+
+    - **workout**: workout to check for recorded results
+    - **returns**: whether this workout is protected from replacement """
     return (workout.status != "planned" or any((workout.started_at, workout.completed_at, workout.skipped_at))
         or any(item.result_status != "pending" or any(getattr(item, field) is not None for field in RESULT_FIELDS)
             for exercise in workout.exercises for item in exercise.sets))
 
 
 def _workout_key(workout: PlannedWorkout | WorkoutRecord) -> tuple:
-    """compare ordered prescriptions, ignoring database ids and result metadata"""
+    """ compare ordered prescriptions, ignoring database ids and result metadata """
     stored = isinstance(workout, WorkoutRecord)
     exercises = sorted(workout.exercises, key=lambda item: item.order_index) if stored else workout.exercises
     return (workout.scheduled_date, workout.name, workout.notes, tuple(
@@ -37,14 +41,15 @@ def _workout_key(workout: PlannedWorkout | WorkoutRecord) -> tuple:
 
 
 def training_weekdays(context: ReplanContext) -> set[int] | None:
-    """read explicit mobile availability; absent or unrecognized answers stay unspecified"""
+    """ - **context**: claimed athlete inputs and saved availability
+    - **returns**: allowed weekday numbers, or none when availability is unspecified """
     days = context.onboarding.answers.get("trainingDays") if context.onboarding else None
     return ({WEEKDAYS.index(day) for day in days} if isinstance(days, list) and days
         and all(isinstance(day, str) and day in WEEKDAYS for day in days) else None)
 
 
 def _normalize_units(workout: PlannedWorkout) -> PlannedWorkout:
-    """clear unused units on copies without changing any prescribed targets"""
+    """ clear unused units on copies without changing any prescribed targets """
     exercises = []
     for exercise in workout.exercises:
         unused = {unit: None for target, unit in UNIT_TARGETS if getattr(exercise, unit) is not None
@@ -53,8 +58,8 @@ def _normalize_units(workout: PlannedWorkout) -> PlannedWorkout:
     return workout.model_copy(update={"exercises": exercises})
 
 
-def _prescription_errors(workout: PlannedWorkout, path: str):
-    """yield actionable, indexed issues without copying athlete text into feedback"""
+def _prescription_errors(workout: PlannedWorkout, path: str) -> Iterator[str]:
+    """ yield actionable, indexed issues without copying athlete text into feedback """
     if not workout.name.strip():
         yield f"{path}.name: require a nonblank workout name"
     if not workout.exercises:
@@ -84,14 +89,14 @@ def _prescription_errors(workout: PlannedWorkout, path: str):
 
 
 def validate_proposal(claim: ClaimedReplanJob, context: ReplanContext, proposal: PlanningProposal) -> PlanningProposal:
-    """
-    validate fixed edit boundaries and complete coverage, preserving unchanged versions
+    """ check edits against the claimed dates and calendar.
+    return the normalized proposal or raise ValueError before publication
 
     - **claim**: server-owned job revision and allowed dates
     - **context**: matching athlete inputs and current calendar
-    - **proposal**: proposed removals and additions; empty day decisions are derived from the resulting calendar
-    - **returns**: normalized proposal ready for atomic publication; raises valueerror on invalid changes
-    """
+    - **proposal**: proposed removals and additions; empty day decisions are derived from the resulting
+      calendar
+    - **returns**: normalized proposal ready for atomic publication; raises valueerror on invalid changes """
     owner = claim.job.user_id
     workouts, sports = context.calendar.workouts, context.calendar.sports_workouts
     if (context.profile.id != owner or context.schedule.user_id != owner

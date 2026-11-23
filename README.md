@@ -100,7 +100,7 @@ config:
 ---
 flowchart TB
     Request["Chat request"] --> History["Load history node<br/>Supabase"]
-    History --> Route["GPT-5 nano router"]
+    History --> Route["GPT-6 Luna router"]
 
     subgraph Retrieval["Optional retrieval · parallel"]
         Context["User context node<br/>Supabase"]
@@ -109,7 +109,7 @@ flowchart TB
 
     Route --> Retrieval
     Route -->|skip retrieval| Generate
-    Retrieval --> Evaluate["GPT-5 nano evaluator<br/>Limited retries"]
+    Retrieval --> Evaluate["GPT-6 Luna evaluator<br/>Limited retries"]
     Retrieval -->|skip evaluation| Generate
     Evaluate -->|retry search only| Retrieval
     Evaluate -->|finish| Generate

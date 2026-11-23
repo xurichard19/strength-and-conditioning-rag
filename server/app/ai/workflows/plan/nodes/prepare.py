@@ -9,12 +9,10 @@ from app.ai.workflows.plan.state import PlanState, SearchQuery
 
 
 async def prepare_node(state: PlanState) -> dict:
-    """
-    choose research from fixed planning permissions and athlete context
+    """ choose the research query and permitted providers for this planning task
 
     - **state**: sanitized planning task, onboarding and calendar
-    - **returns**: a bounded query and allow-listed research providers
-    """
+    - **returns**: a bounded query and allow-listed research providers """
     remaining = state["research_deadline"] - monotonic()
     if remaining <= 0:
         raise TimeoutError("planning research budget exhausted")

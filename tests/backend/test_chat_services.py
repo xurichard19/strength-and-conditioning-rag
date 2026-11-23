@@ -396,15 +396,17 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('planned_reps', str(data))
         self.assertIn('x' * 600, str(data))
 
-    def test_nano_uses_native_structured_output_with_explicit_budgets(self):
+    def test_chat_decisions_use_structured_output_and_task_specific_reasoning(self):
         models.decision_model.cache_clear()
         self.addCleanup(models.decision_model.cache_clear)
         with patch.object(models, 'get_ai_settings', return_value=SimpleNamespace(openai_api_key='test')), \
              patch.object(models, 'ChatOpenAI') as factory:
-            models.decision_model(ChatRoute)
-        self.assertEqual(factory.call_args.kwargs['model'], 'gpt-5-nano')
-        self.assertEqual(factory.call_args.kwargs['max_retries'], 0)
-        self.assertTrue(factory.call_args.kwargs['disable_streaming'])
-        factory.return_value.with_structured_output.assert_called_once_with(ChatRoute, method='json_schema', strict=True)
-        for schema in [ChatRoute, EvidenceReview]:
-            self.assertEqual(set(schema.model_json_schema()['required']), set(schema.model_fields))
+            for schema, effort in [(ChatRoute, 'none'), (EvidenceReview, 'low')]:
+                models.decision_model(schema)
+                options = factory.call_args.kwargs
+                self.assertEqual(options['model'], 'gpt-6-luna')
+                self.assertEqual(options['reasoning_effort'], effort)
+                self.assertEqual(options['max_retries'], 0)
+                self.assertTrue(options['disable_streaming'])
+                factory.return_value.with_structured_output.assert_called_with(schema, method='json_schema', strict=True)
+                self.assertEqual(set(schema.model_json_schema()['required']), set(schema.model_fields))

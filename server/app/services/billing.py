@@ -26,17 +26,17 @@ _attempts: OrderedDict[tuple[UUID, str], list[float]] = OrderedDict()
 
 
 class BillingUnavailable(Exception):
-    """access cannot currently be verified; this is not a purchase-required decision"""
+    """ access cannot currently be verified; this is not a purchase-required decision """
 
 
 def billing_enabled() -> bool:
-    """keep legacy settings/test doubles and existing deployments disabled by default"""
+    """ **inputs**: none. **returns**: whether billing enforcement is enabled """
 
     return getattr(get_billing_settings(), "billing_enabled", False) is True
 
 
 def billing_environment(user_id: UUID) -> BillingEnvironment:
-    """select the store partition from server deployment and review-account configuration"""
+    """ **user_id**: owner of the account being checked. **returns**: production or sandbox for this account """
 
     settings = get_billing_settings()
     reviewers = {UUID(str(value)) for value in getattr(settings, "billing_sandbox_user_ids", [])}
@@ -44,21 +44,29 @@ def billing_environment(user_id: UUID) -> BillingEnvironment:
 
 
 def _fresh(record: BillingEntitlementRecord | None, now: datetime) -> bool:
-    """require an uninvalidated verification no older than five minutes"""
+    """ require an uninvalidated verification no older than five minutes
+
+    - **record**: stored entitlement used to evaluate access
+    - **now**: reference time for the check
+    - **returns**: whether verification falls inside the freshness window """
 
     return record is not None and record.verified_at is not None and -timedelta(seconds=30) <= now - record.verified_at <= FRESHNESS
 
 
 def has_fresh_verification(record: BillingEntitlementRecord | None, now: datetime | None = None) -> bool:
-    """Fresh verification cannot cover a paid expiry crossed since that check."""
+    """ fresh verification cannot cover a paid expiry crossed since that check
+
+    - **record**: stored entitlement used to evaluate access
+    - **now**: reference time for the check
+    - **returns**: whether the verification is fresh and has not crossed a paid expiry """
     now = now or datetime.now(UTC)
     return _fresh(record, now) and not (record.active and record.expires_at is not None
         and record.verified_at < record.expires_at <= now)
 
 
 def _outage_allowed(record: BillingEntitlementRecord | None, now: datetime) -> bool:
-    # SQL fixes this deadline at paid verification + 24h, capped by paid expiry.
-    # The retry marker proves a temporary failure; webhook invalidation clears both.
+    # sql fixes this deadline at paid verification + 24h, capped by paid expiry.
+    # the retry marker proves a temporary failure; webhook invalidation clears both.
     return (record is not None and record.verification_retry_at is not None
         and record.outage_access_until is not None and now < record.outage_access_until
         and billing_access(record, now).has_access)
@@ -69,7 +77,11 @@ def _retry_pending(record: BillingEntitlementRecord | None, now: datetime) -> bo
 
 
 def billing_access(record: BillingEntitlementRecord, now: datetime | None = None) -> BillingAccessDecision:
-    """Grant only a verified paid period; retain trial/grace phases for account messaging."""
+    """ grant only a verified paid period; retain trial/grace phases for account messaging
+
+    - **record**: stored entitlement used to evaluate access
+    - **now**: reference time for the check
+    - **returns**: access decision and subscription phase """
 
     now = now or datetime.now(UTC)
     phase = "inactive"
@@ -88,7 +100,11 @@ def billing_access(record: BillingEntitlementRecord, now: datetime | None = None
 
 
 def _verify(user_id: UUID, environment: BillingEnvironment) -> BillingEntitlementRecord:
-    """Verify, wait briefly for a newer claim, then re-claim once if it produced no result."""
+    """ reclaim at most once if the competing check produces no result
+
+    - **user_id**: owner of the account being checked
+    - **environment**: server-selected store environment
+    - **returns**: the account's verified entitlement record """
 
     key = get_billing_settings().revenuecat_api_key
     if key is None:
@@ -107,10 +123,10 @@ def _verify(user_id: UUID, environment: BillingEnvironment) -> BillingEntitlemen
             billing.defer_verification(user_id, environment, claim.sync_revision)
         else:
             billing.commit_entitlement(user_id, environment, claim.sync_revision, snapshot)
-        # Reclaiming at once would invalidate another server's in-flight verification, so give
-        # a newer claim time to finish. A webhook or abandoned claim never produces a result:
+        # reclaiming at once would invalidate another server's in-flight verification, so give
+        # a newer claim time to finish. a webhook or abandoned claim never produces a result:
         # after that short wait, verify once more instead of holding the request to the deadline.
-        # The last attempt cannot reclaim again, so use its entire remaining wait budget.
+        # the last attempt cannot reclaim again, so use its entire remaining wait budget.
         patience = min(deadline, time.monotonic() + SUPERSEDED_WAIT_SECONDS) if attempt == 0 else deadline
         while True:
             now = time.monotonic()
@@ -131,7 +147,11 @@ def _verify(user_id: UUID, environment: BillingEnvironment) -> BillingEntitlemen
 
 
 def _coalesced_verify(user_id: UUID, environment: BillingEnvironment) -> BillingEntitlementRecord:
-    """share concurrent verification and bound repeated provider calls per account/process"""
+    """ concurrent checks for the same account share one provider request
+
+    - **user_id**: owner of the account being checked
+    - **environment**: server-selected store environment
+    - **returns**: verified record shared by concurrent checks for this account and environment """
 
     identity = (user_id, environment)
     with _lock:
@@ -166,14 +186,15 @@ def _coalesced_verify(user_id: UUID, environment: BillingEnvironment) -> Billing
 
 def get_verified_entitlement(user_id: str | UUID, *, force: bool = False,
                              allow_outage: bool = False) -> BillingEntitlementRecord | None:
-    """
-    read a canonical authorization record, or none when billing is disabled
+    """ return none when billing is disabled.
+    force a refresh after purchase or restore.
+    only ordinary requests may reuse paid access during a temporary outage
 
     - **user_id**: identity already verified by supabase auth
     - **force**: request a bounded refresh after purchase/restore; no client claims are trusted
-    - **allow_outage**: ordinary requests may reuse bounded paid access; planning requires fresh verification
-    - **returns**: authorized verification source, including fresh inactive state
-    """
+    - **allow_outage**: ordinary requests may reuse bounded paid access; planning requires fresh
+      verification
+    - **returns**: authorized verification source, including fresh inactive state """
 
     if not billing_enabled():
         return None
@@ -185,10 +206,10 @@ def get_verified_entitlement(user_id: str | UUID, *, force: bool = False,
         if not force and has_fresh_verification(record, now):
             billing_access(record, now)
             return record
-        # Explicit purchase/restore sync can retry now; ordinary requests share a persisted cooldown.
+        # explicit purchase/restore sync can retry now; ordinary requests share a persisted cooldown.
         if force or not _retry_pending(record, now):
             verified = _coalesced_verify(owner, environment)
-            # Re-read after coalescing so a later webhook cannot be hidden from a waiter.
+            # re-read after coalescing so a later webhook cannot be hidden from a waiter.
             record = billing.get_entitlement(owner, environment)
             if record is None or record.sync_revision < verified.sync_revision:
                 raise BillingUnavailable()
@@ -203,20 +224,22 @@ def get_verified_entitlement(user_id: str | UUID, *, force: bool = False,
 
 
 def get_billing_status(user_id: str | UUID, *, force: bool = False) -> BillingAccessDecision:
-    """Return the shared paid-only decision for an authenticated account."""
+    """ - **user_id**: owner of the account being checked
+    - **force**: refresh verification after a purchase or restore
+    - **returns**: the access decision for the account """
 
     record = get_verified_entitlement(user_id, force=force, allow_outage=True)
     return billing_access(record) if record is not None else BillingAccessDecision(enabled=False, has_access=True)
 
 
 def invalidate_webhook_users(identities: list[str], environment: str | None) -> list[UUID]:
-    """
-    invalidate recognized account uuids without trusting event state or user attributes
+    """ invalidate known accounts on both sides of a transfer.
+    an unknown store environment invalidates both partitions
 
-    - **identities**: canonical/alias ids from an authenticated provider event, including both transfer sides
+    - **identities**: canonical/alias ids from an authenticated provider event, including both transfer
+      sides
     - **environment**: event partition; unknown/missing partitions invalidate both
-    - **returns**: recognized account IDs after durable invalidation; missing/deleted profiles are ignored
-    """
+    - **returns**: recognized account ids after durable invalidation; missing/deleted profiles are ignored """
 
     users = set()
     for value in identities:
