@@ -1,10 +1,10 @@
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight } from 'lucide-react'
+import { ArrowDown, ArrowRight, ArrowUpRight } from 'lucide-react'
 import { pageContent, teamIntroductions, technologyGroups } from '../pages/info-content'
-import appIcon from '../../../mobile/assets/images/splash-icon.png'
 import richardPortrait from '../assets/richard-xu.jpg'
 import dimitriosPortrait from '../assets/dimitrios-mahairas.jpg'
 import aaronPortrait from '../assets/aaron-jiang.jpg'
 import { LaunchFooter } from './LaunchFooter'
+import { LaunchHeader } from './LaunchHeader'
 import TechnologyDiagram from './TechnologyDiagram'
 import './LandingPage.css'
 import './AboutPage.css'
@@ -22,16 +22,7 @@ function displayName(name: string) {
 export default function AboutPage() {
   return (
     <div className="arcel-landing arcel-about">
-      <a className="landing-skip" href="#main-content">Skip to content</a>
-      <header className="landing-nav landing-container">
-        <a className="landing-wordmark" href="/" aria-label="Arcel home">
-          <img src={appIcon} width="36" height="36" alt="" />
-          <span>Arcel</span>
-        </a>
-        <nav aria-label="Main navigation">
-          <a className="landing-nav-link" href="/"><ArrowLeft size={16} aria-hidden="true" /> Back to home</a>
-        </nav>
-      </header>
+      <LaunchHeader />
 
       <main id="main-content">
         <header className="about-intro landing-container">

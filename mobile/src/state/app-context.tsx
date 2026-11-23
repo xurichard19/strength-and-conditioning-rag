@@ -1,13 +1,12 @@
 import type { Session as AuthSession } from '@supabase/supabase-js';
 import { randomUUID } from 'expo-crypto';
-import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { AppState, Platform, useColorScheme } from 'react-native';
 
 import { palettes, type ColorScheme, type Palette, type ThemeMode } from '@/design/tokens';
-import { currentBlock, defaultProfile, initialWeek, initialProposal, progressMetrics } from '@/data/mock';
-import type { ChatMessage, ChatMode, Effort, Profile, Proposal, ProgressMetric, Session } from '@/domain/types';
+import { defaultProfile } from '@/domain/profile';
+import type { Block, ChatMessage, ChatMode, Effort, Profile, Proposal, ProgressMetric, Session } from '@/domain/types';
 import { errorMessage } from '@/lib/errors';
 import {
   backendFor, deviceTimezone, getAuthSession, profileFromApi, sessionFromAuthUrl,
@@ -17,6 +16,7 @@ import {
 } from '@/services/api';
 
 import { createChatCache } from './chat-cache';
+import { usePreviewTraining } from './use-preview-training';
 import { createCalendarCache, type CalendarCache } from './calendar-cache';
 import type { Conversation } from '@/services/backend';
 
@@ -63,7 +63,7 @@ type AppContextValue = {
   profile: Profile;
   sessions: Session[];
   proposal: Proposal | null;
-  block: typeof currentBlock;
+  block: Block;
   metrics: ProgressMetric[];
   authSession: AuthSession | null;
   previewMode: boolean;
@@ -102,7 +102,6 @@ const AppContext = createContext<AppContextValue | null>(null);
 const emptyProfile: Profile = { ...defaultProfile, displayName: '', onboardingComplete: false };
 const asMessage = (row: SavedMessage): ChatMessage => ({ id: row.id, role: row.role, text: row.content });
 
-/** Overlay the active turn on saved history, replacing matching ids without reordering. */
 function displayedMessages(window: { rows: SavedMessage[] } | undefined, run: ChatRun | undefined) {
   return [...new Map([...(window?.rows.map(asMessage) ?? []), ...(run?.rows ?? [])].map(row => [row.id, row])).values()];
 }
@@ -120,9 +119,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [onboardingAnswers, setOnboardingAnswers] = useState<Answers>({});
-  // Training previews are memory-only and never sent to the API.
-  const [sessions, setSessions] = useState<Session[]>(initialWeek);
-  const [proposal, setProposal] = useState<Proposal | null>(initialProposal);
+  const { reset: resetPreview, ...previewTraining } = usePreviewTraining();
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -190,15 +187,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       accountRequest.current += 1;
       setProfile(emptyProfile);
       setOnboardingAnswers({});
-      setSessions(initialWeek);
-      setProposal(initialProposal);
+      resetPreview();
       setAccountError(null);
       setNotice(null);
       setPasswordRecovery(false);
       setAccountReady(!userId);
     }
     setAuthSession(session);
-  }, [clearProtectedData]);
+  }, [clearProtectedData, resetPreview]);
 
   useEffect(() => {
     const activeRuns = runs.current;
@@ -234,7 +230,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (owner.current === userId) calendarCache.invalidate(start, end);
   }, [calendarCache]);
 
-  // Replace account data after a fresh read; leave chat caches and local previews intact.
   const refreshLiveData = useCallback(async () => {
     const userId = owner.current;
     if (!userId) return;
@@ -267,7 +262,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotice('This page uses preview training data; there is nothing to sync yet.');
   };
 
-  // Rendering selection and running requests are independent.
   const publishChat = useCallback(() => {
     const id = conversation.current;
     const run = id ? runs.current.get(id) : undefined;
@@ -420,93 +414,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setThemeMode = (mode: ThemeMode) => setProfile((current) => ({ ...current, theme: mode }));
   const updateProfile = (update: Partial<Profile>) => setProfile((current) => ({ ...current, ...update }));
 
-  const acceptProposal = () => {
-    setSessions((current) => current.map((session) => {
-      if (session.status !== 'planned' || session.modality === 'rest') return session;
-      const isIntervals = session.title.toLowerCase().includes('interval');
-      const target = isIntervals ? 4 : 2;
-      return {
-        ...session,
-        repairedNote: 'Eased after a disrupted week',
-        receipt: {
-          summary: 'Volume eased; weights protected',
-          kept: session.exercises.filter((item) => item.role !== 'accessory').map((item) => ({ name: item.name, why: 'Keeps the main thread of the session.' })),
-          cut: session.exercises.filter((item) => item.role === 'accessory').map((item) => ({ name: item.name, why: 'Accessory work goes first when the week needs room.' })),
-        },
-        exercises: session.exercises
-          .filter((item) => item.role !== 'accessory')
-          .map((item) => ({ ...item, targetSets: Math.min(item.targetSets, target), sets: item.sets.slice(0, target) })),
-      };
-    }));
-    setProposal(null);
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  };
-
-  const declineProposal = () => setProposal(null);
-
-  const updateSet = (
-    sessionId: string,
-    exerciseId: string,
-    setId: string,
-    update: { weight?: number | null; reps?: number | null; done?: boolean },
-  ) => {
-    setSessions((current) => current.map((session) => {
-      if (session.id !== sessionId) return session;
-      return {
-        ...session,
-        exercises: session.exercises.map((item) => {
-          if (item.id !== exerciseId) return item;
-          const sets = item.sets.map((set) => set.id === setId ? { ...set, ...update } : set);
-          return { ...item, sets };
-        }),
-      };
-    }));
-
-    if (update.done) void Haptics.selectionAsync();
-  };
-
-  const addSet = (sessionId: string, exerciseId: string) => setSessions((current) => current.map((session) => session.id !== sessionId ? session : {
-    ...session,
-    truncated: true,
-    exercises: session.exercises.map((item) => item.id !== exerciseId ? item : {
-      ...item,
-      sets: [...item.sets, {
-        id: `${item.id}-set-${Date.now()}`,
-        weight: item.sets.at(-1)?.weight ?? item.lastTime?.weight ?? null,
-        reps: item.sets.at(-1)?.reps ?? item.targetReps,
-        done: false,
-      }],
-    }),
-  }));
-
-  const removeSet = (sessionId: string, exerciseId: string) => setSessions((current) => current.map((session) => session.id !== sessionId ? session : {
-    ...session,
-    truncated: true,
-    exercises: session.exercises.map((item) => item.id !== exerciseId || item.sets.length <= 1 ? item : { ...item, sets: item.sets.slice(0, -1) }),
-  }));
-
-  const skipExercise = (sessionId: string, exerciseId: string) => setSessions((current) => current.map((session) => session.id !== sessionId ? session : {
-    ...session,
-    truncated: true,
-    exercises: session.exercises.map((item) => item.id === exerciseId ? { ...item, skipped: true } : item),
-  }));
-
-  const setEffort = (sessionId: string, exerciseId: string, effort: Effort) => setSessions((current) => current.map((session) => session.id !== sessionId ? session : {
-    ...session,
-    exercises: session.exercises.map((item) => item.id === exerciseId ? { ...item, effort } : item),
-  }));
-
-  const finishSession = (sessionId: string, note?: string) => {
-    setSessions((current) => current.map((session) => session.id === sessionId ? {
-      ...session,
-      status: 'done',
-      completedAt: Date.now(),
-      note: note || session.note,
-    } : session));
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  };
-
-
   async function authAction(operation: () => Promise<AuthSession | null>, confirmation?: string): Promise<AuthActionResult> {
     try {
       const session = await operation();
@@ -557,7 +464,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const question = rawQuestion.trim();
     const userId = owner.current;
     if (!question || !userId || historyBusy.current || (conversation.current && runs.current.has(conversation.current))) return;
-    // Bound concurrent work independently from how many chats the user opens.
     if (runs.current.size >= 3) { setChatError('Wait for one of your other replies to finish.'); return; }
     const generation = epoch.current;
     const isNew = !conversation.current;
@@ -629,13 +535,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     clearProtectedData,
     chatDraft, chatMode, setChatMode,
     hydrated, accountReady, accountError, passwordRecovery, profile, onboardingAnswers,
-    sessions, proposal, block: currentBlock, metrics: progressMetrics, authSession,
-    previewMode: true, colors, colorScheme, notice, chatMessages, chatBusy, chatError,
+    ...previewTraining, authSession, colors, colorScheme, notice, chatMessages, chatBusy, chatError,
     chatLoading, hasOlderMessages, refreshChat, finishOnboarding,
     conversations, conversationsLoading, conversationsError, hasOlderConversations, refreshConversations, openConversation,
     chatTitle, activeConversationId, renameConversation, deleteConversation,
-    setThemeMode, updateProfile, acceptProposal, declineProposal,
-    updateSet, addSet, removeSet, skipExercise, setEffort, finishSession,
+    setThemeMode, updateProfile,
     signIn, signInWithGoogle, signUp, requestPasswordReset, updatePassword,
     signOut, refreshLiveData, refreshPreview, calendarCache, invalidateCalendar, sendChat,
   };

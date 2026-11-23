@@ -27,16 +27,18 @@ export function shiftMonth(date: string, months: number) {
   return dateKey(result);
 }
 
+const startOfWeek = (date: string) => shiftDays(date, -atNoon(date).getDay());
+
 export function weekDates(date: string) {
-  const start = shiftDays(date, -atNoon(date).getDay());
+  const start = startOfWeek(date);
   return Array.from({ length: 7 }, (_, index) => shiftDays(start, index));
 }
 
 /** Request seven local dates or the actual calendar month, never its adjacent-month padding. */
 export function calendarRange(date: string, view: 'week' | 'month'): [string, string] {
   if (view === 'week') {
-    const days = weekDates(date);
-    return [days[0], days[6]];
+    const start = startOfWeek(date);
+    return [start, shiftDays(start, 6)];
   }
   const start = `${date.slice(0, 7)}-01`;
   return [start, shiftDays(shiftMonth(start, 1), -1)];
@@ -45,7 +47,6 @@ export function calendarRange(date: string, view: 'week' | 'month'): [string, st
 const duration = (seconds: number) => seconds < 60 ? `${seconds}s`
   : `${Math.floor(seconds / 60)} min${seconds % 60 ? ` ${seconds % 60}s` : ''}`;
 
-/** Group consecutive identical sets without hiding varied targets, units, or instructions. */
 function prescriptions(exercise: CalendarWorkout['exercises'][number]) {
   const groups: { target: string; first: number; last: number }[] = [];
   for (const [index, set] of (exercise.sets ?? []).entries()) {
@@ -65,7 +66,6 @@ function prescriptions(exercise: CalendarWorkout['exercises'][number]) {
   return groups.map(({ target, first, last }) => `${first === last ? `Set ${first}` : `Sets ${first}–${last}`} · ${target}`);
 }
 
-/** Retain display-ready prescriptions, excluding set results and database metadata. */
 export function calendarSnapshot(response: CalendarResponse): CalendarSnapshot {
   const workouts: CalendarEntry[] = response.workouts.filter(row => !row.superseded_at).map(row => ({
     id: row.id, kind: 'workout', date: row.scheduled_date, title: row.name,

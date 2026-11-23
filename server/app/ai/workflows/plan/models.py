@@ -13,9 +13,10 @@ GENERATION_TIMEOUT_SECONDS = 120
 
 @lru_cache
 def decision_model(schema: type[BaseModel]):
-    """cache bounded research decisions using the same model family as generation"""
+    """ - **schema**: pydantic model defining the structured response
+    - **returns**: cached model client returning an instance of the supplied schema """
     return ChatOpenAI(
-        model="gpt-5.6-luna", api_key=get_ai_settings().openai_api_key,
+        model="gpt-6-luna", api_key=get_ai_settings().openai_api_key,
         reasoning_effort="low", max_tokens=4000, timeout=DECISION_TIMEOUT_SECONDS,
         max_retries=0, disable_streaming=True,
     ).with_structured_output(schema, method="json_schema", strict=True)
@@ -23,9 +24,10 @@ def decision_model(schema: type[BaseModel]):
 
 @lru_cache
 def generation_model():
-    """cache structured generation with enough output for three weeks of prescriptions"""
+    """ - **inputs**: none
+    - **returns**: cached proposal client returning both the parsed plan and raw response """
     return ChatOpenAI(
-        model="gpt-5.6-luna", api_key=get_ai_settings().openai_api_key,
+        model="gpt-6-luna", api_key=get_ai_settings().openai_api_key,
         reasoning_effort="low", max_tokens=24000, timeout=GENERATION_TIMEOUT_SECONDS, max_retries=0,
         disable_streaming=True,
     ).with_structured_output(PlanningProposal, method="json_schema", strict=True, include_raw=True)

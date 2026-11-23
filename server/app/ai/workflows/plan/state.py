@@ -8,7 +8,7 @@ from app.contracts import ClaimedReplanJob, PlanningProposal, ReplanContext, Sou
 
 @dataclass(frozen=True)
 class WorkflowContext:
-    """server-owned claim and revision-checked data; never sent directly to models"""
+    """ server-owned claim and revision-checked data; never sent directly to models """
 
     claim: ClaimedReplanJob = field(repr=False)
     data: ReplanContext = field(repr=False)
@@ -28,6 +28,7 @@ class SearchQuery(BaseModel):
     @field_validator("query")
     @classmethod
     def require_search_text(cls, value: str) -> str:
+        """ **value**: proposed planning research query. **returns**: trimmed nonblank planning query """
         if not any(char.isalnum() for char in value):
             raise ValueError("planning requires a meaningful research query")
         return value.strip()
@@ -42,7 +43,7 @@ class EvidenceReview(BaseModel):
 
 
 class PlanState(TypedDict):
-    """bounded research and proposal state for one job; no conversation is required"""
+    """ bounded research and proposal state for one job; no conversation is required """
 
     deadline: float
     research_deadline: float

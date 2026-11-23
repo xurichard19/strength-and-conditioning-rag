@@ -1,41 +1,30 @@
 import asyncio
 from datetime import date, timedelta
 
+from app.ai.services.context_formatting import compact_training
+from app.ai.workflows.chat.state import ChatRoute, WorkflowContext
 from app.db.supabase.calendar import get_calendar
 from app.db.supabase._queries import date_range
 from app.db.supabase.onboarding_responses import get_onboarding_response
 
 
-def compact_training(value):
-    """remove storage ids and timestamps from nested training data"""
-    if isinstance(value, list):
-        return [compact_training(item) for item in value]
-    if isinstance(value, dict):
-        return {key: compact_training(item) for key, item in value.items()
-            if key not in {"id", "created_at", "updated_at"} and not key.endswith("_id")}
-    return value
-
-
-async def load_profile_context(context) -> dict:
-    """
-    load the athlete profile from onboarding answers
+async def load_profile_context(context: WorkflowContext) -> dict:
+    """ load onboarding answers for chat. the onboarding field is null before the first save
 
     - **context**: user id and access token
-    - **returns**: onboarding context; missing answers are null
-    """
+    - **returns**: onboarding context; missing answers are null """
     onboarding = await asyncio.to_thread(get_onboarding_response, context.user_id, context.access_token)
     return {"onboarding": onboarding.answers if onboarding else None}
 
 
-async def load_training_context(context, start: date, end: date) -> dict:
-    """
-    load app workouts and sports sessions around a date range
+async def load_training_context(context: WorkflowContext, start: date, end: date) -> dict:
+    """ load current workouts and sports with five days of context on each side of the requested
+    range
 
     - **context**: user id and access token
     - **start**: first requested date
     - **end**: last requested date
-    - **returns**: calendar data and its coverage range, padded by five days on each side
-    """
+    - **returns**: calendar data and its coverage range, padded by five days on each side """
     date_range(start, end)
     start, end = start - timedelta(days=5), end + timedelta(days=5)
     calendar = await asyncio.to_thread(get_calendar, context.user_id, start, end, None)
@@ -44,15 +33,14 @@ async def load_training_context(context, start: date, end: date) -> dict:
         "training": compact_training(calendar.model_dump(mode="json", exclude_none=True))}
 
 
-async def load_user_context(context, route, today: date) -> dict:
-    """
-    assemble the user context selected by the router
+async def load_user_context(context: WorkflowContext, route: ChatRoute, today: date) -> dict:
+    """ include the user's local date and the context selected by the router. training requests
+    also load the profile
 
     - **context**: user id and access token
     - **route**: none, profile or training; training includes profile context
     - **today**: user's local date, used when the route has no dates
-    - **returns**: dict containing the local date and selected context
-    """
+    - **returns**: dict containing the local date and selected context """
     data = {"local_today": str(today)}
     if route.user_context == "profile":
         data.update(await load_profile_context(context))

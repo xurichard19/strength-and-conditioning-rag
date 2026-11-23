@@ -1,12 +1,3 @@
-/* Hallmark · macrostructure: Index-First (policy index and document pane) · tone: quietly confident
- * theme: studied-DNA (source: https://superpower.com/the-grove) · studied: yes · anchor hue: 250
- * user override: match the accepted landing/About theme; preserve every policy heading and paragraph
- * canvas: oklch(17% 0.012 250) · accent: oklch(84% 0.08 250) · display/body: Rubik 400
- * genre: modern-minimal · nav: N9 Edge-aligned · footer: Ft2 Inline-rule · enrichment: none
- * audience: Arcel visitors · use: read and move between five public policies · motion: none
- * pre-emit critique: P5 H5 E4 S4 R5 V4
- */
-
 .arcel-policy {
   display: flex;
   flex-direction: column;

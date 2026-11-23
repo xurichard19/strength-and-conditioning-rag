@@ -6,12 +6,11 @@ from app.services.billing import BillingUnavailable, get_billing_status
 
 
 def require_paid_user(user: AuthUser = Depends(require_user)) -> AuthUser:
-    """
-    authorize protected application data and operations while preserving disabled deployments
+    """ return the authenticated user when billing is disabled or access is verified. denied
+    access returns 403 and unverifiable access returns 503
 
     - **user**: verified supabase account; clients cannot nominate another billing identity
-    - **returns**: authenticated user, or stable 403/503 without provider diagnostics
-    """
+    - **returns**: authenticated user, or stable 403/503 without provider diagnostics """
 
     try:
         decision = get_billing_status(user.id)

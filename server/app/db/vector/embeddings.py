@@ -10,7 +10,10 @@ _model_lock = Lock()
 
 
 def research_model():
-    """load one shared bge model into memory per process, including concurrent first requests"""
+    """ load one shared bge model into memory per process, including concurrent first requests
+
+    - **inputs**: none
+    - **returns**: shared embedding model for indexing and queries """
     global _model
     if _model is None:
         with _model_lock:
@@ -22,11 +25,17 @@ def research_model():
 
 
 def embed_research_documents(texts: list[str]) -> list[list[float]]:
-    """embed normalized passages with the cached model and unit-length vectors"""
+    """ embed normalized passages with the cached model and unit-length vectors
+
+    - **texts**: texts to embed in input order
+    - **returns**: one normalized embedding per passage in input order """
     return research_model().encode([" ".join(text.split()) for text in texts], batch_size=32,
         normalize_embeddings=True, show_progress_bar=False).tolist()
 
 
 def embed_research_queries(texts: list[str]) -> list[list[float]]:
-    """apply bge's retrieval instruction to queries using the same cached model"""
+    """ apply bge's retrieval instruction to queries using the same cached model
+
+    - **texts**: texts to embed in input order
+    - **returns**: one normalized query embedding per input in order """
     return embed_research_documents([QUERY_PROMPT + text for text in texts])

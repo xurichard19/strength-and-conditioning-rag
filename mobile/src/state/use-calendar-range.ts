@@ -9,7 +9,6 @@ import { useApp } from '@/state/app-context';
 
 type State = { key: string; data?: CalendarSnapshot; loading: boolean; error: string | null };
 
-/** Read on focus/range change/resume, reuse fresh cache, and ignore obsolete screen responses. */
 export function useCalendarRange(start: string, end: string) {
   const { authSession, calendarCache } = useApp();
   const userId = authSession?.user.id;
@@ -22,6 +21,7 @@ export function useCalendarRange(start: string, end: string) {
     const cached = calendarCache.peek(start, end);
     const pending = { key, data: cached?.data, loading: force || !cached?.fresh, error: null };
     setState(pending);
+    if (!pending.loading) return;
     try {
       const data = await calendarCache.load(backendFor(userId), start, end, force);
       if (request.current === id && data) setState({ key, data, loading: false, error: null });

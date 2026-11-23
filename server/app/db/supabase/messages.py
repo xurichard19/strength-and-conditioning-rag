@@ -12,29 +12,25 @@ MESSAGE_COLUMNS = "conversation_id,id,user_id,role,content,created_at"
 
 
 def get_conversation(user_id: str | UUID, conversation_id: UUID, access_token: str | None) -> ConversationRecord | None:
-    """
-    read a single owned thread, including its persisted title
+    """ return the owned thread, or none if missing or inaccessible
 
     - **user_id**: verified owner
     - **conversation_id**: thread to read
-    - **access_token**: user JWT, or none for backend credentials after owner authorization
-    - **returns**: saved thread, or none when missing or owned by someone else
-    """
+    - **access_token**: user jwt, or none for backend credentials after owner authorization
+    - **returns**: saved thread, or none when missing or owned by someone else """
     rows = select_rows("conversations", [("select", "id,user_id,title,created_at"),
         ("user_id", f"eq.{identifier(user_id)}"), ("id", f"eq.{identifier(conversation_id)}")], access_token)
     return ConversationRecord.model_validate(rows[0]) if rows else None
 
 
 def rename_conversation(user_id: str | UUID, conversation_id: UUID, title: str, access_token: str | None) -> ConversationRecord | None:
-    """
-    update only the title of an owned thread; messages and timestamps stay unchanged
+    """ update the title only. return none if the thread is missing or inaccessible
 
     - **user_id**: verified owner
     - **conversation_id**: thread to rename
     - **title**: nonblank display name, at most 120 characters after trimming
-    - **access_token**: user JWT, or none for backend credentials after owner authorization
-    - **returns**: updated thread, or none when missing or inaccessible
-    """
+    - **access_token**: user jwt, or none for backend credentials after owner authorization
+    - **returns**: updated thread, or none when missing or inaccessible """
     title = title.strip()
     if not title or len(title) > 120:
         raise ValueError("title must contain 1 to 120 characters")
@@ -44,27 +40,24 @@ def rename_conversation(user_id: str | UUID, conversation_id: UUID, title: str, 
 
 
 def delete_conversation(user_id: str | UUID, conversation_id: UUID, access_token: str | None) -> None:
-    """
-    permanently delete an owned thread and its messages through the foreign-key cascade
+    """ delete the owned thread and its messages. a missing or inaccessible thread is a no-op
 
     - **user_id**: verified owner
     - **conversation_id**: thread to delete; a missing or inaccessible thread is a no-op
-    - **access_token**: user JWT, or none for backend credentials after owner authorization
-    - **returns**: none; no automatic retries are performed
-    """
+    - **access_token**: user jwt, or none for backend credentials after owner authorization
+    - **returns**: none; no automatic retries are performed """
     delete_rows("conversations",
         [("user_id", f"eq.{identifier(user_id)}"), ("id", f"eq.{identifier(conversation_id)}")], access_token)
 
 
 def get_conversations(user_id: str | UUID, access_token: str | None, *, before: UUID | None = None) -> list[ConversationRecord]:
-    """
-    list up to 50 saved threads, newest first, using an exclusive id cursor
+    """ list up to 50 threads newest first.
+    pass the last id as the exclusive cursor for older threads
 
     - **user_id**: verified owner; explicit filters restrict visibility when using backend credentials
-    - **access_token**: user JWT, or none for backend credentials after owner authorization
+    - **access_token**: user jwt, or none for backend credentials after owner authorization
     - **before**: last conversation id from the previous page; omit for newest
-    - **returns**: saved conversations; empty when no further threads remain
-    """
+    - **returns**: saved conversations; empty when no further threads remain """
     cursor = []
     if before is not None:
         rows = select_rows("conversations", [("select", "created_at"), ("id", f"eq.{identifier(before)}"),
@@ -85,23 +78,16 @@ def get_recent_messages(
     limit: int = 20,
     *, conversation_id: UUID, before_created_at: datetime | None = None, before_id: UUID | None = None,
 ) -> list[MessageRecord]:
-    """
-    return a bounded oldest-to-newest message history
+    """ read the newest matching messages in chronological order. pass the first row's timestamp
+    and id together to fetch the next older page
 
-    selects the newest matching page, then reverses it into chronological order
-    for chat display or model context. to fetch older messages, pass the timestamp
-    and id of the first returned item together; using the last item would overlap
-    pages. the timestamp must be timezone-aware. equal timestamps are ordered by id,
-    and the cursor is exclusive. an empty result means no older visible messages.
-
-    - **conversation_id**: thread id; history never crosses conversation boundaries
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **access_token**: verified user jwt for rls; none uses backend service-role credentials
     - **limit**: maximum records to return, from 1 to 100
+    - **conversation_id**: thread id; history never crosses conversation boundaries
     - **before_created_at**: timestamp of the oldest message in the previous page; supply with before_id
     - **before_id**: id of that oldest message, used to break timestamp ties
-    - **returns**: one page ordered oldest to newest; use its first item for the next older-page cursor
-    """
+    - **returns**: one page ordered oldest to newest; use its first item for the next older-page cursor """
 
     page_limit(limit)
     if (before_created_at is None) != (before_id is None):
@@ -136,25 +122,17 @@ def append_message(
     access_token: str | None,
     *, conversation_id: UUID,
 ) -> MessageRecord:
-    """
-    store one message and return it
-
-    uses backend credentials (access_token=None) after the caller authorizes the
-    owner. the database also enforces conversation ownership on every insert. rejects
-    blank/whitespace-only text but stores valid content without trimming it. messages
-    do not automatically invalidate planning or enqueue an adjustment; business logic
-    must handle chat-derived changes separately. this insert has no idempotency key:
-    retrying after an ambiguous timeout can create a duplicate.
+    """ append one message to an authorized owner's conversation. this write has no idempotency
+    key. check history after a timeout before sending it again
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
-    - **conversation_id**: thread id; a first human insert atomically creates a thread named
-      from that message (at most 120 characters); later messages never replace the title;
-      assistant inserts require an existing thread belonging to the same owner
     - **role**: message author, user or assistant
     - **content**: nonblank message text
-    - **access_token**: user JWT, or none for trusted backend writes after owner authorization
-    - **returns**: saved message including its id and creation timestamp
-    """
+    - **access_token**: user jwt, or none for trusted backend writes after owner authorization
+    - **conversation_id**: thread id; a first human insert atomically creates a thread named from that
+      message (at most 120 characters); later messages never replace the title; assistant inserts require
+      an existing thread belonging to the same owner
+    - **returns**: saved message including its id and creation timestamp """
 
     if not content.strip():
         raise ValueError("message content is required")

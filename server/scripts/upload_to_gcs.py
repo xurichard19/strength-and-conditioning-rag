@@ -1,9 +1,8 @@
-"""legacy uploader; research objects now use <uuid>.pdf with custom metadata:
+""" legacy uploader; research objects now use <uuid>.pdf with custom metadata:
 document_id, title, author, doi, publication_year, journal, publisher, license,
 license_url and copyright_notice. document_id matches the filename uuid; missing
 values use the string "none". this script still preserves input paths and writes
-source_* fields, so its upload behavior needs updating before adding research.
-"""
+source_* fields, so its upload behavior needs updating before adding research. """
 
 from __future__ import annotations
 
@@ -19,7 +18,7 @@ from google.cloud import storage
 ALLOWED_EXTENSIONS = {".pdf", ".txt"}
 
 def iter_source_files(root: Path) -> Iterable[Path]:
-    """ Yield supported files from root directory recursively"""
+    """ yield supported files from root directory recursively """
     for path in root.rglob("*"):
         if not path.is_file():
             continue
@@ -30,7 +29,7 @@ def iter_source_files(root: Path) -> Iterable[Path]:
         yield path
 
 def file_md5_hex(path: Path) -> str:
-    """ Comppute MD5 for metadata/audit (not security)"""
+    """ compute md5 for metadata/audit (not security) """
     h = hashlib.md5()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
@@ -65,7 +64,7 @@ def upload_file(bucket: storage.Bucket, source_dir: Path, file_path: Path, dest_
         "content_type": content_type or "application/octet-stream",
     }
 
-    # if_generation_match = 0 menas "create only if object does not exist"
+    # if_generation_match = 0 means "create only if object does not exist"
     if not overwrite:
         kwargs["if_generation_match"] = 0
 
@@ -73,6 +72,7 @@ def upload_file(bucket: storage.Bucket, source_dir: Path, file_path: Path, dest_
     return ("UPLOADED", uri)
 
 def main() -> int:
+    """ **inputs**: command-line upload options. **returns**: process exit code, zero on success """
     parser = argparse.ArgumentParser(
         description="Upload supported docs from local directory to Google Cloud Storage."
     )
@@ -146,7 +146,7 @@ def main() -> int:
             print(f"[FAILED] {file_path} -> {exc}", file=sys.stderr)
     print("-" * 60)
     print(f"Completed. processed={len(files)} success={uploaded} failed={skipped_or_failed}")
-    # Non-zero exit if any failures occurred during real upload.
+    # non-zero exit if any failures occurred during real upload.
     if skipped_or_failed and not args.dry_run:
         return 2
     return 0

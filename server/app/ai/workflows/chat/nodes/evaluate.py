@@ -17,14 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 async def evaluate_node(state: ChatState) -> dict:
-    """
-    check whether the evidence is sufficient and decide whether to search again
+    """ retry missing evidence with a new query when time permits.
+    otherwise return a warning and reserve time for the answer
 
     - **state**: messages, user context, sources, attempted queries, retries left and research deadline
-    - **returns**: retry decision with a new query and reduced retry count, or warnings
-      when stopping with incomplete evidence; skip query/provider pairs already searched
-      and preserve time for answer generation
-    """
+    - **returns**: retry decision with a new query and reduced retry count, or warnings when stopping with
+      incomplete evidence; skip query/provider pairs already searched and preserve time for answer
+      generation """
     deadline = state.get("research_deadline", float("inf"))
     time_warning = "research time budget reached; evidence may be incomplete"
     if monotonic() + DECISION_TIMEOUT_SECONDS + SEARCH_TIMEOUT_SECONDS > deadline:

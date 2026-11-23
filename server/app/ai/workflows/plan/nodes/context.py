@@ -4,28 +4,19 @@ from itertools import chain
 
 from langgraph.runtime import Runtime
 
-from app.ai.services.user_context import compact_training
+from app.ai.services.context_formatting import compact_record
 from app.ai.workflows.plan.state import MAX_CONTEXT_CHARS, PlanState, WorkflowContext
 from app.services.planning import training_weekdays, workout_has_results
 
 
-def compact_record(record, *, keep_id: bool = False) -> dict:
-    """omit storage metadata and nested ids while retaining prescriptions and results"""
-    data = compact_training(record.model_dump(mode="json", exclude_none=True))
-    if keep_id:
-        data["id"] = str(record.id)
-    return data
-
-
 async def context_node(state: PlanState, runtime: Runtime[WorkflowContext]) -> dict:
-    """
-    prepare bounded model context from the worker's revision-checked database read
+    """ build model context from the verified owner and revision.
+    expose only editable workout ids and exclude credentials and lease tokens
 
     - **state**: execution budgets; no user message is required
     - **runtime**: authoritative claim and athlete records, including protected sessions
-    - **returns**: sanitized task and context with exact editable workout ids;
-      credentials, lease values and profile identity never enter model messages
-    """
+    - **returns**: sanitized task and context with exact editable workout ids; credentials, lease values
+      and profile identity never enter model messages """
     claim, data = runtime.context.claim, runtime.context.data
     if (data.profile.id != claim.job.user_id or data.schedule.user_id != claim.job.user_id
             or data.onboarding is not None and data.onboarding.user_id != claim.job.user_id

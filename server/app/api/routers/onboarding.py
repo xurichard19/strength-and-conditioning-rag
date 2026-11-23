@@ -12,12 +12,8 @@ router = APIRouter(prefix="/onboarding", tags=["onboarding"], dependencies=[Depe
 
 @router.get("", response_model=OnboardingResponse | None)
 def get_onboarding(user: AuthUser = Depends(require_user)) -> OnboardingResponse | None:
-    """
-    read the authenticated user's saved onboarding answers
-
-    - **user**: verified identity and jwt; never accepts an owner from the request
-    - **returns**: current answers and completion metadata, or json null before the first save
-    """
+    """ - **user**: verified identity and jwt; never accepts an owner from the request
+    - **returns**: current answers and completion metadata, or json null before the first save """
 
     with database_errors("onboarding.get_onboarding"):
         result = onboarding_responses.get_onboarding_response(user.id, user.access_token)
@@ -28,19 +24,11 @@ def get_onboarding(user: AuthUser = Depends(require_user)) -> OnboardingResponse
 def save_onboarding(
     payload: OnboardingSaveRequest, user: AuthUser = Depends(require_user),
 ) -> OnboardingResponse:
-    """
-    replace the user's complete answer object without completing onboarding
-
-    accepts changing question keys and nested json values, not fixed questionnaire
-    fields. omitted answer keys are removed, not merged. an empty object is valid.
-    existing completion time is preserved; edits are last-write-wins. the database
-    invalidates planning inputs. changed answers after completion also queue an
-    adjustment through existing coverage, preserving the horizon and refresh cadence.
+    """ replace all answers, dropping omitted keys and preserving completion time
 
     - **payload**: full desired answers object; owner and completion fields are forbidden
     - **user**: verified identity and caller jwt
-    - **returns**: saved answer record including database timestamps
-    """
+    - **returns**: saved answer record including database timestamps """
 
     with database_errors("onboarding.save_onboarding"):
         return OnboardingResponse.model_validate(
@@ -49,17 +37,11 @@ def save_onboarding(
 
 @router.post("/complete", response_model=OnboardingResponse)
 def complete_onboarding(background: BackgroundTasks, user: AuthUser = Depends(require_user)) -> OnboardingResponse:
-    """
-    save completed onboarding and durable planning intent before checking payment
+    """ planning runs separately after verification
 
-    does not enforce specific questions or nonempty answers. completion is an
-    explicit user action; repeated calls preserve the first timestamp and any
-    existing schedule. billing-enabled generation waits for verified paid access;
-    the dispatcher recovers activation independently of the mobile connection.
-
+    - **background**: post-response tasks used for planning activation
     - **user**: verified owner; the handler uses backend credentials
-    - **returns**: completed response before generation; 404 if no answers were saved
-    """
+    - **returns**: completed response before generation; 404 if no answers were saved """
 
     with database_errors("onboarding.complete_onboarding"):
         result = onboarding_responses.complete_onboarding_response(user.id)

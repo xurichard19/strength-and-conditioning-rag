@@ -28,7 +28,7 @@ InitialPlanStatus = Literal["queued", "running", "deferred", "failed", "ready"]
 # -------------------- verified billing access --------------------
 
 class BillingSnapshot(BaseModel):
-    """provider-verified entitlement fields; database verification time is server-owned"""
+    """ provider-verified entitlement fields; database verification time is server-owned """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -72,7 +72,8 @@ RESEARCH_METADATA_FIELDS = (
 
 
 def metadata_text(value: str | None) -> str | None:
-    """treat the bucket's missing-value marker as absent"""
+    """ - **value**: raw text from document metadata
+    - **returns**: trimmed metadata text, or none for blank or missing values """
     if not isinstance(value, str):
         return None
     value = value.strip()
@@ -99,6 +100,9 @@ class Source(BaseModel):
 
     @model_validator(mode="after")
     def check_source_identifier(self):
+        """ - **inputs**: parsed source instance
+        - **returns**: the validated instance; raises ValueError if the identifiers do not match the
+          source type """
         if self.source_type == "research":
             if not (self.doi or self.document_id or self.chunk_id) or self.url:
                 raise ValueError("research sources require a doi, document id or chunk id and no url")
@@ -163,7 +167,7 @@ class OnboardingResponseRecord(BaseModel):
 # -------------------- planning schedule records --------------------
 
 class PlanningScheduleRecord(BaseModel):
-    """coverage and fixed local refresh cadence; revision covers all planning inputs"""
+    """ coverage and fixed local refresh cadence; revision covers all planning inputs """
 
     user_id: UUID
     horizon_days: int = Field(default=21, gt=0)
@@ -179,6 +183,8 @@ class PlanningScheduleRecord(BaseModel):
 
     @model_validator(mode="after")
     def check_refresh_interval(self):
+        """ - **inputs**: parsed planning schedule record instance
+        - **returns**: the validated instance; raises ValueError if the interval exceeds the horizon """
         if self.refresh_interval_days > self.horizon_days:
             raise ValueError("refresh interval must not exceed horizon")
         return self
@@ -201,6 +207,9 @@ class PlanningChangeRecord(BaseModel):
 
     @model_validator(mode="after")
     def check_horizon(self):
+        """ - **inputs**: parsed planning change record instance
+        - **returns**: the validated instance; raises ValueError if the change window violates horizon
+          constraints """
         if not self.effective_from <= self.effective_through <= self.horizon_end_after:
             raise ValueError("change window must be ordered and within the horizon")
         if self.kind == "adjustment" and self.horizon_end_before != self.horizon_end_after:
@@ -211,7 +220,7 @@ class PlanningChangeRecord(BaseModel):
 
 
 class PlanningChangeWorkoutRecord(BaseModel):
-    """only affected workout ids; unchanged workouts need no links"""
+    """ only affected workout ids; unchanged workouts need no links """
 
     change_id: UUID
     workout_id: UUID
@@ -248,6 +257,8 @@ class ReplanJobRecord(BaseModel):
 
     @model_validator(mode="after")
     def check_adjustment_window(self):
+        """ - **inputs**: parsed replan job record instance
+        - **returns**: the validated instance; raises ValueError if the window is invalid for the job kind """
         if self.kind == "adjustment":
             if self.effective_from is None or self.effective_through is None:
                 raise ValueError("adjustments require a start and end date")
@@ -317,7 +328,7 @@ class WorkoutRecord(BaseModel):
 # -------------------- database operation results --------------------
 
 class WorkoutWriteResult(BaseModel):
-    """receipt returned after a replan or rollback commits successfully"""
+    """ receipt returned after a replan or rollback commits successfully """
 
     change_id: UUID | None
     workout_ids: list[UUID]
@@ -332,7 +343,7 @@ class ClaimedReplanJob(BaseModel):
 
 
 class PlanningBillingWork(BaseModel):
-    """One durable event or timed verification retry selected by the dispatcher."""
+    """ one durable event or timed verification retry selected by the dispatcher """
 
     user_id: UUID
     wake_token: UUID | None = None
@@ -345,6 +356,9 @@ class ReplanDeliveryClaim(BaseModel):
 
     @model_validator(mode="after")
     def check_claim(self):
+        """ - **inputs**: parsed replan delivery claim instance
+        - **returns**: the validated instance; raises ValueError if the claim disagrees with delivery
+          status """
         if (self.status == "claimed") != (self.claim is not None):
             raise ValueError("only a claimed delivery must contain a job claim")
         return self
@@ -358,7 +372,7 @@ class ReplanResult(BaseModel):
 
 
 class PlanningDayDecision(BaseModel):
-    """account for each date without saving empty rest-day workouts"""
+    """ account for each date without saving empty rest-day workouts """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -367,7 +381,7 @@ class PlanningDayDecision(BaseModel):
 
 
 class PlanningProposal(ReplanResult):
-    """bounded changes and explicit coverage, validated before publication"""
+    """ bounded changes and explicit coverage, validated before publication """
 
     before_ids: list[UUID] = Field(max_length=100)
     workouts: list[PlannedWorkout] = Field(max_length=100)
@@ -384,7 +398,7 @@ class ProfileUpdate(BaseModel):
 
 
 class ExerciseSetResult(BaseModel):
-    """complete result values for one set; omitted actual values are cleared"""
+    """ complete result values for one set; omitted actual values are cleared """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -458,6 +472,8 @@ class SportsWorkoutUpdate(BaseModel):
 
     @model_validator(mode="after")
     def check_required_fields(self):
+        """ - **inputs**: parsed sports workout update instance
+        - **returns**: the validated instance """
         for field in ("sport", "scheduled_date"):
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError(f"{field} cannot be null")

@@ -13,7 +13,6 @@ import { useApp } from '@/state/app-context';
 import { useCalendarRange } from '@/state/use-calendar-range';
 import { useInitialPlan } from '@/state/use-initial-plan';
 
-/** Feature planned workouts; other sessions stay compact and open their saved details. */
 function DailyWorkout({ session, onOpen }: { session: CalendarEntry; onOpen: () => void }) {
   const { colors } = useApp();
   const planned = session.kind === 'workout' && session.status === 'planned';
@@ -73,7 +72,6 @@ export default function TodayScreen() {
   const open = (session: CalendarEntry) => {
     if (authSession) setOpened({ id: session.id, kind: session.kind, userId: authSession.user.id });
   };
-  // One midnight timer and a resume check keep Today on the current local date.
   useEffect(() => {
     const timer = setTimeout(() => setToday(todayIso()), Math.max(0, new Date(`${shiftDays(today, 1)}T00:00:00`).getTime() - Date.now()) + 100);
     const listener = AppState.addEventListener('change', status => { if (status === 'active') setToday(todayIso()); });
@@ -92,9 +90,11 @@ export default function TodayScreen() {
     </Card> : null}
     {sessions.map(session => <DailyWorkout key={`${session.kind}:${session.id}`} session={session} onOpen={() => open(session)} />)}
     {initialPlan.schedule?.initial_plan_status === 'ready' && data && !loading && !error && !sessions.length ? <Card style={styles.rest}>
-      <Moon size={26} color={colors.textSecondary} strokeWidth={1.5} />
-      <AppText style={styles.restTitle}>No workout today.</AppText>
-      <AppText tone="secondary" style={styles.body}>Take it easy and enjoy a little recovery.</AppText>
+      <View aria-hidden style={[styles.milestoneIcon, { backgroundColor: colors.tintSoft }]}>
+        <Moon size={20} color={colors.tintText} strokeWidth={1.5} />
+      </View>
+      <AppText weight="medium" style={styles.restTitle}>No workout today.</AppText>
+      <AppText tone="secondary" style={[styles.body, styles.restSubtitle]}>Take it easy and enjoy a little recovery.</AppText>
     </Card> : null}
     <SectionTitle>Recent progress</SectionTitle>
     <Card style={styles.row}>
@@ -124,7 +124,8 @@ const styles = StyleSheet.create({
   compact: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 18 },
   compactTitle: { fontSize: 16, lineHeight: 22 },
   milestoneIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  rest: { alignItems: 'center', gap: 12, paddingVertical: 30 },
-  restTitle: { fontSize: 22, lineHeight: 28, letterSpacing: -0.4 },
+  rest: { alignItems: 'center', gap: 8, paddingVertical: 26 },
+  restTitle: { marginTop: 4, fontSize: 22, lineHeight: 28, letterSpacing: -0.4, textAlign: 'center' },
+  restSubtitle: { textAlign: 'center' },
   pressed: { opacity: 0.7 },
 });

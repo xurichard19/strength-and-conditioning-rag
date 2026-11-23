@@ -1,9 +1,9 @@
 import { ArrowDown, ArrowRight, ArrowUpRight, Check, Plus } from 'lucide-react'
-import appIcon from '../../../mobile/assets/images/splash-icon.png'
 import richardPortrait from '../assets/richard-xu.jpg'
 import dimitriosPortrait from '../assets/dimitrios-mahairas.jpg'
 import aaronPortrait from '../assets/aaron-jiang.jpg'
 import { LaunchFooter } from './LaunchFooter'
+import { LaunchHeader } from './LaunchHeader'
 import TrainingCalendarPreview from './TrainingCalendarPreview'
 import PhonePreview from './PhonePreview'
 import { useScrollReveal } from './useScrollReveal'
@@ -43,16 +43,7 @@ export function ComingSoonPage() {
 
   return (
     <div className="arcel-landing" ref={landingRef}>
-      <a className="landing-skip" href="#main-content">Skip to content</a>
-      <header className="landing-nav landing-container">
-        <a className="landing-wordmark" href="/" aria-label="Arcel home">
-          <img src={appIcon} width="36" height="36" alt="" />
-          <span>Arcel</span>
-        </a>
-        <nav aria-label="Main navigation">
-          <a className="landing-nav-link" href="/about">About us <ArrowUpRight size={16} aria-hidden="true" /></a>
-        </nav>
-      </header>
+      <LaunchHeader home />
 
       <main id="main-content">
         <section className="landing-hero" aria-labelledby="landing-title">

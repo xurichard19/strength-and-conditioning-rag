@@ -2,7 +2,6 @@ import type { ConfigContext } from 'expo/config';
 
 import eas from './eas.json';
 
-/** Validate billing build settings while preserving the static app.json configuration. */
 export default ({ config }: ConfigContext) => {
   const flag = process.env.EXPO_PUBLIC_BILLING_ENABLED ?? 'false';
   const storeFlag = process.env.ARCEL_STORE_BUILD ?? 'false';

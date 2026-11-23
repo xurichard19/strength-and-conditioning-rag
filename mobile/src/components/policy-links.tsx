@@ -12,7 +12,6 @@ const policies = [
   { path: 'health-privacy', label: 'Consumer Health Privacy' },
 ] as const;
 
-/** Open About and public policies in a browser sheet, before or after sign-in. */
 export function PolicyLinks() {
   const [error, setError] = useState<string | null>(null);
   const openPolicy = async (path: typeof policies[number]['path']) => {

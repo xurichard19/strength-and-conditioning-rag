@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { load, plain, jsx, deferred, type TestValue, type TestModule, type TestNode, type Stubs } from './helpers.ts';
-import type { Profile, ChatSource, ChatStage } from '../../mobile/src/domain/types';
+import type { Profile, ChatSource, ChatStage, Proposal, Session } from '../../mobile/src/domain/types';
 import type { BillingStatus, SavedMessage, Conversation } from '../../mobile/src/services/backend';
 import type { CustomerInfo } from 'react-native-purchases';
 const backend = load<typeof import('../../mobile/src/services/backend')>('services/backend.ts');
@@ -559,7 +559,8 @@ test('native auth callback restores tokens and rejects invalid links', async () 
 });
 
 // Deterministic hook harness: exercise the provider without mounting native views.
-function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => TestValue> = {}) {
+function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => TestValue> = {},
+  preview: { initialWeek: Session[]; initialProposal: Proposal | null } = { initialWeek: [], initialProposal: null }) {
   const slots: TestValue[] = []; let cursor = 0; let dirty = true; let value!: ReturnType<typeof import('../../mobile/src/state/app-context').useApp>; let effects: (() => void)[] = [];
   let now = 0; let timerId = 0;
   const timers = new Map<number, { at: number; callback: () => void }>();
@@ -601,7 +602,7 @@ function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => 
     ...apiOverrides,
   } satisfies Stubs;
   let authListener!: (...args: TestValue[]) => void;
-  const provider = load('state/app-context.tsx', {
+  const modules: Stubs = {
     react: hooks, 'react/jsx-runtime': { jsx: (_type, props) => (value = props.value) },
     'expo-crypto': { randomUUID },
     './chat-cache': { createChatCache },
@@ -610,7 +611,8 @@ function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => 
     'expo-linking': { getInitialURL: async () => null, addEventListener: () => ({ remove() {} }) },
     'react-native': { Platform: { OS: 'ios' }, useColorScheme: () => 'light', AppState: { addEventListener: () => ({ remove() {} }) } },
     '@/design/tokens': { palettes: { light: {}, dark: {} } },
-    '@/data/mock': { defaultProfile: profile, currentBlock: {}, initialWeek: [], initialProposal: null, progressMetrics: [] },
+    '@/domain/profile': { defaultProfile: profile },
+    '@/data/mock': { currentBlock: {}, ...preview, progressMetrics: [] },
     '@/lib/errors': { errorMessage: (error, fallback) => error.message || fallback },
     '@/services/api': {
       backendFor: () => api, getAuthSession: async () => null, profileFromApi: backend.profileFromApi,
@@ -619,7 +621,9 @@ function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => 
       signOut: async () => {},
       supabase: { auth: { onAuthStateChange: fn => (authListener = fn, { data: { subscription: { unsubscribe() {} } } }) } },
     },
-  }, {
+  };
+  modules['./use-preview-training'] = load('state/use-preview-training.ts', modules);
+  const provider = load('state/app-context.tsx', modules, {
     setTimeout: (callback: () => void, delay: number) => { const id = ++timerId; timers.set(id, { at: now + delay, callback }); return id; },
     clearTimeout: (id: number) => timers.delete(id),
   });
@@ -639,6 +643,24 @@ function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => 
     unmount() { slots.forEach(slot => slot?.cleanup?.()); },
   };
 }
+
+test('preview edits stay local and reset when the active account changes', async () => {
+  const mock = load<typeof import('../../mobile/src/data/mock')>('data/mock.ts');
+  const initial = plain(mock.initialWeek);
+  const f = providerFixture({}, mock);
+  await f.flush(); await f.value.signIn('a', 'password'); await f.flush();
+  const session = f.value.sessions.find(item => item.id === mock.todaySession.id)!;
+  const exercise = session.exercises[0];
+  f.value.updateSet(session.id, exercise.id, exercise.sets[0].id, { weight: 35, reps: 5 });
+  f.value.declineProposal(); await f.flush();
+  assert.equal(f.value.sessions.find(item => item.id === session.id)!.exercises[0].sets[0].weight, 35);
+  assert.equal(f.value.proposal, null);
+  assert.equal(f.calls.length, 0);
+  f.auth('SIGNED_IN', { user: { id: 'user-b' }, access_token: 'token-b' }); await f.flush();
+  assert.deepEqual(plain(f.value.sessions), initial);
+  assert.equal(f.value.proposal, mock.initialProposal);
+  assert.deepEqual(plain(mock.initialWeek), initial);
+});
 
 test('chat drafts persist across provider renders without publishing each keystroke', async () => {
   const f = providerFixture(); await f.flush(); await f.value.signIn('a', 'password'); await f.flush();

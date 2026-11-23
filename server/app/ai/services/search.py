@@ -32,12 +32,12 @@ class SearchResponse(BaseModel):
 
 
 def search_key(query: str) -> str:
-    """ignore casing and punctuation while preserving meaningful word order"""
+    """ **query**: search text to normalize. **returns**: normalized key for comparing search queries """
     return " ".join("".join(char if char.isalnum() else " " for char in query.casefold()).split())
 
 
 async def research_collection():
-    """initialize async chroma client, lock connection window then cache collection"""
+    """ **inputs**: none. **returns**: cached asynchronous research collection """
     global _collection
     if _collection: return _collection
 
@@ -57,7 +57,10 @@ async def research_collection():
 
 @lru_cache(maxsize=2)
 def web_search_client(top_k: int):
-    """initialize tavily client, cache limit of two for quick chat and deep research"""
+    """ initialize tavily client, cache limit of two for quick chat and deep research
+
+    - **top_k**: maximum search results
+    - **returns**: cached tavily client configured for the requested result limit """
     return TavilySearch(tavily_api_key=get_ai_settings().tavily_api_key,
         max_results=top_k, search_depth="fast", include_answer=False,
         include_raw_content=False, include_images=False, auto_parameters=False)
@@ -65,12 +68,12 @@ def web_search_client(top_k: int):
 
 @lru_cache(maxsize=1)
 def rerank_client():
-    """rerank client"""
+    """ **inputs**: none. **returns**: cached asynchronous cohere reranking client """
     return cohere.AsyncClientV2(api_key=get_ai_settings().cohere_api_key, timeout=20)
 
 
 def _research_source(identifier: str, text: str, metadata: dict | None, score: float | None = None) -> Source:
-    """map research results to citation fields and chunk identifiers"""
+    """ map research results to citation fields and chunk identifiers """
     metadata = metadata or {}
     citation = {field: metadata_text(metadata.get(field)) for field in RESEARCH_METADATA_FIELDS}
     page = metadata.get("page")
@@ -80,15 +83,11 @@ def _research_source(identifier: str, text: str, metadata: dict | None, score: f
 
 
 async def search_research_docs(query: str, top_k: int) -> list[Source]:
-    """
-    deprecated: dense research retrieval; use hybrid_search_research_docs instead
-
-    chat and planning workflows do not call this helper.
+    """ legacy dense retrieval. workflows use hybrid_search_research_docs for research excerpts
 
     - **query**: standalone retrieval question
     - **top_k**: bounded number of chunks
-    - **returns**: original excerpts with citation metadata and chunk identifiers
-    """
+    - **returns**: original excerpts with citation metadata and chunk identifiers """
     collection = await research_collection()
     embeddings = await asyncio.to_thread(_research_embeddings, [query])
     result = await collection.query(query_embeddings=embeddings, n_results=top_k,
@@ -100,16 +99,13 @@ async def search_research_docs(query: str, top_k: int) -> list[Source]:
 
 
 async def hybrid_search_research_docs(query: str, top_k: int = 10) -> list[Source]:
-    """
-    hybrid research retrieval using rrf with 2:1 dense-to-sparse rank weights
-
-    use dense ranking alone when the query has no keyword tokens
+    """ rank research excerpts with 2:1 dense-to-sparse reciprocal rank fusion. use dense
+    ranking alone for queries without keyword tokens
 
     - **query**: research question
     - **top_k**: result count
-    - **returns**: research sources in fused rank order, retaining chunk ids,
-      available citation metadata and rrf scores
-    """
+    - **returns**: research sources in fused rank order, retaining chunk ids, available citation metadata
+      and rrf scores """
     collection = await research_collection()
     index = collection.schema.keys["sparse_embedding"].sparse_vector.sparse_vector_index
     sparse_embeddings = index.config.embedding_function
@@ -131,14 +127,12 @@ async def hybrid_search_research_docs(query: str, top_k: int = 10) -> list[Sourc
 
 
 async def rerank_research_results(query: str, research_documents: list[str], top_n: int = 5) -> list[str]:
-    """
-    rerank research excerpts with cohere
+    """ rerank research excerpts with cohere and return them in relevance order
 
     - **query**: research question used to score relevance
     - **research_documents**: research excerpts to rank
     - **top_n**: maximum number of excerpts to return
-    - **returns**: excerpts in relevance order
-    """
+    - **returns**: excerpts in relevance order """
     if not research_documents:
         return []
 
@@ -148,14 +142,12 @@ async def rerank_research_results(query: str, research_documents: list[str], top
 
 
 async def web_search(query: str, top_k: int) -> list[Source]:
-    """
-    tavily search
+    """ return tavily titles, snippets and citation links without fetching raw page content
 
     - **query**: research question
     - **top_k**: configured maximum web results
-    - **returns**: untrimmed provider snippets and titles with provider-supplied citation links;
-      raw page content is disabled in the tavily client
-    """
+    - **returns**: untrimmed provider snippets and titles with provider-supplied citation links; raw page
+      content is disabled in the tavily client """
     result = await web_search_client(top_k).ainvoke({"query": query})
     if not isinstance(result, dict) or "results" not in result:
         raise ValueError("web search returned no result envelope")
@@ -172,7 +164,7 @@ async def web_search(query: str, top_k: int) -> list[Source]:
 
 
 async def _retrieve(provider: str, query: str, top_k: int) -> SearchResponse:
-    """search wrapper, isolate provider failures"""
+    """ search wrapper, isolate provider failures """
     try:
         async with asyncio.timeout(SEARCH_TIMEOUT_SECONDS):
             sources = await (hybrid_search_research_docs(query, top_k)
@@ -188,15 +180,14 @@ async def _retrieve(provider: str, query: str, top_k: int) -> SearchResponse:
 async def search_sources(
     query: str, *, providers: Literal["none", "research", "web", "both"] = "both", top_k: int = 5,
 ) -> SearchResponse:
-    """
-    run one deterministic retrieval round in parallel when applicable
+    """ search the selected providers concurrently. return deduplicated evidence and warnings so
+    the workflow can decide whether to retry
 
     - **query**: query
     - **providers**: allow-listed source selection
     - **top_k**: maximum results per provider; 5 for quick, 10 for deep
-    - **returns**: deduplicated evidence plus explicit partial-failure warnings;
-      retry decisions belong to the calling workflow, never this service
-    """
+    - **returns**: deduplicated evidence plus explicit partial-failure warnings; retry decisions belong to
+      the calling workflow, never this service """
     if not query.strip() or top_k < 1:
         raise ValueError("invalid search query or result limit")
 
@@ -208,13 +199,11 @@ async def search_sources(
 
 
 def merge_sources(previous: Sequence[Source], incoming: Sequence[Source]) -> list[Source]:
-    """
-    merge sources by content, ignoring casing and whitespace when comparing duplicates
+    """ keep the first occurrence of each passage, ignoring case and whitespace
 
     - **previous**: sources from earlier searches
     - **incoming**: sources from the latest search
-    - **returns**: distinct passages in first-seen order
-    """
+    - **returns**: distinct passages in first-seen order """
     unique = {}
     for source in chain(previous, incoming):
         key = sha256(" ".join(source.content.casefold().split()).encode()).digest()
@@ -223,7 +212,8 @@ def merge_sources(previous: Sequence[Source], incoming: Sequence[Source]) -> lis
 
 
 def format_sources_for_prompt(sources: Sequence[Source]) -> str:
-    """format sources as numbered excerpts with titles and citation identifiers"""
+    """ - **sources**: retrieved sources in the desired citation order
+    - **returns**: numbered source excerpts with citation identifiers """
     return "\n\n".join(
         f"[{index}] {source.source_type}; {source.title or 'untitled'}; "
         f"{source.doi or source.url or source.document_id or source.chunk_id}\n{source.content}"

@@ -27,7 +27,6 @@ function ActionFields({ action, busy, name, setName, setAction }: {
     selectionColor={colors.tint} style={[styles.nameInput, { color: colors.text, backgroundColor: colors.fill, borderColor: colors.controlBorder }]} />;
 }
 
-/** Keep transient rename/delete form state separate from the streaming conversation view. */
 export function ConversationActions({ onClose }: { onClose: () => void }) {
   const { colors, renameConversation, deleteConversation } = useApp();
   const [action, setAction] = useState<Action>('menu');
@@ -63,7 +62,6 @@ export function ConversationActions({ onClose }: { onClose: () => void }) {
   </Modal>;
 }
 
-/** Render only nearby sidebar rows; opening/closing leaves the account's bounded cache intact. */
 export function ConversationSidebar({ onClose, onSelect }: { onClose: () => void; onSelect: (id?: string, title?: string) => void }) {
   const { colors, conversations, conversationsLoading, conversationsError, hasOlderConversations, refreshConversations, activeConversationId } = useApp();
   const [refreshing, setRefreshing] = useState(false);

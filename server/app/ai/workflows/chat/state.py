@@ -14,7 +14,7 @@ from app.contracts import ChatMode, Source
 
 @dataclass(frozen=True)
 class WorkflowContext:
-    """user credentials, conversation id and current message cursor for database reads"""
+    """ user credentials, conversation id and current message cursor for database reads """
 
     user_id: str
     access_token: str = field(repr=False)
@@ -39,7 +39,7 @@ CHAT_POLICIES: dict[ChatMode, ChatPolicy] = {
 }
 
 
-# -------------------- nano structured decisions --------------------
+# -------------------- structured decisions --------------------
 
 class SearchQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -49,13 +49,15 @@ class SearchQuery(BaseModel):
 
     @model_validator(mode="after")
     def require_search_text(self):
+        """ - **inputs**: parsed search query instance
+        - **returns**: the validated instance; raises ValueError if a selected provider has no search text """
         if self.providers != "none" and not self.query.strip():
             raise ValueError("selected search providers require a nonblank query")
         return self
 
 
 class ChatRoute(BaseModel):
-    """search selection, user data scope and referenced dates"""
+    """ search selection, user data scope and referenced dates """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -76,7 +78,7 @@ class EvidenceReview(BaseModel):
 # -------------------- per-turn state --------------------
 
 class ChatState(MessagesState):
-    """messages, context, sources and search progress for one chat request"""
+    """ messages, context, sources and search progress for one chat request """
 
     mode: ChatMode
     history: NotRequired[list[AnyMessage]]

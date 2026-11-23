@@ -7,7 +7,6 @@ import { AppText } from '@/components/ui';
 import ChatScreen from '@/screens/chat-screen';
 import { useApp } from '@/state/app-context';
 
-/** Resize one mounted conversation; dragging the handle never steals message scrolling. */
 export default function ChatWindow() {
   const { colors } = useApp();
   const { height, width } = useWindowDimensions();

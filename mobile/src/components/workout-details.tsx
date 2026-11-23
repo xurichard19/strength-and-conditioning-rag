@@ -6,7 +6,6 @@ import { useApp } from '@/state/app-context';
 import { ActionSheet } from './action-sheet';
 import { AppText } from './ui';
 
-/** Show the full prescription already loaded with the calendar, without another request. */
 export function WorkoutDetails({ session, onClose }: { session: CalendarEntry; onClose: () => void }) {
   const { colors } = useApp();
   const exercises = session.exercises ?? [];

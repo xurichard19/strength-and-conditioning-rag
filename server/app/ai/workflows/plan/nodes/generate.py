@@ -12,13 +12,11 @@ from app.contracts import PlanningProposal
 
 
 async def generate_node(state: PlanState) -> dict:
-    """
-    generate a structured proposal or repair one validation failure
+    """ generate or repair a proposal. incomplete output fails before validation
 
     - **state**: fixed task and calendar, adequate evidence and optional repair feedback
-    - **returns**: parsed proposal or a schema issue for the validator;
-      incomplete responses are never accepted as successful generation
-    """
+    - **returns**: parsed proposal or a schema issue for the validator; incomplete responses are never
+      accepted as successful generation """
     if monotonic() + GENERATION_TIMEOUT_SECONDS > state["deadline"]:
         raise TimeoutError("planning generation budget exhausted")
 

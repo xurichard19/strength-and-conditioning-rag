@@ -16,6 +16,8 @@ class TaskSettings(BaseSettings):
 
     @model_validator(mode="after")
     def check_destination(self):
+        """ - **inputs**: parsed task settings instance
+        - **returns**: the validated instance """
         if self.enabled:
             validate_destination(self.queue, self.worker_url, self.invoker_email)
         return self
@@ -23,5 +25,5 @@ class TaskSettings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_task_settings() -> TaskSettings:
-    """cache the deployed planning switch and task destination per process"""
+    """ **inputs**: none. **returns**: cached queue, worker destination and dispatch switch """
     return TaskSettings()

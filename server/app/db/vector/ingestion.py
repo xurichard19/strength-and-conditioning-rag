@@ -28,8 +28,11 @@ MAX_CHUNK_TOKENS = MAX_INPUT_TOKENS - 2
 
 
 @lru_cache(maxsize=1)
-def _chunk_tokenizer():
-    """copy the shared model's tokenizer without truncation or padding for exact chunk counts"""
+def _chunk_tokenizer() -> Tokenizer:
+    """ copy the shared model's tokenizer without truncation or padding for exact chunk counts
+
+    - **inputs**: none
+    - **returns**: cached tokenizer used to count complete chunks without truncation """
     tokenizer = Tokenizer.from_str(research_model().tokenizer.backend_tokenizer.to_str())
     tokenizer.no_truncation()
     tokenizer.no_padding()
@@ -37,6 +40,8 @@ def _chunk_tokenizer():
 
 
 def load_system_docs(data_dir: str | None = None) -> list[Document]:
+    """ - **data_dir**: local document directory when the configured source is local
+    - **returns**: parsed documents from the configured local or cloud source """
     settings = get_ai_settings()
     if settings.doc_source.lower() == 'gcs':
         if not settings.gcs_bucket:
@@ -64,7 +69,11 @@ def load_system_docs_from_local(data_dir: str | None = None) -> list[Document]:
 
 
 def load_system_docs_from_gcs(bucket: str, prefix: str) -> list[Document]:
-    """ load system docs from gcs by downloading each blob to a temp file and parsing """
+    """ load system docs from gcs by downloading each blob to a temp file and parsing
+
+    - **bucket**: source storage bucket
+    - **prefix**: object prefix to scan within the bucket
+    - **returns**: parsed documents with source metadata """
     prefix = prefix.strip("/")
 
     docs: list[Document] = []
@@ -114,7 +123,10 @@ def load_system_docs_from_gcs(bucket: str, prefix: str) -> list[Document]:
     return docs
 
 def load_single_doc(path: str) -> list[Document]:
-    """ load single file as langchain document, raise exception if not valid file type """
+    """ load single file as langchain document, raise exception if not valid file type
+
+    - **path**: path of the document to load
+    - **returns**: parsed documents for the file, using ocr for scanned pdfs """
     if path.lower().endswith('.pdf'):
         loader = PyMuPDFLoader(path)
 
@@ -153,7 +165,7 @@ def read_scanned_pdf(path: str, loader: PyMuPDFLoader) -> list[Document]:
             img = page.get_pixmap(dpi=300)
             img = Image.open(io.BytesIO(img.tobytes("png")))
             text = pytesseract.image_to_string(img)
-            # IMPORTANT: requires ps command when operating in venv on windows >> $env:Path += ";C:\Program Files\Tesseract-OCR"
+            # important: requires ps command when operating in venv on windows >> $env:Path += ";C:\Program Files\Tesseract-OCR"
 
             doc = Document(
                 page_content=text,
@@ -168,8 +180,14 @@ def read_scanned_pdf(path: str, loader: PyMuPDFLoader) -> list[Document]:
     return docs
     
 
-def split_docs(docs: list[Document], size=MAX_CHUNK_TOKENS, overlap=80, min_len=60):
-    """split and merge by model tokens, reserving two of the 512 positions for special tokens"""
+def split_docs(docs: list[Document], size: int = MAX_CHUNK_TOKENS, overlap: int = 80, min_len: int = 60) -> list[Document]:
+    """ split and merge by model tokens, reserving two of the 512 positions for special tokens
+
+    - **docs**: source documents with their page metadata
+    - **size**: maximum tokens per chunk
+    - **overlap**: shared tokens between adjacent chunks
+    - **min_len**: threshold for merging short chunks from the same page
+    - **returns**: filtered document chunks with their original source metadata """
     if not 0 <= overlap < size <= MAX_CHUNK_TOKENS or not 0 <= min_len <= size:
         raise ValueError("chunk size must be 1 to 510 tokens with smaller overlap and bounded minimum")
 
@@ -239,6 +257,6 @@ def split_docs(docs: list[Document], size=MAX_CHUNK_TOKENS, overlap=80, min_len=
     return merged
 
 
-def clean_doc(doc: Document):
+def clean_doc(doc: Document) -> None:
     """ clean document in place """
     doc.page_content = re.sub(r'\s+', ' ', doc.page_content)

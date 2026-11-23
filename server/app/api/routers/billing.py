@@ -17,7 +17,8 @@ router = APIRouter(prefix="/billing", tags=["billing"], dependencies=[Depends(pr
 
 @router.get("/status", response_model=BillingStatusResponse)
 def get_status(user: AuthUser = Depends(require_user)) -> BillingStatusResponse:
-    """return the authenticated account's billing status, refreshing stale verification"""
+    """ - **user**: authenticated account from the request
+    - **returns**: server-verified billing status for this account """
 
     try:
         return BillingStatusResponse.model_validate(billing.get_billing_status(user.id))
@@ -28,7 +29,12 @@ def get_status(user: AuthUser = Depends(require_user)) -> BillingStatusResponse:
 @router.post("/sync", response_model=BillingStatusResponse)
 def sync_status(background: BackgroundTasks, payload: RequestModel | None = None,
                 user: AuthUser = Depends(require_user)) -> BillingStatusResponse:
-    """verify this account after purchase/restore; accepts no client entitlement claims"""
+    """ verify this account after purchase/restore; accepts no client entitlement claims
+
+    - **background**: post-response tasks used for planning activation
+    - **payload**: optional empty body; entitlement claims come from the provider
+    - **user**: authenticated account from the request
+    - **returns**: billing status after rechecking access """
 
     try:
         record = billing.get_verified_entitlement(user.id, force=True, allow_outage=True)
@@ -38,8 +44,8 @@ def sync_status(background: BackgroundTasks, payload: RequestModel | None = None
     except billing.BillingUnavailable as exc:
         raise HTTPException(503, "billing_unavailable", headers=PRIVATE_HEADERS) from exc
     if status.has_access and billing.has_fresh_verification(record):
-        # The entitlement commit has already persisted any needed planning wake.
-        # Immediate activation is optional and reuses that same verified revision.
+        # the entitlement commit has already persisted any needed planning wake.
+        # immediate activation is optional and reuses that same verified revision.
         background.add_task(planning_access.after_verification, user.id,
             planning_access.PlanningPermission(record.environment, record.sync_revision))
     return status
@@ -47,19 +53,18 @@ def sync_status(background: BackgroundTasks, payload: RequestModel | None = None
 
 @router.post("/webhooks/revenuecat")
 async def receive_webhook(request: Request) -> dict[str, bool]:
-    """
-    authenticate provider delivery and durably invalidate affected entitlement projections
+    """ verify the provider request and acknowledge it after account invalidation commits.
+    failed deliveries can be retried
 
     - **request**: raw signed payload; no client jwt or entitlement claim is accepted
-    - **returns**: acknowledgement only after invalidation commits; failures remain retryable
-    """
+    - **returns**: acknowledgement only after invalidation commits; failures remain retryable """
 
     if not billing.billing_enabled():
         raise HTTPException(503, "billing_unavailable", headers=PRIVATE_HEADERS)
     settings = get_settings()
     expected = settings.revenuecat_webhook_authorization.get_secret_value()
     authorization = request.headers.get("authorization")
-    # Reject unauthenticated traffic before reading/parsing the body.
+    # reject unauthenticated traffic before reading/parsing the body.
     if not authorized_webhook(authorization, expected, b"", None, None):
         raise HTTPException(401, "invalid webhook authorization", headers=PRIVATE_HEADERS)
     body = bytearray()

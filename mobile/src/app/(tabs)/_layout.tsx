@@ -13,7 +13,7 @@ export default function TabsLayout() {
     <TabDockContext value={true}>
       <TopTabs tabBarPosition="bottom" keyboardDismissMode="on-drag" tabBar={(props: MaterialTopTabBarProps) => <GlassTabBar {...props} />} screenOptions={{
         swipeEnabled: true,
-        lazy: true,
+        lazy: false,
         tabBarShowIcon: true,
         tabBarActiveTintColor: colors.tintText,
         tabBarInactiveTintColor: colors.textSecondary,

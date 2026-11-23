@@ -25,7 +25,6 @@ export function GlassProvider({ children }: { children: ReactNode }) {
   return <TransparencyContext value={reduceTransparency}>{children}</TransparencyContext>;
 }
 
-/** Decorative background only: controls retain their own hit targets and accessibility. */
 export function GlassBackdrop({ style }: { style?: StyleProp<ViewStyle> }) {
   const { colors, colorScheme } = useApp();
   const reduceTransparency = useContext(TransparencyContext);

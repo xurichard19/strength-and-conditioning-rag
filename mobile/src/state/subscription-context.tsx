@@ -19,7 +19,6 @@ type SubscriptionContextValue = SubscriptionState & {
 };
 const Context = createContext<SubscriptionContextValue | null>(null);
 
-/** Keep billing lifecycle separate from profile, onboarding, and training state. */
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const { authSession, hydrated, clearProtectedData } = useApp();
   const userId = hydrated ? authSession?.user.id ?? null : null;

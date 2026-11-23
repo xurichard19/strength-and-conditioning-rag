@@ -147,9 +147,10 @@ function DayAgenda({ sessions, ready, onOpen }: {
 
 function SessionRow({ session, last, onSelect }: { session: CalendarEntry; last: boolean; onSelect: () => void }) {
   const { colors } = useApp();
+  const weekday = formatDay(session.date);
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`${formatDay(session.date)}: ${session.title}`} onPress={onSelect} style={({ pressed }) => [styles.listRow, !last && { borderBottomColor: colors.separator, borderBottomWidth: StyleSheet.hairlineWidth }, pressed && styles.pressed]}>
-      <AppText tone="secondary" weight="medium" style={styles.listDay}>{isToday(session.date) ? 'Today' : formatDay(session.date)}</AppText>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${weekday}: ${session.title}`} onPress={onSelect} style={({ pressed }) => [styles.listRow, !last && { borderBottomColor: colors.separator, borderBottomWidth: StyleSheet.hairlineWidth }, pressed && styles.pressed]}>
+      <AppText tone="secondary" weight="medium" style={styles.listDay}>{isToday(session.date) ? 'Today' : weekday}</AppText>
       <EntryBadge entry={session} size={32} />
       <View style={styles.copy}>
         <AppText weight="medium" numberOfLines={1}>{session.title}</AppText>
@@ -164,7 +165,7 @@ function SessionRow({ session, last, onSelect }: { session: CalendarEntry; last:
 export default function WeekScreen() {
   const { colors, authSession } = useApp();
   const [view, setView] = useState<'week' | 'month'>('week');
-  const [selectedDate, setSelectedDate] = useState(todayIso());
+  const [selectedDate, setSelectedDate] = useState(todayIso);
   const [heldDate, setHeldDate] = useState<string | null>(null);
   const [openedSession, setOpenedSession] = useState<{ id: string; kind: CalendarEntry['kind']; userId: string } | null>(null);
   const [start, end] = calendarRange(selectedDate, view);
@@ -183,12 +184,11 @@ export default function WeekScreen() {
     }
     return days;
   }, [data]);
-  const week = weekDates(selectedDate);
   const selected = byDate.get(selectedDate) ?? [];
-  const weekSessions = week.flatMap((date) => byDate.get(date) ?? []);
+  const sessions = data?.entries ?? [];
   const periodTitle = view === 'month'
     ? calendarLabel(selectedDate, { month: 'long', year: 'numeric' })
-    : `${calendarLabel(week[0], { month: 'short', day: 'numeric' })} – ${calendarLabel(week[6], { month: 'short', day: 'numeric' })}`;
+    : `${calendarLabel(start, { month: 'short', day: 'numeric' })} – ${calendarLabel(end, { month: 'short', day: 'numeric' })}`;
   const step = (direction: number) => setSelectedDate(view === 'month' ? shiftMonth(selectedDate, direction) : shiftDays(selectedDate, direction * 7));
 
   return (
@@ -225,10 +225,10 @@ export default function WeekScreen() {
       </View>
       <DayAgenda sessions={selected} ready={Boolean(data) && !loading && !error} onOpen={openSession} />
 
-      {view === 'week' && weekSessions.length > 0 ? <>
+      {view === 'week' && sessions.length > 0 ? <>
         <SectionTitle>At a glance</SectionTitle>
         <View style={[styles.listCard, { borderTopColor: colors.separator }]}>
-          {weekSessions.map((session, index) => <SessionRow key={`${session.kind}:${session.id}`} session={session} last={index === weekSessions.length - 1}
+          {sessions.map((session, index) => <SessionRow key={`${session.kind}:${session.id}`} session={session} last={index === sessions.length - 1}
             onSelect={() => { setSelectedDate(session.date); openSession(session); }} />)}
         </View>
       </> : null}

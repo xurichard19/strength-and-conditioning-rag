@@ -8,13 +8,11 @@ from app.services.planning import validate_proposal
 
 
 async def validate_node(state: PlanState, runtime: Runtime[WorkflowContext]) -> dict:
-    """
-    enforce scope and coverage without granting the model new permissions
+    """ check scope and coverage against the original claim. allow one repair within budget
 
     - **state**: generated proposal, optional schema issue and remaining repair budget
     - **runtime**: authoritative claim and original context for deterministic validation
-    - **returns**: normalized proposal or one repair with bounded feedback; otherwise raises
-    """
+    - **returns**: normalized proposal or one repair with bounded feedback; otherwise raises """
     try:
         if state["proposal"] is None:
             raise ValueError(state["validation_error"])

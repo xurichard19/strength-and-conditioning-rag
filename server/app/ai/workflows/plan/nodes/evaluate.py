@@ -11,13 +11,12 @@ from app.ai.workflows.plan.state import EvidenceReview, PlanState
 
 
 async def evaluate_node(state: PlanState) -> dict:
-    """
-    require adequate evidence and retry only novel query/provider pairs within budget
+    """ retry only new query and provider combinations.
+    insufficient evidence at the deadline blocks generation
 
     - **state**: shared athlete/calendar context, research question, evidence and remaining budget
-    - **returns**: generation permission or one search retry; insufficient evidence
-      raises rather than authorizing a prescription when the budget runs out
-    """
+    - **returns**: generation permission or one search retry; insufficient evidence raises rather than
+      authorizing a prescription when the budget runs out """
     remaining = state["research_deadline"] - monotonic()
     if remaining <= 0:
         raise TimeoutError("planning evidence review budget exhausted")

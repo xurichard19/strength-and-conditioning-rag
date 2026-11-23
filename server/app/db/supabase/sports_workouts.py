@@ -12,18 +12,12 @@ SPORTS_COLUMNS = "id,user_id,sport,scheduled_date,start_time,planned_duration_mi
 
 
 def get_sports_workout(user_id: str | UUID, workout_id: str | UUID, access_token: str | None) -> SportsWorkoutRecord | None:
-    """
-    read one user-owned sports commitment
-
-    loads a single commitment by owner and id, including cancelled commitments.
-    use for detail/edit screens where hiding a cancelled row would be misleading.
-    returns none for missing/inaccessible rows; it does not change planning inputs.
+    """ read one commitment by owner and id, including cancelled sessions
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **workout_id**: id of the user-owned workout
     - **access_token**: verified user jwt for rls; none uses backend service-role credentials
-    - **returns**: sports commitment, or none if no visible row matches
-    """
+    - **returns**: sports commitment, or none if no visible row matches """
 
     rows = select_rows("sports_workouts", [("select", SPORTS_COLUMNS), ("user_id", f"eq.{identifier(user_id)}"),
         ("id", f"eq.{identifier(workout_id)}"), ("limit", "1")], access_token)
@@ -33,20 +27,14 @@ def get_sports_workout(user_id: str | UUID, workout_id: str | UUID, access_token
 def get_sports_workouts_in_range(
     user_id: str | UUID, start_date: date, end_date: date, access_token: str | None,
 ) -> list[SportsWorkoutRecord]:
-    """
-    read non-cancelled sports commitments in an inclusive calendar range
-
-    returns commitments the planner/calendar should still see; cancelled rows are
-    excluded but completed sessions remain. dates are inclusive and not timezone
-    converted. results are ordered by date, start time (null last), then id, across
-    all pages. this is not a transaction snapshot.
+    """ read non-cancelled sports commitments over inclusive local dates, including completed
+    sessions
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **start_date**: first calendar date to include
     - **end_date**: last calendar date to include
     - **access_token**: verified user jwt for rls; none uses backend service-role credentials
-    - **returns**: all non-cancelled commitments ordered by date, start time, and id
-    """
+    - **returns**: all non-cancelled commitments ordered by date, start time, and id """
 
     date_range(start_date, end_date)
     rows = all_rows("sports_workouts", [("select", SPORTS_COLUMNS), ("user_id", f"eq.{identifier(user_id)}"),
@@ -56,25 +44,13 @@ def get_sports_workouts_in_range(
 
 
 def create_sports_workout(user_id: str | UUID, values: SportsWorkoutInput, access_token: str | None) -> SportsWorkoutRecord:
-    """
-    save a sports commitment and atomically request any covered planning adjustment
-
-    inserts one user-owned commitment with a stable client id and planned status.
-    the input contains sport, local calendar date/time, and optional duration,
-    intensity, and notes; no generated plan workout is created here.
-
-    the database trigger bumps the planning revision and queues an adjustment for
-    affected covered dates in the same transaction. it does not create a planning
-    schedule. retry the same id and creation fields after a lost response; a unique
-    conflict reads only the owner's matching record. an exact replay returns it
-    without changing status or queuing another adjustment. changed fields or an
-    inaccessible id raise a 409; existing records are never overwritten.
+    """ create a commitment and queue any covered adjustment atomically. retry with the same id
+    and original fields after a lost response. conflicting reuse raises 409
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **values**: stable client uuid, sport, date, and optional commitment details
-    - **access_token**: user JWT, or none for backend credentials after owner authorization
-    - **returns**: saved commitment including its id and database timestamps
-    """
+    - **access_token**: user jwt, or none for backend credentials after owner authorization
+    - **returns**: saved commitment including its id and database timestamps """
 
     try:
         rows = insert_rows("sports_workouts", {"user_id": identifier(user_id), **values.model_dump(mode="json")}, access_token)
@@ -94,24 +70,15 @@ def create_sports_workout(user_id: str | UUID, values: SportsWorkoutInput, acces
 def update_sports_workout(
     user_id: str | UUID, workout_id: str | UUID, values: SportsWorkoutUpdate, access_token: str | None,
 ) -> SportsWorkoutRecord | None:
-    """
-    update supplied commitment fields, including explicit nulls to clear optional values
-
-    patches only supplied editable fields; omitted values remain unchanged and
-    explicit null clears nullable fields. sport and scheduled_date cannot be null.
-    status is deliberately excluded; use set_sports_workout_status for timestamps.
-
-    an empty patch raises valueerror before writing. meaningful changes invalidate
-    planning inputs and atomically queue an adjustment around the old/new dates
-    within existing coverage; identical values do neither. updates have no
-    expected-revision guard: concurrent edits are last-write-wins.
+    """ patch supplied fields. explicit null clears optional values. concurrent edits are
+    last-write-wins and date changes can affect both old and new dates
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **workout_id**: id of the user-owned workout
-    - **values**: validated fields to save; omitted fields stay unchanged and explicit nulls clear nullable fields
-    - **access_token**: user JWT, or none for backend credentials after owner authorization
-    - **returns**: updated commitment, or none if no visible row matches
-    """
+    - **values**: validated fields to save; omitted fields stay unchanged and explicit nulls clear
+      nullable fields
+    - **access_token**: user jwt, or none for backend credentials after owner authorization
+    - **returns**: updated commitment, or none if no visible row matches """
 
     payload = values.model_dump(mode="json", exclude_unset=True)
     if not payload:
@@ -125,25 +92,14 @@ def update_sports_workout(
 def set_sports_workout_status(
     user_id: str | UUID, workout_id: str | UUID, status: SportsWorkoutStatus, access_token: str | None,
 ) -> SportsWorkoutRecord | None:
-    """
-    set commitment status and keep completion/cancellation timestamps consistent
-
-    sets planned, completed, or cancelled with matching timestamps. completed uses
-    the current utc time and clears cancelled_at; cancelled does the opposite;
-    planned clears both. repeated writes reset timestamps, so this is not an
-    idempotent event recorder.
-
-    changed status/results invalidate planning inputs. cancellation or reinstatement
-    also queues an adjustment for affected covered dates; completion alone does
-    not. invalid status raises valueerror before writing. this does not update a
-    generated workout or save exercise-set results.
+    """ change status and its timestamps. repeated writes reset the timestamp. cancellation and
+    reinstatement can queue an adjustment, while completion only invalidates inputs
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **workout_id**: id of the user-owned workout
     - **status**: planned, completed, or cancelled; timestamps are adjusted consistently
-    - **access_token**: user JWT, or none for backend credentials after owner authorization
-    - **returns**: updated commitment, or none if no visible row matches
-    """
+    - **access_token**: user jwt, or none for backend credentials after owner authorization
+    - **returns**: updated commitment, or none if no visible row matches """
 
     if status not in ("planned", "completed", "cancelled"):
         raise ValueError("invalid sports workout status")
@@ -157,21 +113,13 @@ def set_sports_workout_status(
 
 
 def delete_sports_workout(user_id: str | UUID, workout_id: str | UUID, access_token: str | None) -> SportsWorkoutRecord | None:
-    """
-    delete one user-owned sports commitment
-
-    permanently deletes the commitment and returns its last stored values; use
-    cancelled status instead when it should remain available for later inspection.
-    the database trigger invalidates planning inputs and atomically queues an
-    adjustment when removing an active commitment affects covered dates. a repeated
-    delete returns none once the row is gone. planning-change undo only switches
-    generated workout versions; it cannot restore this deleted sports row.
+    """ permanently delete a commitment and return its previous values. a repeated delete
+    returns none. planning undo cannot restore this row
 
     - **user_id**: authenticated owner's user id; backend callers must authorize this user
     - **workout_id**: id of the user-owned workout
-    - **access_token**: user JWT, or none for backend credentials after owner authorization
-    - **returns**: deleted commitment, or none if no visible row matches
-    """
+    - **access_token**: user jwt, or none for backend credentials after owner authorization
+    - **returns**: deleted commitment, or none if no visible row matches """
 
     rows = delete_rows("sports_workouts", [("id", f"eq.{identifier(workout_id)}"),
         ("user_id", f"eq.{identifier(user_id)}")], access_token)

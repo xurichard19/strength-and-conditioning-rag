@@ -1,4 +1,4 @@
-"""Private task handler for revision-fenced planning and atomic publication."""
+""" private task handler for revision-fenced planning and atomic publication """
 
 import asyncio
 from collections.abc import Awaitable, Callable
@@ -23,7 +23,8 @@ LEASE_SECONDS = 300
 
 
 async def plan_job(claim: ClaimedReplanJob) -> ReplanResult:
-    """load authoritative context off the event loop, then generate validated changes"""
+    """ - **claim**: current lease, owner and allowed planning dates
+    - **returns**: validated workout changes for the current claim """
     from app.ai.workflows.plan.graph import generate_plan
 
     context = await asyncio.to_thread(calendar.get_replan_context, claim)
@@ -31,18 +32,13 @@ async def plan_job(claim: ClaimedReplanJob) -> ReplanResult:
 
 
 async def execute(job: ReplanTask, generate_plan: PlanHandler) -> dict:
-    """
-    claim exactly one delivery and publish its result under the existing database fences
+    """ claim this delivery and publish with its lease and revision. obsolete deliveries are
+    acknowledged. after a timeout, check durable state because a pending write may still
+    commit
 
-    the bounded attempt finishes before its lease, so this baseline needs no
-    heartbeat loop. cancellation abandons the lease for recovery. database calls
-    run off the event loop; a timed-out write can still finish, so retries re-read
-    durable state and never assume that a timeout means nothing was committed.
-
-    - **job**: validated id and delivery generation; Cloud Run IAM authenticates the caller
+    - **job**: validated id and delivery generation; cloud run iam authenticates the caller
     - **generate_plan**: async context loading, generation and validation handler
-    - **returns**: durable completion or harmless obsolete/terminal delivery acknowledgement
-    """
+    - **returns**: durable completion or harmless obsolete/terminal delivery acknowledgement """
     proof = {}
     stored = None
     permission = None
@@ -52,7 +48,7 @@ async def execute(job: ReplanTask, generate_plan: PlanHandler) -> dict:
             return {"status": "obsolete"}
         if stored.status in ("succeeded", "failed", "cancelled"):
             return {"status": "terminal"}
-        # A duplicate delivery must not pause or disturb an authorized running lease.
+        # a duplicate delivery must not pause or disturb an authorized running lease.
         if stored.lease_expires_at is not None and stored.lease_expires_at > datetime.now(UTC):
             raise HTTPException(503, "planning job is already running")
         try:
@@ -98,15 +94,21 @@ async def execute(job: ReplanTask, generate_plan: PlanHandler) -> dict:
 
 
 def create_app(generate_plan: PlanHandler | None = None) -> FastAPI:
-    """build a private worker; without a plan handler reject delivery before claiming any job"""
+    """ build a private worker; without a plan handler reject delivery before claiming any job
+
+    - **generate_plan**: async handler that builds a proposal for a claimed job
+    - **returns**: worker application bound to the supplied planning handler """
     worker = FastAPI(title="planning worker", lifespan=partial(http_lifespan, service="planning-worker"))
 
     @worker.get("/health")
     def health():
+        """ **inputs**: none. **returns**: worker liveness and whether a planner is configured """
         return {"status": "ok", "planner_ready": generate_plan is not None}
 
     @worker.post("/run")
     async def run(job: ReplanTask):
+        """ - **job**: persisted job or delivery to process
+        - **returns**: delivery outcome, or 503 when the task should retry """
         if generate_plan is None:
             raise HTTPException(503, "plan generation is not configured")
 

@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from contextlib import contextmanager
 import logging
 import sentry_sdk
@@ -13,23 +14,21 @@ PRIVATE_HEADERS = {"Cache-Control": "private, no-store"}
 
 
 def private_response(response: Response) -> None:
-    """disable caching of authenticated responses; response is the current http response"""
+    """ disable caching of authenticated responses; response is the current http response
+
+    - **response**: outgoing http response
+    - **returns**: none. sets the response's private cache headers """
 
     response.headers.update(PRIVATE_HEADERS)
 
 
 @contextmanager
-def database_errors(operation: str = "database.operation"):
-    """
-    time a database action and translate handler failures into safe http responses
-
-    wrap handler calls, not request validation. malformed database records are
-    upstream failures, not invalid user requests. never retry writes here.
+def database_errors(operation: str = "database.operation") -> Iterator[None]:
+    """ map database failures to safe http errors without retrying writes. malformed response
+    records yield 502. use a stable operation name without user data
 
     - **operation**: stable action name for sentry; never include ids, filters, or payloads
-    - **yields**: control to the route's database operation inside a child span
-    - **raises**: http 401/403/404/409/422 for recognized failures, otherwise 502
-    """
+    - **yields**: control to the route's database operation inside a child span """
 
     try:
         with sentry_sdk.start_span(op="db", name=operation):

@@ -107,7 +107,6 @@ export function usePlanningManager() {
         // Read history and coverage after jobs so a completed job's publication cannot be missed.
         const jobs = action === 'more' ? snapshot.jobs : await api.getPlanningJobs();
         if (!visible) return;
-        // Activity should appear without waiting for the slower history read.
         snapshot = { ...snapshot, jobs, jobsLoaded: true };
         publish();
         await Promise.all([loadHistory(action), action !== 'more' && loadOverview(action === 'refresh')]);
