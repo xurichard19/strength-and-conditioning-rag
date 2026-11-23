@@ -6,6 +6,7 @@ import type { Profile, ChatSource, ChatStage, Proposal, Session } from '../../mo
 import type { BillingStatus, SavedMessage, Conversation } from '../../mobile/src/services/backend';
 import type { CustomerInfo } from 'react-native-purchases';
 const backend = load<typeof import('../../mobile/src/services/backend')>('services/backend.ts');
+const activity = load<typeof import('../../mobile/src/services/activity-reporter')>('services/activity-reporter.ts');
 const memoryCache = load('state/memory-cache.ts');
 const { createChatCache: chatCache } = load<typeof import('../../mobile/src/state/chat-cache')>('state/chat-cache.ts', { './memory-cache': memoryCache });
 const { createCalendarCache } = load<typeof import('../../mobile/src/state/calendar-cache')>('state/calendar-cache.ts', { './memory-cache': memoryCache, '../lib/calendar': load('lib/calendar.ts') });
@@ -277,10 +278,52 @@ function authFixture() {
     'expo/fetch': { fetch: async (url: string, options?: RequestInit) => { requests.push([url, options]); return response({}); } },
     'expo-linking': { createURL: path => `arcel://${path}` },
     'expo-web-browser': {}, 'react-native': { Platform: { OS: 'ios' }, AppState: { addEventListener() {} } },
-    './backend': backend,
+    './backend': backend, './activity-reporter': activity,
   });
   return { api, auth, requests, options, setSession: (value: typeof session) => { session = value; } };
 }
+
+test('activity cooldown survives restart and expires at six hours per account', async () => {
+  let now = Date.UTC(2026, 10, 22);
+  const saved = new Map<string, string>();
+  const storage = {
+    getItem: async (key: string) => saved.get(key) ?? null,
+    setItem: async (key: string, value: string) => { saved.set(key, value); },
+  };
+  const calls: string[] = [];
+  const send = async (user: string) => { calls.push(user); };
+  await activity.createActivityReporter(storage, send, () => now)('a');
+  const report = activity.createActivityReporter(storage, send, () => now);
+  now += 6 * 60 * 60 * 1000 - 1;
+  await report('a');
+  await report('b');
+  now++;
+  await report('a');
+  assert.deepEqual(calls, ['a', 'b', 'a']);
+});
+
+test('overlapping activity events share a request and a failed report can retry', async () => {
+  const pending = deferred<Response>();
+  let calls = 0; let writes = 0;
+  const api = backend.createBackend(async (path, options) => {
+    assert.equal(path, '/profile/activity');
+    assert.equal(options?.method, 'POST');
+    assert.equal(options?.body, undefined);
+    return ++calls === 1 ? pending.promise : new Response(null, { status: 204 });
+  });
+  const report = activity.createActivityReporter({
+    getItem: async () => null, setItem: async () => { writes++; },
+  }, () => api.recordActivity());
+  const first = report('a');
+  await report('a');
+  assert.equal(calls, 1);
+  pending.reject(new Error('offline'));
+  await assert.rejects(first, /offline/);
+  assert.equal(writes, 0);
+  await report('a');
+  assert.equal(calls, 2);
+  assert.equal(writes, 1);
+});
 
 test('all survey answers round-trip as one dictionary, without local flags or profile identity', async () => {
   const answers = backend.surveyAnswers(profile, { runCapacity: '10–20 min', pushups: '5–10',
@@ -562,6 +605,11 @@ test('native auth callback restores tokens and rejects invalid links', async () 
 function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => TestValue> = {},
   preview: { initialWeek: Session[]; initialProposal: Proposal | null } = { initialWeek: [], initialProposal: null }) {
   const slots: TestValue[] = []; let cursor = 0; let dirty = true; let value!: ReturnType<typeof import('../../mobile/src/state/app-context').useApp>; let effects: (() => void)[] = [];
+  const activityReports: string[] = [];
+  const appEvents = new Set<(state: string) => void>();
+  const appState = { currentState: 'active', addEventListener: (_: string, fn: (state: string) => void) => {
+    appEvents.add(fn); return { remove: () => appEvents.delete(fn) };
+  } };
   let now = 0; let timerId = 0;
   const timers = new Map<number, { at: number; callback: () => void }>();
   const changed = (a: unknown[] | undefined, b: unknown[] | undefined) => !a || !b || a.length !== b.length || a.some((item, i) => item !== b[i]);
@@ -609,13 +657,14 @@ function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => 
     './calendar-cache': { createCalendarCache },
     'expo-haptics': {},
     'expo-linking': { getInitialURL: async () => null, addEventListener: () => ({ remove() {} }) },
-    'react-native': { Platform: { OS: 'ios' }, useColorScheme: () => 'light', AppState: { addEventListener: () => ({ remove() {} }) } },
+    'react-native': { Platform: { OS: 'ios' }, useColorScheme: () => 'light', AppState: appState },
     '@/design/tokens': { palettes: { light: {}, dark: {} } },
     '@/domain/profile': { defaultProfile: profile },
     '@/data/mock': { currentBlock: {}, ...preview, progressMetrics: [] },
     '@/lib/errors': { errorMessage: (error, fallback) => error.message || fallback },
     '@/services/api': {
       backendFor: () => api, getAuthSession: async () => null, profileFromApi: backend.profileFromApi,
+      reportActivity: async (id: string) => { activityReports.push(id); },
       deviceTimezone: () => 'UTC',
       signIn: async () => ({ user: { id: 'user-a' }, access_token: 'token' }),
       signOut: async () => {},
@@ -635,6 +684,7 @@ function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => 
     }
   }
   return { flush, calls, get value() { return value; }, auth: (...args: TestValue[]) => authListener(...args),
+    activityReports, appState(state: string) { appState.currentState = state; appEvents.forEach(fn => fn(state)); },
     get pendingTimers() { return timers.size; },
     advance(milliseconds: number) {
       now += milliseconds;
@@ -643,6 +693,21 @@ function providerFixture(apiOverrides: Record<string, (...args: TestValue[]) => 
     unmount() { slots.forEach(slot => slot?.cleanup?.()); },
   };
 }
+
+test('foreground activity follows the signed-in owner across launch, token refresh, and resume', async () => {
+  const f = providerFixture();
+  await f.flush();
+  const session = { user: { id: 'a' }, access_token: 'token' };
+  f.auth('INITIAL_SESSION', session); await f.flush();
+  f.auth('TOKEN_REFRESHED', { ...session, access_token: 'renewed' }); await f.flush();
+  f.appState('background');
+  f.auth('SIGNED_IN', { user: { id: 'b' }, access_token: 'other' }); await f.flush();
+  assert.deepEqual(f.activityReports, ['a']);
+  f.appState('active');
+  f.auth('SIGNED_OUT', null); await f.flush();
+  f.appState('background'); f.appState('active');
+  assert.deepEqual(f.activityReports, ['a', 'b']);
+});
 
 test('preview edits stay local and reset when the active account changes', async () => {
   const mock = load<typeof import('../../mobile/src/data/mock')>('data/mock.ts');

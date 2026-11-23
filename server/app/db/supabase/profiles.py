@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.contracts import ProfileRecord, ProfileUpdate
 from app.db.supabase._queries import identifier
-from app.db.supabase.transport import select_rows, update_rows
+from app.db.supabase.transport import call_rpc, select_rows, update_rows
 
 
 def get_profile(user_id: str | UUID, access_token: str | None) -> ProfileRecord | None:
@@ -18,6 +18,11 @@ def get_profile(user_id: str | UUID, access_token: str | None) -> ProfileRecord 
     rows = select_rows("profiles", [("select", "id,email,display_name,timezone,created_at,updated_at"),
         ("id", f"eq.{identifier(user_id)}"), ("limit", "1")], access_token)
     return ProfileRecord.model_validate(rows[0]) if rows else None
+
+
+def record_activity(user_id: str | UUID) -> bool:
+    """ **user_id**: verified account reporting foreground activity. **returns**: false if the profile is missing """
+    return call_rpc("record_user_activity", {"p_user_id": identifier(user_id)}, None) is not None
 
 
 def update_profile(user_id: str | UUID, values: ProfileUpdate, access_token: str) -> ProfileRecord | None:
