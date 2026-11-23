@@ -71,7 +71,6 @@ export function questionError(question: QuestionId, draft: OnboardingDraft): str
   return null;
 }
 
-/** Save the questions actually asked in v2, with compatible fields for the existing profile. */
 export function onboardingSubmission(profile: Profile, draft: OnboardingDraft, pendingNote = '') {
   const trainingDays = TRAINING_DAYS.filter(day => draft.trainingDays.includes(day));
   const notes = [...draft.notes.map(note => note.trim()).filter(Boolean), ...(pendingNote.trim() ? [pendingNote.trim()] : [])];

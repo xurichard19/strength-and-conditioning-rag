@@ -4,7 +4,6 @@ import * as Haptics from 'expo-haptics';
 import { currentBlock, initialWeek, initialProposal, progressMetrics } from '@/data/mock';
 import type { Effort, Proposal, Session } from '@/domain/types';
 
-/** Keep in-memory training previews separate from account data and live chat. */
 export function usePreviewTraining() {
   const [sessions, setSessions] = useState<Session[]>(initialWeek);
   const [proposal, setProposal] = useState<Proposal | null>(initialProposal);

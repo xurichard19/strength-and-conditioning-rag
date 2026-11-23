@@ -1,6 +1,4 @@
-/* Lightweight sample screens, with local plan history and chat interactions. */
 .phone-preview {
-  /* Mirror the app palette without making the public site depend on the Expo build. */
   --phone-bg: #0c1013;
   --phone-card: #19242c;
   --phone-text: #f6f7f4;

@@ -75,7 +75,6 @@ async function checked(response: Response): Promise<Response> {
   throw new BackendError(response.status, typeof body?.detail === 'string' ? body.detail : `Request failed (${response.status}).`);
 }
 
-/** Keep every survey answer together; identity and local display preferences stay separate. */
 export function surveyAnswers(profile: Profile, extra: Answers): Answers {
   return { ...extra, goal: profile.goal, experienceLevel: profile.experienceLevel,
     trainingDays: profile.trainingDays, daysPerWeek: profile.daysPerWeek,
@@ -101,7 +100,6 @@ export function profileFromApi(profile: ApiProfile, onboarding: Onboarding | nul
   return result;
 }
 
-/** HTTP shapes only; auth is supplied by the mobile adapter. */
 export function createBackend(request: ApiRequest, onSubscriptionRequired?: () => void) {
   async function check(response: Response, signal?: AbortSignal): Promise<Response> {
     try { return await checked(response); }
@@ -189,7 +187,6 @@ export function createBackend(request: ApiRequest, onSubscriptionRequired?: () =
   };
 }
 
-/** Check persistence receipts before their server-owned ids enter the message cache. */
 function savedRecord(value: Partial<SavedMessage> | null | undefined, role: SavedMessage['role']): SavedMessage {
   if (!value || typeof value.id !== 'string' || !value.id || typeof value.created_at !== 'string'
     || !Number.isFinite(Date.parse(value.created_at)) || value.role !== role || typeof value.content !== 'string') {
@@ -198,7 +195,6 @@ function savedRecord(value: Partial<SavedMessage> | null | undefined, role: Save
   return value as SavedMessage;
 }
 
-/** Validate completion ids and optional saved rows together before updating the cache. */
 function completionEvent(event: { message_id?: unknown; message?: Partial<SavedMessage> }) {
   if (typeof event.message_id !== 'string') throw new Error('Invalid chat stream event.');
   const message = event.message ? savedRecord(event.message, 'assistant') : undefined;

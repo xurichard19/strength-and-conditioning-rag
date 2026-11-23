@@ -10,7 +10,6 @@ const labels: Record<ChatStage, string> = {
   fetching_user_context: 'Reading your training context', researching: 'Reviewing the research', thinking: 'Thinking',
 };
 
-/** Show pre-answer work with one native animation; pause off-screen and respect reduced motion. */
 export function ChatProgress({ stage }: { stage?: ChatStage }) {
   const { colors } = useApp();
   const [phase] = useState(() => new Animated.Value(0));

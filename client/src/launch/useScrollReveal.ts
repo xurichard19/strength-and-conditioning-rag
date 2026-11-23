@@ -43,7 +43,6 @@ function observeReveals(elements: NodeListOf<HTMLElement>) {
   }
 }
 
-/** Native scrolling with progressive motion enhancement and a readable static fallback. */
 export function useScrollReveal() {
   const rootRef = useRef<HTMLDivElement>(null)
 

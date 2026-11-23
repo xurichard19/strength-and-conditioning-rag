@@ -42,7 +42,6 @@ function JobCard({ job }: { job: PlanningJob }) {
   </Card>;
 }
 
-/** Read counts from saved calendar entries, never the illustrative copy in the mockup. */
 function PlanOverview({ schedule, calendar, checkedAt, compact = false }: {
   schedule: PlanningSchedule; calendar: CalendarSnapshot | null; checkedAt: number; compact?: boolean;
 }) {
@@ -133,7 +132,6 @@ function WorkoutList({ title, workouts }: { title: string; workouts: CalendarWor
   </View>;
 }
 
-/** Keep one preview cached; ignore requests after closing, switching accounts, or unmounting. */
 function ChangeDetails({ change, userId, visible, onClose }: {
   change: PlanningChange; userId: string; visible: boolean; onClose: () => void;
 }) {

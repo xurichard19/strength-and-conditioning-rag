@@ -12,7 +12,6 @@ import { GlassBackdrop } from './glass-surface';
 
 const openChat = () => router.navigate('/chat');
 
-/** Drag anywhere; taps open chat only after the bubble finishes settling into a safe corner. */
 export default function ChatLauncher() {
   const { accountReady, authSession, colors, hydrated, passwordRecovery, profile } = useApp();
   const [page] = useSegments();

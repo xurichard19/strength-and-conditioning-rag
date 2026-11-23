@@ -13,7 +13,6 @@ import { useApp } from '@/state/app-context';
 import { useCalendarRange } from '@/state/use-calendar-range';
 import { useInitialPlan } from '@/state/use-initial-plan';
 
-/** Feature planned workouts; other sessions stay compact and open their saved details. */
 function DailyWorkout({ session, onOpen }: { session: CalendarEntry; onOpen: () => void }) {
   const { colors } = useApp();
   const planned = session.kind === 'workout' && session.status === 'planned';
@@ -73,7 +72,6 @@ export default function TodayScreen() {
   const open = (session: CalendarEntry) => {
     if (authSession) setOpened({ id: session.id, kind: session.kind, userId: authSession.user.id });
   };
-  // One midnight timer and a resume check keep Today on the current local date.
   useEffect(() => {
     const timer = setTimeout(() => setToday(todayIso()), Math.max(0, new Date(`${shiftDays(today, 1)}T00:00:00`).getTime() - Date.now()) + 100);
     const listener = AppState.addEventListener('change', status => { if (status === 'active') setToday(todayIso()); });

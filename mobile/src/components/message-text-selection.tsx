@@ -16,7 +16,6 @@ export function messageTextProps(onSelectText?: () => void): TextProps {
   };
 }
 
-/** One read-only, scrollable UITextView on iOS; no keyboard, nested scroll view, or new native dependency. */
 export function MessageTextSelection({ text, onClose }: { text: string; onClose: () => void }) {
   const { colors } = useApp();
   return <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>

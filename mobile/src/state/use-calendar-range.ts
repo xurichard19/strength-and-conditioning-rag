@@ -9,7 +9,6 @@ import { useApp } from '@/state/app-context';
 
 type State = { key: string; data?: CalendarSnapshot; loading: boolean; error: string | null };
 
-/** Read on focus/range change/resume, reuse fresh cache, and ignore obsolete screen responses. */
 export function useCalendarRange(start: string, end: string) {
   const { authSession, calendarCache } = useApp();
   const userId = authSession?.user.id;

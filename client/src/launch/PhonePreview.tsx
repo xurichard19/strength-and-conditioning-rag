@@ -231,7 +231,6 @@ const navigation = [
   { label: 'You', icon: UserRound, subtitle: 'Your training, on your terms.', screen: YouPreview },
 ]
 
-/** Local sample content mirrors the app without making requests or changing a real plan. */
 export default function PhonePreview() {
   const [activeIndex, setActiveIndex] = useState(2)
   const [detail, setDetail] = useState<Update | 'chat' | null>(null)

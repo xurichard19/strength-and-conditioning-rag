@@ -75,7 +75,6 @@ function OnboardingFlow() {
   const next = () => {
     const error = questionError(question, draft);
     if (error) { setValidation(error); return; }
-    // The final typed note is saved even when the send arrow wasn't tapped.
     if (question === 'notes' && note.trim()) {
       update({ notes: [...draft.notes, note.trim()] });
       setNote('');

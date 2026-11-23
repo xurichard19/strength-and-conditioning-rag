@@ -1,4 +1,3 @@
-// Draft notices communicate publication status; deployment is not mechanically blocked.
 // See client/legal/PUBLICATION-REVIEW.md before making these policies effective.
 export type InfoSection = {
   heading: string

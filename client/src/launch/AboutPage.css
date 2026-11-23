@@ -1,13 +1,3 @@
-/* Hallmark · macrostructure: Long Document (open rows, team cards) · tone: quietly confident · anchor hue: 250
- * theme: studied-DNA (source: https://superpower.com/the-grove) · studied: yes
- * user override: retain dark identity and match the accepted landing page
- * canvas: oklch(17% 0.012 250) · accent: oklch(84% 0.08 250)
- * genre: modern-minimal · display/body: Rubik 400 · shared tokens: ../../tokens.css
- * nav: N9 Edge-aligned · footer: Ft5 Statement · enrichment: existing team portraits
- * content: four programming principles, team, architecture, six technology groups
- * pre-emit critique: P5 H5 E4 S5 R5 V4
- */
-
 .arcel-about {
   min-height: 100svh;
 }

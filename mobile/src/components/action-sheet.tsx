@@ -7,7 +7,6 @@ import { useApp } from '@/state/app-context';
 import { GlassBackdrop } from './glass-surface';
 import { AppText } from './ui';
 
-/** A dismissible bottom menu; its own safe area keeps controls above the home indicator. */
 export function ActionSheet({ title, onClose, children, headerAction, glass = false }: {
   title: string; onClose: () => void; children: ReactNode; headerAction?: ReactNode; glass?: boolean;
 }) {

@@ -102,7 +102,6 @@ const AppContext = createContext<AppContextValue | null>(null);
 const emptyProfile: Profile = { ...defaultProfile, displayName: '', onboardingComplete: false };
 const asMessage = (row: SavedMessage): ChatMessage => ({ id: row.id, role: row.role, text: row.content });
 
-/** Overlay the active turn on saved history, replacing matching ids without reordering. */
 function displayedMessages(window: { rows: SavedMessage[] } | undefined, run: ChatRun | undefined) {
   return [...new Map([...(window?.rows.map(asMessage) ?? []), ...(run?.rows ?? [])].map(row => [row.id, row])).values()];
 }
@@ -231,7 +230,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (owner.current === userId) calendarCache.invalidate(start, end);
   }, [calendarCache]);
 
-  // Replace account data after a fresh read; leave chat caches and local previews intact.
   const refreshLiveData = useCallback(async () => {
     const userId = owner.current;
     if (!userId) return;
@@ -264,7 +262,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotice('This page uses preview training data; there is nothing to sync yet.');
   };
 
-  // Rendering selection and running requests are independent.
   const publishChat = useCallback(() => {
     const id = conversation.current;
     const run = id ? runs.current.get(id) : undefined;
@@ -467,7 +464,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const question = rawQuestion.trim();
     const userId = owner.current;
     if (!question || !userId || historyBusy.current || (conversation.current && runs.current.has(conversation.current))) return;
-    // Bound concurrent work independently from how many chats the user opens.
     if (runs.current.size >= 3) { setChatError('Wait for one of your other replies to finish.'); return; }
     const generation = epoch.current;
     const isNew = !conversation.current;

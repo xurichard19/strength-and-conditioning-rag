@@ -9,7 +9,6 @@ import { AppText, SecondaryButton } from './ui';
 
 export type SelectOption = { label: string; value: string };
 
-/** Compact form row; time/duration use the native iPhone wheel, other choices use a list. */
 export function SelectionField({ label, value, options, onChange, wheel = false, disabled = false, last = false }: {
   label: string; value: string; options: readonly SelectOption[]; onChange: (value: string) => void;
   wheel?: boolean; disabled?: boolean; last?: boolean;

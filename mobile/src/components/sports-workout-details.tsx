@@ -11,7 +11,6 @@ import { AppText, PrimaryButton, SecondaryButton } from './ui';
 
 const label = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
-/** Sports fields already arrive with the calendar; opening details needs no extra request. */
 function WorkoutFields({ session }: { session: CalendarEntry }) {
   const { colors } = useApp();
   const metrics = [
@@ -52,7 +51,6 @@ function WorkoutFields({ session }: { session: CalendarEntry }) {
   </ScrollView>;
 }
 
-/** Confirm permanent deletion, scope it to the account, and revalidate affected calendar ranges. */
 export function SportsWorkoutDetails({ session, userId, onClose }: {
   session: CalendarEntry; userId: string; onClose: () => void;
 }) {

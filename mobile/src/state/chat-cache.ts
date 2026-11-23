@@ -37,7 +37,6 @@ function pageWindow<T extends { id: string; created_at: string }>(
   const full = incoming.length === pageSize;
   const ids = new Set(previousRows.map(row => row.id));
   const overlap = incoming.some(row => ids.has(row.id));
-  // A disconnected or exhausted newest page replaces the old window.
   const combined = merge(full && overlap ? previousRows : [], incoming).sort(order);
   const rows = combined.slice(-capacity);
   return { rows, cursor: rows[0], more: combined.length > capacity || (full && (!overlap || Boolean(previous?.more))),
