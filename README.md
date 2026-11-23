@@ -41,10 +41,18 @@ flowchart TB
     User(["User"]) --> FE["React Native<br/>mobile client · Expo"]
     FE --> Edge["Google Cloud edge<br/>Load Balancer and<br/>Cloud Armor"]
     Edge --> API["FastAPI backend<br/>Cloud Run"]
+    FE -->|sign in| Supabase[("Supabase<br/>Auth and Postgres")]
+    FE -->|purchases and restores| RC["RevenueCat"]
+    RC -->|webhooks| API
+    API -->|verify entitlement| RC
+    API --> Supabase
     API -->|chat| Workflows["LangGraph workflows<br/>chat and plan"]
-    API -.->|Cloud Tasks| Worker["Planning worker<br/>Cloud Run"]
+    Clock["Cloud Scheduler"] --> Dispatcher["Planning dispatcher<br/>Cloud Run"]
+    Dispatcher --> Queue["Cloud Tasks"]
+    API -.->|after job commit| Queue
+    Queue --> Worker["Planning worker<br/>Cloud Run"]
     Worker -->|plan| Workflows
-    API --> Supabase[("Supabase<br/>authentication<br/>and data")]
+    Worker -->|claim and publish| Supabase
     API --> Sentry["Sentry<br/>monitoring"]
     Workflows --> OpenAI["OpenAI"]
     Workflows --> Chroma[("Chroma Cloud<br/>research index")]
@@ -71,16 +79,19 @@ flowchart TB
     Inputs["Onboarding completion<br/>or edits · Sports changes"] --> API["FastAPI backend<br/>Cloud Run"]
     API -->|save inputs and schedule| DB[("Supabase<br/>21-day coverage<br/>7-day refreshes<br/>Durable jobs<br/>Calendar and history")]
     Clock["Cloud Scheduler<br/>Every minute"] -->|OIDC POST /dispatch| Dispatcher["Private dispatcher<br/>Cloud Run"]
-    Dispatcher <-->|due jobs and recovery| DB
+    Dispatcher <-->|due refreshes, billing wakeups<br/>and delivery recovery| DB
     Dispatcher --> Queue["Cloud Tasks<br/>Deduplicated delivery<br/>and retries"]
     API -.->|adjust / retry after commit| Queue
-    Queue -->|OIDC POST /run| Claim
+    Queue -->|OIDC POST /run| Access
 
     subgraph Worker["Private planning worker"]
-        Claim["Cloud Run<br/>Claim delivery lease<br/>Load authoritative context"] --> Graph["Planning LangGraph"]
+        Access{"Billing enabled<br/>and access deferred?"} -->|no| Claim["Claim delivery lease<br/>Load athlete context"]
+        Access -->|yes| Pause["Pause schedule for billing"]
+        Claim --> Graph["Planning LangGraph"]
         Graph --> Publish["Publish atomically<br/>Check lease and revision"]
     end
 
+    Pause -->|persist reason and recheck state| DB
     Claim <-->|job and athlete context| DB
     Publish -->|workouts, history and job completion| DB
     DB -->|calendar, job status and history| API
@@ -100,21 +111,23 @@ config:
 ---
 flowchart TB
     Request["Chat request"] --> History["Load history node<br/>Supabase"]
-    History --> Route["GPT-6 Luna router"]
+    History --> Route["GPT-6 Luna router<br/>Reasoning off"]
 
     subgraph Retrieval["Optional retrieval · parallel"]
         Context["User context node<br/>Supabase"]
         Search["Search node<br/>Chroma Cloud / Tavily"]
     end
 
-    Route --> Retrieval
-    Route -->|skip retrieval| Generate
-    Retrieval --> Evaluate["GPT-6 Luna evaluator<br/>Limited retries"]
-    Retrieval -->|skip evaluation| Generate
-    Evaluate -->|retry search only| Retrieval
+    Route -->|athlete data needed| Context
+    Route -->|evidence needed| Search
+    Route -->|neither| Generate
+    Context --> Ready{"Searched and<br/>retries left?"}
+    Search --> Ready
+    Ready -->|yes| Evaluate["GPT-6 Luna evidence review<br/>Low reasoning"]
+    Ready -->|no| Generate
+    Evaluate -->|new search| Search
     Evaluate -->|finish| Generate
-
-    Generate["Streaming generation node"]
+    Generate["GPT-6 Luna streamed answer<br/>Quick: low · Deep: medium"]
 ```
 
 #### Workout Programming LangGraph Workflow
@@ -131,10 +144,10 @@ config:
 ---
 flowchart TB
     Request["Claimed job + athlete context<br/>Initial plan / weekly extension<br/>or adjustment"] --> Context["Context node<br/>Fixed dates and editable workouts<br/>Athlete inputs"]
-    Context --> Prepare["Prepare node · OpenAI<br/>Focused research query"]
-    Prepare --> Search["Search node<br/>Chroma first<br/>Tavily available on retry"]
-    Search --> Evaluate["Evaluate node · OpenAI<br/>Sufficient evidence?"]
-    Evaluate -->|yes| Generate["Generate node · OpenAI<br/>Structured PlanningProposal"]
+    Context --> Prepare["GPT-6 Luna · low reasoning<br/>Choose query and providers"]
+    Prepare --> Search["Search Chroma, Tavily or both<br/>in parallel when both are selected"]
+    Search --> Evaluate["GPT-6 Luna · low reasoning<br/>Sufficient evidence?"]
+    Evaluate -->|yes| Generate["GPT-6 Luna · low reasoning<br/>Generate structured proposal"]
     Evaluate -->|one research retry| Search
     Evaluate -->|still insufficient / budget exhausted| Fail["Raise error<br/>No publication"]
     Generate --> Validate["Validate node<br/>Dates, coverage and prescriptions<br/>Protected workouts"]
@@ -157,6 +170,7 @@ erDiagram
     direction LR
 
     AUTH_USERS ||--|| PROFILES : owns
+    PROFILES ||--o{ BILLING_ENTITLEMENTS : holds
     PROFILES ||--o| ONBOARDING_RESPONSES : completes
     PROFILES ||--o| PLANNING_SCHEDULES : configures
     PROFILES ||--o{ PLANNING_CHANGES : records
@@ -183,7 +197,26 @@ erDiagram
         text email
         text display_name
         text timezone
+        timestamptz last_active_at
         timestamptz created_at
+        timestamptz updated_at
+    }
+
+    BILLING_ENTITLEMENTS {
+        uuid user_id PK,FK
+        text environment PK
+        text entitlement_key PK
+        text product_id
+        text store
+        text period_type
+        boolean active
+        timestamptz expires_at
+        timestamptz grace_expires_at
+        boolean will_renew
+        timestamptz verified_at
+        bigint sync_revision
+        timestamptz outage_access_until
+        timestamptz verification_retry_at
         timestamptz updated_at
     }
 
@@ -201,6 +234,9 @@ erDiagram
         integer refresh_interval_days
         date horizon_end
         timestamptz next_refresh_at
+        text billing_pause_reason
+        timestamptz billing_recheck_at
+        uuid billing_wake_token
         bigint revision
         timestamptz created_at
         timestamptz updated_at
@@ -292,6 +328,10 @@ erDiagram
         timestamptz available_at
         integer attempts
         bigint expected_revision
+        uuid delivery_token
+        timestamptz dispatched_at
+        smallint dispatch_recoveries
+        date claimed_on
         uuid lease_token
         timestamptz lease_expires_at
         uuid change_id FK
@@ -338,27 +378,23 @@ erDiagram
 
 ### Local development services
 
-From the repository root, run the backend on port 8000:
+build api image from /
+>> docker build -f server/Dockerfile -t arcel-backend .
 
-```sh
-docker compose up --build api
-```
+run api server from /
+>> docker compose up --build api
 
-From `mobile/`, use Node 22.18+ and start Metro on 8081 (or 8082 if occupied):
+replace the research index from /
+>> docker compose run --build --rm index
 
-```sh
-npm ci
-npx expo start --dev-client --port 8081
-```
+install mobile dependencies from /mobile
+>> npm ci
 
-See [mobile setup](mobile/README.md) for environment values, native development builds, and physical-phone networking. RevenueCat billing is **disabled by default** in the mobile client and backend; [configure and verify billing](docs/REVENUECAT.md) before enabling it.
+run mobile dev client from /mobile
+>> npx expo start --dev-client --port 8081
 
-To build and install the release app on a device, run from `mobile/`:
+build and install ios release on a device from /mobile
+>> npx expo run:ios --configuration Release --device
 
-```sh
-npx expo run:ios --configuration Release --device
-```
-
-To run the public website locally, run `npm run dev` from `client/`.
-
-Offline reindexing remains `docker compose run --build --rm index`; it replaces the configured research collection. The backend deployment workflow applies pending Supabase migrations before deploying Cloud Run on matching `main` pushes or a manual run. Neither starting local services nor configuring billing requires a deployment.
+run web client from /client
+>> npm run dev
