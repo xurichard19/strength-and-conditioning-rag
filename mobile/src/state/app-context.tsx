@@ -9,7 +9,7 @@ import { defaultProfile } from '@/domain/profile';
 import type { Block, ChatMessage, ChatMode, Effort, Profile, Proposal, ProgressMetric, Session } from '@/domain/types';
 import { errorMessage } from '@/lib/errors';
 import {
-  backendFor, deviceTimezone, getAuthSession, profileFromApi, sessionFromAuthUrl,
+  backendFor, deviceTimezone, getAuthSession, profileFromApi, reportActivity, sessionFromAuthUrl,
   requestPasswordReset as apiRequestPasswordReset, signIn as apiSignIn,
   signInWithGoogle as apiSignInWithGoogle, signOut as apiSignOut, signUp as apiSignUp,
   supabase, updatePassword as apiUpdatePassword, type Answers, type SavedMessage,
@@ -315,13 +315,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (current()) { historyBusy.current = false; setChatLoading(false); }
     }
   }, [cache, publishChat]);
+  const userId = authSession?.user.id;
   useEffect(() => {
-    if (!authSession?.user.id) return;
+    if (!userId) return;
+    const report = () => { void reportActivity(userId).catch(() => undefined); };
+    if (AppState.currentState === 'active') report();
     const listener = AppState.addEventListener('change', state => {
-      if (state === 'active') void refreshChat();
+      if (state === 'active') {
+        report();
+        void refreshChat();
+      }
     });
     return () => listener.remove();
-  }, [authSession?.user.id, refreshChat]);
+  }, [userId, refreshChat]);
 
   const openConversation = useCallback((id?: string, title?: string) => {
     chatDraft.current = '';

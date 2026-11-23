@@ -30,6 +30,20 @@ class ProfileRouteTests(unittest.TestCase):
         self.client = api_client()
         self.addCleanup(self.client.close)
 
+    @patch("app.db.supabase.profiles.call_rpc", return_value={"last_active_at": NOW, "refresh_job": {"lease_token": "private"}})
+    def test_activity_uses_verified_owner_and_returns_no_job_data(self, rpc):
+        with api_client(authenticated=False) as anonymous:
+            self.assertEqual(anonymous.post("/profile/activity").status_code, 401)
+        rpc.assert_not_called()
+        response = self.client.post("/profile/activity", params={"user_id": "another-account"})
+        rpc.assert_called_once_with("record_user_activity", {"p_user_id": USER.id}, None)
+        self.assertEqual((response.status_code, response.content), (204, b""))
+        self.assertEqual(response.headers["cache-control"], "private, no-store")
+        rpc.return_value = None
+        self.assertEqual(self.client.post("/profile/activity").status_code, 404)
+        rpc.side_effect = SupabaseDataError("unavailable", status_code=500)
+        self.assertEqual(self.client.post("/profile/activity").status_code, 502)
+
     @patch("app.api.routers.profile.profiles.get_profile", return_value=PROFILE)
     def test_get_uses_authenticated_handler_and_private_cache(self, handler):
         response = self.client.get("/profile")

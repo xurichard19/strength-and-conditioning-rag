@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.api.errors import PRIVATE_HEADERS, database_errors, private_response
 from app.api.schemas import ProfileResponse, ProfileUpdate
@@ -22,6 +22,15 @@ def get_profile(user: AuthUser = Depends(require_user)) -> ProfileResponse:
         if result is None:
             raise HTTPException(404, "profile not found", headers=PRIVATE_HEADERS)
         return ProfileResponse.model_validate(result)
+
+
+@router.post("/activity", status_code=204)
+def record_activity(user: AuthUser = Depends(require_user)) -> Response:
+    """ **user**: authenticated account. **returns**: empty acknowledgement, or 404 for a missing profile """
+    with database_errors("profile.record_activity"):
+        if not profiles.record_activity(user.id):
+            raise HTTPException(404, "profile not found", headers=PRIVATE_HEADERS)
+    return Response(status_code=204, headers=PRIVATE_HEADERS)
 
 
 @router.patch("", response_model=ProfileResponse)

@@ -9,6 +9,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { AppState, Platform } from 'react-native';
 
 import { BackendError, createBackend, deviceTimezone } from './backend';
+import { createActivityReporter } from './activity-reporter';
 export type { Answers, SavedMessage } from './backend';
 export { deviceTimezone, profileFromApi, surveyAnswers } from './backend';
 
@@ -154,3 +155,5 @@ export function backendFor(userId: string) {
     return expoFetch(`${apiBaseUrl}${path}`, { ...options, headers });
   }, () => billingListeners.forEach(listener => listener(userId)));
 }
+
+export const reportActivity = createActivityReporter(AsyncStorage, userId => backendFor(userId).recordActivity());

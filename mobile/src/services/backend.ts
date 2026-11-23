@@ -110,9 +110,10 @@ export function createBackend(request: ApiRequest, onSubscriptionRequired?: () =
   }
   async function json<T>(path: string, options?: RequestInit, retryConflict = false): Promise<T> {
     if (options?.method && options.method !== 'GET') return (await check(await request(path, options))).json();
-    return timedJson<T>(path, options, retryConflict);
+    return timedRequest<T>(path, options, response => response.json(), retryConflict);
   }
-  async function timedJson<T>(path: string, options?: RequestInit, retryConflict = false): Promise<T> {
+  async function timedRequest<T>(path: string, options: RequestInit | undefined,
+    read: (response: Response) => T | Promise<T>, retryConflict = false): Promise<T> {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     // Bound verification and reads, including auth and decoding, even if a transport ignores abort.
@@ -124,14 +125,15 @@ export function createBackend(request: ApiRequest, onSubscriptionRequired?: () =
         const config = { ...options, signal: controller.signal };
         let response = await request(path, config);
         if (retryConflict && response.status === 409 && !controller.signal.aborted) response = await request(path, config);
-        return (await check(response, controller.signal)).json() as Promise<T>;
+        return read(await check(response, controller.signal));
       })()]);
     } finally { clearTimeout(timer); }
   }
   return {
     getBillingStatus: () => json<BillingStatus>('/billing/status'),
-    syncBilling: () => timedJson<BillingStatus>('/billing/sync', { method: 'POST' }),
+    syncBilling: () => timedRequest<BillingStatus>('/billing/sync', { method: 'POST' }, response => response.json()),
     getProfile: () => json<ApiProfile>('/profile'),
+    recordActivity: () => timedRequest('/profile/activity', { method: 'POST' }, () => undefined),
     getOnboarding: () => json<Onboarding | null>('/onboarding'),
     saveTimezone: (timezone: string) => json<ApiProfile>('/profile', {
       method: 'PATCH', body: JSON.stringify({ timezone }),
